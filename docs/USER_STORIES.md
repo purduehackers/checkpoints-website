@@ -21,7 +21,7 @@ Identity for the MVP: a hacker is a random token stored in their browser (one qu
 
 ### US-0.2 Database schema (MVP, S)
 *As a developer, I can store sessions and queue entries in SQLite, so a server restart or a page refresh does not lose the queue.*
-- Drizzle + `bun:sqlite`. Tables: `sessions` and `queue_entries` (see the data model in `MVP_PLAN.md`).
+- Turso. Tables: `sessions` and `queue_entries` (see the data model in `MVP_PLAN.md`).
 - A migration or push script creates the tables.
 
 ### US-0.3 Live state channel (MVP, M)
