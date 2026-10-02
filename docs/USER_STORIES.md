@@ -35,14 +35,14 @@ Identity for the MVP: a hacker is a random token stored in their browser (one qu
 ## Epic 1: Sessions and join codes
 
 ### US-1.1 Start a session (MVP, S)
-*As an organizer, I can start a checkpoint session and get a short join code, so hackers can find the right queue.*
-- "Start checkpoint" button on `/admin` creates a session with a 4–6 character code. Avoid look-alike characters (0/O, 1/I).
+*As an organizer, I can start a checkpoint session so hackers can find the right queue.*
+- "Start checkpoint" button on `/admin` creates a session.
 - Only one session is open at a time for the MVP.
 - Default time limit is 2:00.
 
 ### US-1.2 Lobby on the projector (MVP, S)
-*As the projector, I show the join code, the join URL and the live queue, so the room knows how to join, like a Kahoot lobby.*
-- `/host` shows the code in large type, the site URL, and the queue list (name and project).
+*As the projector, I show the join URL and the live queue, so the room knows how to join.*
+- `/host` shows the site URL in large type, and the queue list (name and project).
 - The list updates live as people join or leave.
 
 ### US-1.3 End a session (MVP, S)
@@ -54,10 +54,10 @@ Identity for the MVP: a hacker is a random token stored in their browser (one qu
 
 ## Epic 2: Joining the queue
 
-### US-2.1 Enter a join code (MVP, S)
-*As a hacker, I land on a page with just a code box, so joining takes seconds.*
-- `/` shows one input. Codes are case-insensitive. A wrong code shows an inline error.
-- A link like `/?code=ABCD` pre-fills the code (useful for a QR code later).
+~~### US-2.1 Enter a join code (MVP, S)~~
+~~*As a hacker, I land on a page with just a code box, so joining takes seconds.*~~
+~~- `/` shows one input. Codes are case-insensitive. A wrong code shows an inline error.~~
+~~- A link like `/?code=ABCD` pre-fills the code (useful for a QR code later).~~
 
 ### US-2.2 Join with name and project (MVP, S)
 *As a hacker, I enter my name and project name and get a spot in line.*
