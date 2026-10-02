@@ -77,7 +77,7 @@ The design docs are [`../PRD.docx`](../PRD.docx) and [`../docs/USER_STORIES.md`]
 | PRD item | Status | Notes |
 |---|---|---|
 | **Client:** base page for joining the queue | Done | `/` |
-| **Client:** enter name and join code | Partly | Name and project yes. **No join code or sessions.** There is one global queue. |
+| **Client:** enter name and join code | Done | Name and project. The team has since dropped join codes (US-2.1 is struck out), so there is no code. There are no sessions either: one global queue. |
 | **Client:** queue page with a screenshare prompt and queue number | Done | Shows "#N" and the number of people ahead. People can share from their seat with a private preview. |
 | **Client:** confirmation step before going live | Partly | When called, the card switches to a big **Go live** button. It isn't a dimmed full-page overlay. |
 | **Client:** screenshare with a timer on your turn | Done | The presenter, projector and admin all see the stopwatch. |
@@ -86,7 +86,7 @@ The design docs are [`../PRD.docx`](../PRD.docx) and [`../docs/USER_STORIES.md`]
 | **Admin:** panel showing everyone in the queue | Done | Includes a "screen ready" tag for people who have already picked a screen. |
 | **Admin:** view the screenshare | Partly | The admin sees the live share. **Shares can't be previewed before they go live.** |
 | **Admin:** remove people from the queue | Done | Admins can also move people up. |
-| **Host:** join code and queue list | Partly | Shows the join address and the up-next list. No code. |
+| **Host:** join code and queue list | Done | Shows the join address and the up-next list. Join codes were dropped from the user stories, so the address replaces the code. |
 | **Host:** screenshare with the presenter's name | Done | The name, project and stopwatch are in a bar under the share. |
 | **Host:** "screensaver" between checkpoints | Done | Purdue Hackers grid with a Game of Life glider band, and the up-next list. |
 
@@ -115,9 +115,10 @@ The design docs are [`../PRD.docx`](../PRD.docx) and [`../docs/USER_STORIES.md`]
 
 | Status | Stories |
 |---|---|
-| **Done** | US-2.2 (name and project), US-2.3 (live position, leave), US-3.2 (change window before going live), US-4.1 (up-next beep, notification and flash), US-4.3 (go live on the projector with a name bar), US-4.5 (end early), US-5.2 (queue overview), US-6.1 (screensaver), US-6.2 (live view, sound button, fullscreen, hidden cursor) |
+| **Done** | US-1.2 (projector shows the join address and the live queue), US-2.2 (name and project), US-2.3 (live position, leave), US-3.2 (change window before going live), US-4.1 (up-next beep, notification and flash), US-4.3 (go live on the projector with a name bar), US-4.5 (end early), US-5.2 (queue overview), US-6.1 (screensaver), US-6.2 (live view, sound button, fullscreen, hidden cursor) |
+| **Dropped by the team** | US-2.1 (join-code page) |
 | **Partly** | US-2.4 (a refresh keeps your spot but you must pick your screen again), US-3.1 (share from your seat with a preview; the stream ID design is not used), US-3.3 (the share-stopped message works; the organizer only sees ready or not ready), US-4.2 (Go live button, no dimmed overlay), US-5.4 (Next, Remove and Stop exist; Skip doesn't), US-5.5 (move up and the time limit exist; drag-to-reorder doesn't) |
-| **Missing** | US-0.1 to 0.3 (Astro, Elysia, SQLite and WebSocket foundation), US-1.1 to 1.3 (sessions and join codes), US-2.1 (join-code page), US-4.4 (server-enforced cutoff and last-15-second countdown), US-5.1 (admin passcode), US-5.3 (preview a share before it goes live), US-7.1 (HTTPS deployment), US-7.2 (dry run) |
+| **Missing** | US-0.1 to 0.3 (Astro, Elysia, Turso and WebSocket foundation), US-1.1 and US-1.3 (start and end a session), US-4.4 (server-enforced cutoff and last-15-second countdown), US-5.1 (admin passcode), US-5.3 (preview a share before it goes live), US-7.1 (HTTPS deployment), US-7.2 (dry run) |
 
 ## How it is built (and how it differs from the PRD)
 
@@ -125,7 +126,7 @@ The design docs are [`../PRD.docx`](../PRD.docx) and [`../docs/USER_STORIES.md`]
 |---|---|---|
 | Server | `server.mjs`, Node built-ins only, no install | Elysia on Bun |
 | Front end | Plain HTML and CSS per design. `public/core.js` holds all the logic. | Astro, React and Tailwind |
-| State | In memory. **The queue resets when the server restarts.** Recordings persist on disk with `recordings/recordings.json` as the index. | SQLite and Drizzle |
+| State | In memory. **The queue resets when the server restarts.** Recordings persist on disk with `recordings/recordings.json` as the index. | Turso |
 | Live updates | Pages poll `/api/poll` every 0.7s. (A Cloudflare tunnel buffers server-sent events, so polling is used.) | WebSocket |
 | Video | Direct WebRTC from the presenter's browser to each viewer. Signalling goes through the server. Uses Google STUN with the public Open Relay TURN server as a fallback. | VDO.Ninja |
 | Auth | **None.** Anyone who knows `/admin` can run the queue. | Squid |
@@ -169,7 +170,7 @@ The full mirrors of both sites aren't committed. Run `node tools/capture.mjs <ur
 
 ## Known issues
 
-- One global queue; no sessions or join codes.
+- One global queue; no sessions.
 - The queue is lost when the server restarts.
 - No admin login.
 - No automatic cutoff at the time limit.
