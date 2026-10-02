@@ -1,0 +1,35 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#050507"><link rel="icon" href="/logo.svg"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Doto:wght@400..900&family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/contract.css"><link rel="stylesheet" href="/designs/wave/wave.css"><link rel="stylesheet" href="/designs/wave/polish.css"><title>Host | Checkpoints</title></head>
+<body data-page="admin" data-live="no">
+<div class="field" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><canvas class="waves"></canvas><div class="grain"></div></div>
+<header class="top"><a class="brand" href="/d/wave/join"><svg class="mark" viewBox="0 0 72 72" aria-hidden="true"><path d="M24 72H0V48H24V72ZM72 72H48V48H24V0H48V24H72V72Z" fill="currentColor"/></svg><b>checkpoints</b><small>by Purdue Hackers</small></a><nav><a href="/d/wave/join">Present</a><a href="/d/wave/view">Watch</a><a href="/d/wave/recordings">Recordings</a><a href="/">All designs</a></nav></header>
+<main class="admin-wrap">
+  <section class="stage admin-stage">
+    <div class="idle-scene idle-only">
+      <canvas class="waves" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
+      <div class="idle-copy"><div class="idle-left"><p class="kicker">Stage is clear</p><h2 class="wordmark">check<span>points</span></h2></div></div>
+    </div>
+    <video id="stageVideo" autoplay playsinline muted></video>
+    <div class="stage-meta live-only"><span class="chip"><span class="dot live"></span>Live</span></div>
+  </section>
+  <section class="panel control">
+    <p class="kicker"><span class="dot"></span>On stage &middot; <span id="nowStatus">idle</span></p>
+    <h2 id="nowName">Nobody on stage</h2>
+    <p id="nowNote"></p>
+    <div class="clock">
+      <span id="stopwatch">00:00</span>
+      <div class="mic-row"><label class="limit">Limit <input id="limitInput" type="number" min="1" max="30" value="5"> min</label>
+      <span class="state-legend"><span><i style="background:var(--lilac)"></i>ready</span><span><i style="background:var(--teal)"></i>ok</span><span><i style="background:var(--amber)"></i>80%</span><span><i style="background:var(--red)"></i>over</span></span></div>
+    </div>
+    <div class="ctl-btns">
+      <button class="btn primary" id="nextBtn" type="button">Next person &rarr;</button>
+      <button class="btn danger" id="stopBtn" type="button">Stop sharing</button>
+      <button class="btn" id="soundBtn" type="button">Turn sound on</button>
+    </div>
+  </section>
+  <section class="panel qcard">
+    <div class="mic-row" style="margin-bottom:10px"><p class="kicker" style="margin:0">Queue &middot; <span id="count">0</span> waiting</p><a class="hint" href="/d/wave/recordings">All recordings &rarr;</a></div>
+    <ol aria-label="Demo queue" tabindex="0" id="queueList" class="queue"></ol>
+  </section>
+</main>
+<script src="/designs/wave/wave.js" type="module"></script>
+<script src="/core.js" type="module"></script></body></html>

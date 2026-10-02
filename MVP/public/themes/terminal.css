@@ -1,0 +1,28 @@
+/* 2. Terminal: phosphor CRT, everything monospace, scanlines, square corners. */
+:root { --bg: #030a05; --fg: #b8ffcf; --muted: #4fae73; --accent: #39ff88; --accent-ink: #021006; --card: #04120a; --line: #1d5c35; --radius: 0; --danger: #ff4d6d; --font-body: 'JetBrains Mono', monospace; --font-display: 'JetBrains Mono', monospace; }
+body { text-shadow: 0 0 6px #39ff8855; }
+body::after { content: ''; position: fixed; inset: 0; pointer-events: none; background: repeating-linear-gradient(transparent 0 2px, #0006 2px 3px); z-index: 50; }
+.top { border-bottom: 1px dashed var(--line); }
+.brand span::before { content: '~/ '; color: var(--muted); }
+.top nav a { border-radius: 0; }
+.top nav a::before { content: '['; }
+.top nav a::after { content: ']'; }
+.card, .rec { border: 1px solid var(--line); position: relative; }
+.card::before { content: '+'; position: absolute; top: -9px; left: -5px; color: var(--accent); }
+.card::after { content: '+'; position: absolute; bottom: -9px; right: -5px; color: var(--accent); }
+.btn { border-radius: 0; text-transform: lowercase; }
+.btn.primary::before { content: '> '; }
+.join h1 { font-size: clamp(30px, 4.6vw, 58px); }
+.join h1::after { content: '_'; animation: blink 1s steps(1) infinite; color: var(--accent); }
+@keyframes blink { 50% { opacity: 0; } }
+.hl { color: var(--accent); }
+input, select { border-radius: 0; font-family: var(--font-mono); }
+#meterFill { background: repeating-linear-gradient(90deg, var(--accent) 0 8px, transparent 8px 10px); }
+.idle-art { background: radial-gradient(ellipse at center, #062b15, #010603 75%); }
+.idle-art .grid { background-image: linear-gradient(#39ff8814 1px, transparent 1px), linear-gradient(90deg, #39ff8814 1px, transparent 1px); background-size: 28px 28px; transform: perspective(500px) rotateX(55deg) translateY(10%); animation: scroll 4s linear infinite; }
+@keyframes scroll { to { background-position: 0 28px; } }
+.idle-art .orb { display: none; }
+.idle-art .ticker { color: var(--accent); font: 700 16px var(--font-mono); border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); padding: 8px 0; }
+.idle-copy h2 { color: var(--accent); }
+.idle-copy h2::after { content: '\2588'; animation: blink 1s steps(1) infinite; margin-left: .1em; }
+.idle-copy .kicker::before { content: '$ checkpoints --status '; }

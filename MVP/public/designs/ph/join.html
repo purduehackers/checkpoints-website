@@ -1,0 +1,77 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="/designs/ph/glider.svg" type="image/svg+xml"><link rel="preload" href="/designs/ph/fonts/PixelHackers.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/contract.css"><link rel="stylesheet" href="/designs/ph/ph.css"><title>Present | Checkpoints</title></head>
+<body data-page="join" data-stage="form" data-armed="no">
+<header class="top"><a class="glider" href="/" aria-label="Checkpoints home"><svg viewBox="0 0 1815 1816" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M723.58 1458.25H357.555V1092.02H723.58V1458.25ZM1089.6 725.795H1455.63V1458.25H1089.6V1092.02H723.58V359.568H1089.6V725.795Z"/></svg><b>Checkpoints</b></a><nav><a class="nav-link" href="/" data-k="join">Present</a><a class="nav-link" href="/view" data-k="view">Watch</a><a class="nav-link" href="/recordings" data-k="recordings">Recordings</a></nav></header>
+<main>
+<section class="hero">
+  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="life" aria-hidden="true" style="color:#000"></div>
+  <div>
+    <h1>Check<br>points</h1>
+    <p class="lede up">Show what you <span class="c-pink">built</span> tonight. Get in line, <span class="c-violet">share your screen</span> from your seat, and go <span class="c-blue">live</span> on the big screen when you're up.</p>
+    <ol class="steps up">
+      <li><i>1</i>Join the queue</li>
+      <li><i>2</i>Share your screen and check your mic while you wait</li>
+      <li><i>3</i>We ping you when you're next</li>
+      <li><i>4</i>Walk up, hit go live, demo</li>
+    </ol>
+  </div>
+  <div class="card">
+    <form id="joinForm" class="st st-form">
+      <p class="kicker">Hack Night checkpoints</p>
+      <h2>Join the queue</h2>
+      <label>Your name<input name="name" required maxlength="60" placeholder="Ada Lovelace" autocomplete="name"></label>
+      <label>What are you showing? <small>(one line)</small><input name="note" maxlength="280" placeholder="A robot that waters my plants"></label>
+      <button class="pxbtn full" type="submit">Join the queue</button>
+    </form>
+    <div class="st st-queued">
+      <p class="kicker">You're in line</p>
+      <div class="big-pos" id="position">#1</div>
+      <p id="ahead" class="up"></p>
+      <p class="hint if-unarmed">Share your screen now, so you're ready the second you're called. Nobody sees it until you go live.</p>
+      <p class="hint if-armed"><span class="ready-tag">Screen ready</span> Only you can see this preview until you go live.</p>
+      <div class="prev"><video id="queuePreview" autoplay muted playsinline></video><div class="empty">No screen picked yet</div></div>
+      <div class="row">
+        <button class="pxbtn if-unarmed" id="preShareBtn" type="button">Share screen</button>
+        <button class="textbtn if-armed" id="changeShareBtn" type="button">Change window</button>
+        <button class="textbtn" id="leaveBtn" type="button">Leave queue</button>
+      </div>
+    </div>
+    <div class="st st-turn">
+      <p class="kicker">It's your turn</p>
+      <h2>You're up!</h2>
+      <p class="hint if-armed">Walk up to the podium and press go live. Your screen goes on the projector.</p>
+      <p class="hint if-unarmed">Press the button, pick the window with your project, and tick "Share tab audio" if you need sound.</p>
+      <button class="pxbtn pink full" id="shareBtn" type="button">Go live</button>
+    </div>
+    <div class="st st-sharing">
+      <span class="live-tag">You're live</span>
+      <div class="prev"><video id="selfPreview" autoplay muted playsinline></video></div>
+      <div class="row" style="justify-content:space-between"><span id="stopwatch">00:00</span><button class="pxbtn" id="stopShareBtn" type="button">I'm done</button></div>
+    </div>
+    <p id="shareError" role="status"></p>
+  </div>
+</section>
+<section class="dark">
+  <div class="lower">
+    <div class="panel">
+      <p class="kicker">Mic check</p>
+      <h2>Find your mic</h2>
+      <p class="hint">We listen to every input at once. Talk, and the mic that hears you lights up. Click one to use it.</p>
+      <div id="micList"></div>
+      <label class="auto"><input type="checkbox" id="micAuto" checked> Auto-switch to the mic that hears me</label>
+      <label>Using<select id="micSelect"><option value="">Default microphone</option></select></label>
+      <div class="meter"><div id="meterFill"></div></div>
+      <div class="row"><button class="textbtn" id="testBtn" type="button">Find my mic</button><span id="meterLabel" role="status">Not testing</span></div>
+    </div>
+    <div class="panel now">
+      <p class="kicker">On stage &middot; <span id="nowStatus">idle</span></p>
+      <h3 id="nowName">Nobody on stage</h3>
+      <p id="nowNote"></p>
+      <p class="kicker">Up next (<span id="count">0</span>)</p>
+      <ol id="upNext" class="queue"></ol>
+    </div>
+  </div>
+  <div class="foot"><span>Purdue Hackers</span><span>Build &middot; Ship &middot; Demo</span></div>
+</section>
+</main>
+<script src="/designs/ph/ph.js" type="module"></script><script src="/core.js" type="module"></script></body></html>

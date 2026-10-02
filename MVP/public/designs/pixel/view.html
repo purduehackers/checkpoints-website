@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/logo.svg">
+<link rel="preload" href="/designs/pixel/fonts/Silkscreen-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/designs/pixel/fonts/DepartureMono-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/contract.css">
+<link rel="stylesheet" href="/designs/pixel/pixel.css">
+<title>Watch | Checkpoints</title>
+</head>
+<body data-page="view" data-live="no">
+
+<header class="bar">
+  <a class="brand" href="/d/pixel/join"><span class="logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="brand__word">Checkpoints</span><small class="brand__note">Purdue Hackers</small></a>
+  <nav aria-label="Main"><ul class="nav">
+    <li><a href="/d/pixel/join" data-k="join">Present</a></li><li><a href="/d/pixel/view" data-k="view">Watch</a></li><li><a href="/d/pixel/recordings" data-k="recordings">Recordings</a></li><li><a href="/" class="alt">All designs</a></li>
+  </ul></nav>
+</header>
+
+<main class="view-main">
+  <section class="stage" data-ripple>
+    <div class="idle-only idle paper" data-grid="40" data-grid-ticks data-grid-fade="bottom" data-grid-opacity="0.1">
+      <div class="band" data-dither data-px="6" data-density="0.1" data-strength="0.95" data-scale="0.8" data-grain="2" data-color="#0b0b0b"></div>
+
+      <div class="idle__copy">
+        <p class="kicker">Purdue Hackers &middot; Hack Night &middot; Checkpoints</p>
+        <h1 class="display idle__title">
+          <span class="ln" style="--i:0"><span>Waiting for</span></span>
+          <span class="ln" style="--i:1"><span>the next</span></span>
+          <span class="ln ln--mark" style="--i:2"><span>demo.</span></span>
+        </h1>
+        <p class="idle__sub">Built something tonight? Open <span class="mk">Present</span> on your laptop, drop your name in the queue and share one tab when you're up.</p>
+        <p class="joinline"><span>Join the queue &#9656;</span><b data-join-url="/d/pixel/join">/d/pixel/join</b></p>
+      </div>
+
+      <div class="idle__art">
+        <div class="win">
+          <div class="win__bar"><span class="pips" aria-hidden="true"><i></i><i></i><i></i></span><span class="win__title">Stage &middot; florist.png &middot; 1-bit</span><span class="lamp lamp--blink" aria-hidden="true"></span></div>
+          <div class="flower" data-src="/designs/pixel/img/florist.color.webp" data-px="3">
+            <img src="/designs/pixel/img/florist.mono.png" alt="">
+            <span class="flower__cap">Intermission &middot; the stage is open</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="idle__next">
+        <div class="win win--night">
+          <div class="win__bar"><span class="pips" aria-hidden="true"><i></i><i></i><i></i></span><span class="win__title">Up next &middot; <span id="count">0</span> in line</span><span class="lamp" aria-hidden="true"></span></div>
+          <div class="win__body"><ol id="upNext" class="q"></ol></div>
+        </div>
+      </div>
+    </div>
+
+    <video id="stageVideo" autoplay playsinline muted></video>
+
+    <aside class="live-only tag" aria-live="polite">
+      <div class="win">
+        <div class="win__bar"><span class="lamp lamp--red" aria-hidden="true"></span><span class="win__title">On stage &middot; <span id="nowStatus">live</span></span></div>
+        <div class="win__body">
+          <div class="tag-name" id="nowName"></div>
+          <p class="tag-note" id="nowNote"></p>
+        </div>
+      </div>
+    </aside>
+
+    <div class="stage-ctl">
+      <button class="chip" id="soundBtn" type="button">Turn sound on</button>
+      <button class="chip fs-btn" type="button"><span class="fs-lbl">Fullscreen</span> <kbd>F</kbd></button>
+    </div>
+  </section>
+</main>
+
+<script src="/designs/pixel/pixel.js" type="module"></script>
+<script src="/core.js" type="module"></script>
+</body>
+</html>

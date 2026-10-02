@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/logo.svg">
+<link rel="preload" href="/designs/pixel/fonts/Silkscreen-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/designs/pixel/fonts/DepartureMono-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/contract.css">
+<link rel="stylesheet" href="/designs/pixel/pixel.css">
+<title>Present | Checkpoints</title>
+</head>
+<body data-page="join" data-stage="form">
+
+<section class="hero paper" data-grid="40" data-grid-ticks data-grid-trail data-grid-fade="bottom" data-grid-opacity="0.1" data-ripple>
+  <div class="band" data-dither data-px="6" data-density="0.1" data-strength="0.95" data-scale="0.8" data-grain="2" data-color="#0b0b0b"></div>
+
+  <header class="bar">
+    <a class="brand" href="/d/pixel/join"><span class="logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="brand__word">Checkpoints</span><small class="brand__note">Purdue Hackers</small></a>
+    <nav aria-label="Main"><ul class="nav"><li><a href="/d/pixel/join" data-k="join">Present</a></li><li><a href="/d/pixel/view" data-k="view">Watch</a></li><li><a href="/d/pixel/recordings" data-k="recordings">Recordings</a></li><li><a href="/" class="alt">All designs</a></li></ul></nav>
+  </header>
+
+  <div class="hero__copy">
+    <p class="kicker rise">Hack Night &middot; Demo queue open</p>
+    <h1 class="display hero__title">
+      <span class="ln" style="--i:0"><span>Build it.</span></span>
+      <span class="ln" style="--i:1"><span>Ship it.</span></span>
+      <span class="ln ln--mark" style="--i:2"><span>Show it.</span></span>
+    </h1>
+    <p class="hero__sub rise" style="--i:1">Get in line, test your mic, and when your number comes up <span class="mk">share one tab</span> to the big screen. Every demo is <span class="mk">saved to the tapes</span>.</p>
+    <p class="hint rise" style="--i:2">Click anywhere on the paper. It ripples.</p>
+  </div>
+
+  <div class="hero__win">
+    <div class="win">
+      <div class="win__bar">
+        <span class="pips" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="win__title"><span class="win__pre">Checkpoints &middot; </span><span class="win__stage" data-for="form">Join the queue</span><span class="win__stage" data-for="queued">You're in line</span><span class="win__stage" data-for="turn">It's your turn</span><span class="win__stage" data-for="sharing">On air</span></span>
+        <span class="lamp" aria-hidden="true"></span>
+      </div>
+      <div class="win__body">
+        <form id="joinForm" class="st st-form" autocomplete="on">
+          <label class="lbl" for="jfName"><span>&gt;</span> Who's demoing?</label>
+          <input class="field" id="jfName" name="name" required maxlength="60" placeholder="Ada Lovelace" autocomplete="name">
+          <label class="lbl" for="jfNote"><span>&gt;</span> What did you build? <small>(one line, saved with your tape)</small></label>
+          <input class="field field--sm" id="jfNote" name="note" maxlength="280" placeholder="A robot that waters my plants">
+          <div class="go">
+            <button class="sl sl--big" type="submit">Get in line &#9656;</button>
+            <span class="go__note">Or press enter</span>
+          </div>
+        </form>
+
+        <div class="st st-queued">
+          <p class="lbl"><span>&gt;</span> Your number</p>
+          <div class="big-num" id="position">#1</div>
+          <p id="ahead"></p>
+          <p class="small">Keep this tab open. It flips to <b>your turn</b> on its own. Test your mic below while you wait.</p>
+          <button class="chip" id="leaveBtn" type="button">Leave the queue</button>
+        </div>
+
+        <div class="st st-turn">
+          <p class="lbl"><span>&gt;</span> The stage is yours</p>
+          <h2 class="say">You're up.</h2>
+          <ol class="steps">
+            <li><i>1</i>Hit share below</li>
+            <li><i>2</i>Pick the one tab with your project</li>
+            <li><i>3</i>Tick &ldquo;share tab audio&rdquo; if it makes sound</li>
+          </ol>
+          <div class="go">
+            <button class="sl sl--big sl--y" id="shareBtn" type="button">Share my screen &#9656;</button>
+            <span class="go__note">Your mic comes too</span>
+          </div>
+        </div>
+
+        <div class="st st-sharing">
+          <div class="self"><video id="selfPreview" autoplay muted playsinline></video><span class="onair">You're live</span></div>
+          <div class="share-row">
+            <div><span class="clock-lbl">Demo time</span><span id="stopwatch">00:00</span></div>
+            <button class="sl sl--r" id="stopShareBtn" type="button">I'm done &#9632;</button>
+          </div>
+        </div>
+
+        <p id="shareError" role="status"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="check night" data-grid="48" data-grid-color="#fffbf1" data-grid-opacity="0.07" data-grid-fade="radial" data-ripple>
+  <div class="check__intro">
+    <p class="kicker kicker--y">While you wait &middot; Soundcheck</p>
+    <h2 class="display check__title"><span class="ln"><span>Mic check,</span></span><span class="ln"><span>one, two.</span></span></h2>
+    <p class="check__body">Pick your mic and say something. The bar should jump into the <span class="mk mk--v">green blocks</span>. If it stays flat, the room won't hear you either.</p>
+  </div>
+
+  <div class="check__grid">
+    <div class="check__mic">
+      <div class="win win--night">
+        <div class="win__bar"><span class="pips" aria-hidden="true"><i></i><i></i><i></i></span><span class="win__title">Soundcheck &middot; Input</span><span class="lamp" aria-hidden="true"></span></div>
+        <div class="win__body">
+          <label class="lbl" for="micSelect"><span>&gt;</span> Microphone</label>
+          <select class="sel" id="micSelect"></select>
+          <div class="meter"><div class="meter__track"><div id="meterFill"></div></div></div>
+          <div class="meter-scale"><span>Quiet</span><span>Good</span><span>Loud</span></div>
+          <div class="mic-row">
+            <button class="sl sl--y" id="testBtn" type="button">Test audio</button>
+            <span id="meterLabel">Not testing</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="check__stage">
+      <div class="win">
+        <div class="win__bar"><span class="pips" aria-hidden="true"><i></i><i></i><i></i></span><span class="win__title">On stage now</span><span class="lamp" aria-hidden="true"></span></div>
+        <div class="win__body">
+          <div class="now"><span class="lbl"><span>&gt;</span> Presenting</span><span class="status" id="nowStatus">idle</span></div>
+          <h3 class="now-name" id="nowName">Nobody on stage</h3>
+          <p class="now-note" id="nowNote"></p>
+          <div class="rule"></div>
+          <p class="lbl" style="margin-bottom:0.3rem"><span>&gt;</span> Up next (<span id="count">0</span>)</p>
+          <ol id="upNext" class="q"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="check__band"><div class="band" data-dither data-px="7" data-density="0.12" data-strength="1" data-scale="0.9" data-grain="2" data-color="#fffbf1"></div></div>
+</section>
+
+<footer class="foot">
+  <span>Purdue Hackers &middot; Hack Night &middot; Checkpoints</span>
+  <span>One tab. A few minutes. A room full of hackers.</span>
+  <a href="/d/pixel/recordings">Watch the tapes &#9656;</a>
+</footer>
+
+<script src="/designs/pixel/pixel.js" type="module"></script>
+<script src="/core.js" type="module"></script>
+</body>
+</html>
