@@ -151,8 +151,8 @@ Identity for the MVP: a hacker is a random token stored in their browser (one qu
 - **Remove** takes them out of the queue, after a confirm.
 - **Stop** ends the current presenter now.
 
-### US-5.5 Reorder and change the time limit (Stretch, S)
-*As an organizer, I can drag (or use up and down buttons) to reorder the queue, and change the time limit for this session.*
+### ✅ US-5.5 Reorder and change the time limit (Stretch, S)
+*As an organizer, I can use up and down buttons (not drag) to reorder the queue, and change the time limit for this session.*
 
 ---
 

@@ -141,3 +141,19 @@ test('an entry unseen for 3+ minutes shows as disconnected until it is touched',
     expect((await host()).queue[0].connected).toBe(true)
   } finally { Date.now = realNow }
 })
+
+// ---- US-5.5 reorder ----
+test('move shifts a waiting entry up or down one place; edges and non-waiting are no-ops', async () => {
+  await q.stop(); await q.leave('tok-iiiiiiii')
+  for (const [t, n] of [['tok-jjjjjjjj', 'Jo'], ['tok-kkkkkkkk', 'Ki'], ['tok-llllllll', 'Lu']]) await q.join(t, n, 'P')
+  const id = async (n: string) => (await host()).queue.find((e) => e.name === n)!.id
+  await q.move(await id('Lu'), -1)
+  expect(await names()).toEqual(['Jo', 'Lu', 'Ki'])
+  await q.move(await id('Jo'), 1)
+  expect(await names()).toEqual(['Lu', 'Jo', 'Ki'])
+  await q.move(await id('Lu'), -1) // already first
+  await q.move(await id('Ki'), 1) // already last
+  expect(await names()).toEqual(['Lu', 'Jo', 'Ki'])
+  await q.move('no-such-id', -1)
+  expect(await names()).toEqual(['Lu', 'Jo', 'Ki'])
+})

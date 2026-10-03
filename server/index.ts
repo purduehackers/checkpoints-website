@@ -79,6 +79,7 @@ export const app = new Elysia({ prefix: '/api' })
       .post('/call-next', async ({ body }) => (await q.callNext(body.expect), reply('admin')), { body: t.Object({ expect: t.Nullable(t.String()) }) })
       .post('/stop', async () => (await q.stop(), reply('admin')))
       .post('/skip', async ({ body }) => (await q.skip(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
+      .post('/move', async ({ body }) => (await q.move(body.id, body.dir), reply('admin')), { body: t.Object({ id: t.String(), dir: t.Union([t.Literal(-1), t.Literal(1)]) }) })
       .post('/remove', async ({ body }) => (await q.remove(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
       .post('/ready', async ({ body }) => (await q.adminReady(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
       .post('/limit', async ({ body }) => (await q.setLimit(body.seconds), reply('admin')), { body: t.Object({ seconds: t.Number() }) }),

@@ -113,6 +113,16 @@ export async function skip(id: string) {
   await run(`UPDATE queue_entries SET sort_key = ? WHERE id = ?`, [after === undefined ? next + 1 : (next + after) / 2, id])
 }
 
+// US-5.5: swap places with the neighbouring waiting entry (dir -1 = up, 1 = down).
+export async function move(id: string, dir: -1 | 1) {
+  const s = await openSession()
+  if (!s) return
+  const w = await all(`SELECT id, sort_key FROM queue_entries WHERE session_id = ? AND status = 'waiting' ORDER BY sort_key`, [s.id])
+  const i = w.findIndex((r) => r.id === id), j = i + dir
+  if (i < 0 || j < 0 || j >= w.length) return
+  await run(`UPDATE queue_entries SET sort_key = CASE id WHEN ? THEN ? ELSE ? END WHERE id IN (?, ?)`, [id, w[j].sort_key, w[i].sort_key, id, w[j].id])
+}
+
 // The server-owned cutoff. Called every tick, so it also catches deadlines passed while the server was down.
 export async function expire(now = Date.now()) {
   await run(`UPDATE queue_entries SET status = 'done' WHERE status = 'live' AND deadline <= ?`, [now])
