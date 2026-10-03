@@ -28,7 +28,7 @@ test('skip moves behind the next person', async () => {
 })
 
 test('call-next -> ready -> live sets a deadline; host sees stream only when live', async () => {
-  await q.callNext()
+  await q.callNext(null)
   let host = await q.loadState('host')
   expect(host.current).toMatchObject({ name: 'Bob', status: 'called' })
   expect(host.current?.streamId).toBeUndefined()
@@ -49,7 +49,8 @@ test('expire ends a live slot at its deadline, not before', async () => {
 })
 
 test('call-next replaces the current presenter; remove drops a waiting entry', async () => {
-  await q.callNext()
+  await q.callNext(null)
+  await q.callNext(null) // a stale double-click: stage already changed, so nothing happens
   expect((await q.loadState('host')).current?.name).toBe('Ada')
   await q.remove((await q.loadState('host')).queue[0].id)
   expect((await q.loadState('host')).queue).toEqual([])

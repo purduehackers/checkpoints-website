@@ -72,9 +72,9 @@ export default function Hacker() {
     body = (
       <div className="space-y-4">
         {me.status === 'waiting' && (
-          <div>
-            <h1 className="text-3xl font-semibold">You're {ordinal(me.position)} in line</h1>
-            <p className="text-neutral-400">{me.position === 1 ? "You're next. Get your screen ready." : `${me.position - 1} ${me.position === 2 ? 'person' : 'people'} ahead of you`}</p>
+          <div className={me.position === 1 ? 'rounded-lg bg-amber-400 p-4 text-black' : ''}>
+            <h1 className="text-3xl font-semibold">{me.position === 1 ? "You're up next!" : `You're ${ordinal(me.position)} in line`}</h1>
+            <p className={me.position === 1 ? '' : 'text-neutral-400'}>{me.position === 1 ? 'Get your screen ready.' : `${me.position - 1} ${me.position === 2 ? 'person' : 'people'} ahead of you`}</p>
           </div>
         )}
         {me.status === 'live' && (
@@ -85,11 +85,12 @@ export default function Hacker() {
         )}
         {canShare ? (
           <div>
-            <div className="aspect-video w-full max-w-sm overflow-hidden rounded bg-black">
-              <PushFrame key={frameKey} streamId={me.streamId} onState={setShareState} />
+            {/* Tall enough to show VDO.Ninja's "Select screen to share" button without scrolling inside the frame. */}
+            <div className="h-[26rem] w-full overflow-hidden rounded bg-black">
+              <PushFrame key={frameKey} streamId={me.streamId} label={me.name} onState={setShareState} />
             </div>
-            {shareState === 'stopped' && <p className="mt-2 rounded bg-red-900 p-2 text-sm">Your share stopped. Click “Share your screen” again.</p>}
-            {shareState === 'not_shared' && <p className="mt-2 text-sm text-neutral-400">Click the button above to pick a screen, window or tab.</p>}
+            {shareState === 'stopped' && <p className="mt-2 rounded bg-red-900 p-2 text-sm">Your share stopped. Click “Change window” to share again.</p>}
+            {shareState === 'not_shared' && <p className="mt-2 text-sm text-neutral-400">Click “Select screen to share” above and pick a screen, window or tab.</p>}
             <button className="mt-2 text-sm underline" onClick={() => { setShareState('not_shared'); setFrameKey((k) => k + 1) }}>Change window</button>
           </div>
         ) : (
@@ -102,13 +103,13 @@ export default function Hacker() {
   }
 
   return (
-    <Shell pulse={me?.status === 'waiting' && me.position === 1}>
+    <Shell>
       <Badge online={online} />
       {countdown && <div className="fixed left-3 top-3 z-40 rounded bg-red-600 px-3 py-1 text-2xl font-bold tabular-nums">{fmt(msTotal!)}</div>}
       {body}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
       {me?.status === 'called' && (
-        <div className="fixed inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black/90">
+        <div className="fixed inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black/95">
           <p className="text-2xl">Walk to the podium</p>
           <button className="rounded-lg bg-green-500 px-12 py-6 text-4xl font-bold text-black" onClick={() => act('/ready')}>Ready</button>
         </div>
@@ -117,6 +118,6 @@ export default function Hacker() {
   )
 }
 
-function Shell({ children, pulse = false }: { children: React.ReactNode; pulse?: boolean }) {
-  return <main className={`min-h-screen p-6 ${pulse ? 'animate-pulse bg-amber-900/40' : ''}`}><div className="mx-auto max-w-md">{children}</div></main>
+function Shell({ children }: { children: React.ReactNode }) {
+  return <main className="min-h-screen p-6"><div className="mx-auto max-w-2xl">{children}</div></main>
 }

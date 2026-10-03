@@ -39,6 +39,7 @@ async function tick() {
 
 // Mutations answer with the caller's fresh state, then nudge sockets on this instance.
 const reply = async (role: Role, token?: string): Promise<State> => {
+  await q.expire()
   pushAll()
   return q.loadState(role, token)
 }
@@ -48,7 +49,7 @@ const hackerBody = t.Object({ token: tok })
 
 export const app = new Elysia({ prefix: '/api' })
   .onError(({ error, set }) => {
-    set.status = 400
+    set.status = (error as any).status === 401 ? 401 : 400
     return { error: error instanceof Error ? error.message : String(error) }
   })
   .get('/health', () => ({ ok: true }))
@@ -69,13 +70,13 @@ export const app = new Elysia({ prefix: '/api' })
   }, { body: t.Object({ passcode: t.String() }) })
   .group('/admin', (g) =>
     g
-      .onBeforeHandle(({ headers, set, path }) => {
-        if (path.endsWith('/login')) return
-        if (!isAdmin(headers['x-admin-token'])) return (set.status = 401, { error: 'Not authorized' })
+      // transform runs before body validation, so unauthenticated callers learn nothing about the schema
+      .onTransform(({ headers }) => {
+        if (!isAdmin(headers['x-admin-token'])) throw Object.assign(new Error('Not authorized'), { status: 401 })
       })
       .post('/session/start', async () => (await q.startSession(), reply('admin')))
       .post('/session/end', async () => (await q.endSession(), reply('admin')))
-      .post('/call-next', async () => (await q.callNext(), reply('admin')))
+      .post('/call-next', async ({ body }) => (await q.callNext(body.expect), reply('admin')), { body: t.Object({ expect: t.Nullable(t.String()) }) })
       .post('/stop', async () => (await q.stop(), reply('admin')))
       .post('/skip', async ({ body }) => (await q.skip(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
       .post('/remove', async ({ body }) => (await q.remove(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
@@ -87,10 +88,11 @@ export const app = new Elysia({ prefix: '/api' })
     // First message from the client: { role, token?, adminToken? }
     async message(ws, msg: any) {
       if (!msg || !['hacker', 'admin', 'host'].includes(msg.role)) return
-      if (msg.role === 'admin' && !isAdmin(msg.adminToken)) return ws.send(JSON.stringify({ error: 'Not authorized' }))
+      if (msg.role === 'admin' && !isAdmin(msg.adminToken)) { ws.send(JSON.stringify({ error: 'Not authorized' })); return } // returning send()'s byte count would echo it
       const sub: Sub = { send: (s) => ws.send(s), role: msg.role, token: msg.role === 'hacker' ? String(msg.token ?? '') : undefined }
       subs.set(String(ws.id), sub)
       timer ??= setInterval(() => tick().catch(console.error), TICK_MS)
+      await q.expire() // first message must not show a slot whose deadline passed while nobody was connected
       await push(sub, true)
     },
     close(ws) {
