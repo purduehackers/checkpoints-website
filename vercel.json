@@ -1,0 +1,6 @@
+{
+  "bunVersion": "1.4.x",
+  "framework": "astro",
+  "functions": { "api/server.ts": { "maxDuration": 1800 } },
+  "rewrites": [{ "source": "/api/:path*", "destination": "/api/server" }]
+}
