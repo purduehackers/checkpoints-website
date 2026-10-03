@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Badge, api, beep, fmt, hackerToken, useLive, useTick } from '../lib/live'
-import { PushFrame } from '../lib/vdo'
+import { ShareBox } from '../lib/vdo'
 import type { ShareState } from '../../shared/types'
 
 const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`
@@ -15,7 +15,6 @@ export default function Hacker() {
   const { state, online, apply, now } = useLive('hacker')
   const [error, setError] = useState('')
   const [form, setForm] = useState({ name: '', project: '' })
-  const [frameKey, setFrameKey] = useState(0)
   const [shareState, setShareState] = useState<ShareState>('not_shared')
   const reported = useRef<ShareState>('not_shared')
   useTick()
@@ -84,15 +83,7 @@ export default function Hacker() {
           </div>
         )}
         {canShare ? (
-          <div>
-            {/* Tall enough to show VDO.Ninja's "Select screen to share" button without scrolling inside the frame. */}
-            <div className="h-[26rem] w-full overflow-hidden rounded bg-black">
-              <PushFrame key={frameKey} streamId={me.streamId} label={me.name} onState={setShareState} />
-            </div>
-            {shareState === 'stopped' && <p className="mt-2 rounded bg-red-900 p-2 text-sm">Your share stopped. Click “Change window” to share again.</p>}
-            {shareState === 'not_shared' && <p className="mt-2 text-sm text-neutral-400">Click “Select screen to share” above and pick a screen, window or tab.</p>}
-            <button className="mt-2 text-sm underline" onClick={() => { setShareState('not_shared'); setFrameKey((k) => k + 1) }}>Change window</button>
-          </div>
+          <ShareBox streamId={me.streamId} label={me.name} onState={setShareState} />
         ) : (
           <p className="rounded bg-neutral-800 p-3 text-sm">Use a laptop to share your screen. You can still wait here.</p>
         )}
