@@ -76,12 +76,16 @@ async function goLive(where: string, arg: string) {
 export const hackerReady = (token: string) => goLive('client_token', token)
 export const adminReady = (entryId: string) => goLive('id', entryId)
 
-export async function callNext() {
+// `expect` is the entry the caller saw on stage (or null). If the stage changed since, do nothing:
+// a double-click or two organizers clicking at once must not skip people.
+export async function callNext(expect: string | null) {
   const s = await openSession()
   if (!s) throw new Error('No checkpoint is running')
   await ready
   const tx = await db.transaction('write')
   try {
+    const cur = (await tx.execute({ sql: `SELECT id FROM queue_entries WHERE session_id = ? AND status IN ('called','live')`, args: [s.id] })).rows[0]
+    if (((cur?.id as string) ?? null) !== expect) return
     await tx.execute({ sql: `UPDATE queue_entries SET status = 'done' WHERE session_id = ? AND status IN ('called','live')`, args: [s.id] })
     await tx.execute({
       sql: `UPDATE queue_entries SET status = 'called', called_at = ? WHERE id = (
@@ -121,7 +125,7 @@ export async function loadState(role: Role, token?: string): Promise<State> {
   const rows = await all(`SELECT * FROM queue_entries WHERE session_id = ? ORDER BY sort_key`, [s.id])
   const admin = role === 'admin'
   const cur = rows.find((r) => r.status === 'called' || r.status === 'live')
-  const waiting = rows.filter((r) => r.status === 'waiting')
+  const waiting = s.status === 'open' ? rows.filter((r) => r.status === 'waiting') : [] // a closed session has no line
   const current: Current | null = !cur ? null : {
     entryId: cur.id, name: cur.name, project: cur.project, status: cur.status,
     startedAt: cur.started_at, deadline: cur.deadline, shareState: cur.share_state,

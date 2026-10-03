@@ -29,14 +29,21 @@ export default function Admin() {
 }
 
 function Panel({ onDenied }: { onDenied: () => void }) {
-  const { state, online, apply, now } = useLive('admin')
+  const { state, online, denied, apply, now } = useLive('admin')
+  useEffect(() => { if (denied) onDenied() }, [denied])
   const [error, setError] = useState('')
   const [preview, setPreview] = useState<string | null>(null)
   const [pinned, setPinned] = useState(false) // true once the organizer picks a preview by hand
+  const [busy, setBusy] = useState(false) // disables every control while a request is in flight (no double-clicks)
   useTick(1000)
 
-  const act = (path: string, body?: object) =>
-    api('/admin' + path, body, true).then((s) => { setError(''); apply(s) }).catch((e) => (e.message === 'Not authorized' ? onDenied() : setError(e.message)))
+  const act = (path: string, body?: object) => {
+    setBusy(true)
+    return api('/admin' + path, body, true)
+      .then((s) => { setError(''); apply(s) })
+      .catch((e) => (e.message === 'Not authorized' ? onDenied() : setError(e.message)))
+      .finally(() => setBusy(false))
+  }
 
   // US-5.3: preview the next person automatically unless the organizer chose someone else.
   const first = state?.queue[0]?.streamId ?? null
@@ -49,11 +56,11 @@ function Panel({ onDenied }: { onDenied: () => void }) {
   return (
     <main className="mx-auto grid max-w-5xl gap-6 p-6 md:grid-cols-[1fr_320px]">
       <Badge online={online} />
-      <section className="space-y-4">
+      <fieldset disabled={busy} className="min-w-0 space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           {open ? <button className="rounded bg-red-700 px-3 py-2" onClick={() => confirm('End checkpoints?') && act('/session/end')}>End checkpoints</button>
                 : <button className="rounded bg-green-600 px-3 py-2" onClick={() => act('/session/start')}>Start checkpoint</button>}
-          {open && <button className="rounded bg-amber-500 px-3 py-2 font-semibold text-black" onClick={() => act('/call-next')}>Call next</button>}
+          {open && <button className="rounded bg-amber-500 px-3 py-2 font-semibold text-black" onClick={() => act('/call-next', { expect: c?.entryId ?? null })}>Call next</button>}
           {open && <label className="ml-auto text-sm">Limit (s) <input type="number" key={state.session!.limitSec} defaultValue={state.session!.limitSec} min={10} className="w-20 rounded bg-neutral-800 p-1" onBlur={(e) => Number(e.target.value) !== state.session!.limitSec && act('/limit', { seconds: Number(e.target.value) })} /></label>}
         </div>
         {!state.session && <p className="text-neutral-400">No session yet.</p>}
@@ -85,9 +92,9 @@ function Panel({ onDenied }: { onDenied: () => void }) {
           ))}
           {!state.queue.length && <li className="text-neutral-500">Queue is empty.</li>}
         </ol>
-      </section>
+      </fieldset>
       <aside>
-        <h2 className="mb-2 text-sm text-neutral-400">Preview (muted){pinned && <button className="ml-2 underline" onClick={() => setPinned(false)}>follow next</button>}</h2>
+        <h2 className="mb-2 text-sm text-neutral-400">Preview{pinned && <button className="ml-2 underline" onClick={() => setPinned(false)}>follow next</button>}</h2>
         {preview ? <ViewFrame streamId={preview} className="aspect-video w-full rounded bg-black" /> : <div className="aspect-video rounded bg-neutral-900" />}
       </aside>
     </main>

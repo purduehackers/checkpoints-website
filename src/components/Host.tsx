@@ -4,7 +4,6 @@ import { ViewFrame } from '../lib/vdo'
 
 export default function Host() {
   const { state, online, now } = useLive('host')
-  const [sound, setSound] = useState(false)
   const [idle, setIdle] = useState(false)
   useTick()
 
@@ -27,7 +26,7 @@ export default function Host() {
       {live ? (
         <>
           <div className="flex items-center gap-4 bg-neutral-900 px-6 py-3 text-2xl"><b>{c!.name}</b><span className="text-neutral-400">{c!.project}</span></div>
-          <ViewFrame streamId={c!.streamId!} sound={sound} className="w-full grow bg-black" />
+          <ViewFrame streamId={c!.streamId!} className="w-full grow bg-black" />
           {left !== null && left <= 15_000 && <div className="absolute left-4 top-20 rounded bg-red-600 px-4 py-2 text-5xl font-bold tabular-nums">{fmt(left)}</div>}
         </>
       ) : (
@@ -45,8 +44,7 @@ export default function Host() {
           )}
         </div>
       )}
-      <div className="absolute bottom-3 right-3 flex gap-2 opacity-60 hover:opacity-100">
-        <button className="rounded bg-neutral-800 px-3 py-1" onClick={() => setSound(!sound)}>{sound ? 'Mute' : 'Enable sound'}</button>
+      <div className="absolute bottom-3 right-3 opacity-60 hover:opacity-100">
         <button className="rounded bg-neutral-800 px-3 py-1" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>Fullscreen</button>
       </div>
     </main>

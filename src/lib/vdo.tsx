@@ -3,12 +3,12 @@ import { useEffect, useRef } from 'react'
 import type { ShareState } from '../../shared/types'
 
 const ORIGIN = 'https://vdo.ninja'
-const ALLOW = 'display-capture; autoplay; microphone; camera; fullscreen'
+const ALLOW = 'display-capture; autoplay; fullscreen'
 
 // Hacker's own share. The iframe is also their preview. The hacker clicks VDO.Ninja's own
 // "share screen" button inside it (getDisplayMedia needs a click in that frame).
-// Unmounting it ends the share.
-export function PushFrame({ streamId, onState }: { streamId: string; onState: (s: ShareState) => void }) {
+// Unmounting it ends the share. `label` pre-fills VDO.Ninja's display name so it doesn't ask again.
+export function PushFrame({ streamId, label, onState }: { streamId: string; label: string; onState: (s: ShareState) => void }) {
   const ref = useRef<HTMLIFrameElement>(null)
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
@@ -23,9 +23,10 @@ export function PushFrame({ streamId, onState }: { streamId: string; onState: (s
       ref.current?.contentWindow?.postMessage({ close: true }, '*')
     }
   }, [onState])
-  return <iframe ref={ref} allow={ALLOW} className="h-full w-full border-0" src={`${ORIGIN}/?push=${streamId}&screenshare&cleanoutput&label=`} />
+  return <iframe ref={ref} allow={ALLOW} className="h-full w-full border-0" src={`${ORIGIN}/?push=${streamId}&label=${encodeURIComponent(label)}&screenshare&audiodevice=0&cleanoutput`} />
 }
 
-export function ViewFrame({ streamId, sound = false, className = '' }: { streamId: string; sound?: boolean; className?: string }) {
-  return <iframe key={String(sound)} allow={ALLOW} className={`border-0 ${className}`} src={`${ORIGIN}/?view=${streamId}&cleanoutput&autostart${sound ? '' : '&noaudio'}`} />
+// No audio in the MVP: the presenter talks to the room. Push sends no mic (&audiodevice=0) and viewers never play sound.
+export function ViewFrame({ streamId, className = '' }: { streamId: string; className?: string }) {
+  return <iframe allow={ALLOW} className={`border-0 ${className}`} src={`${ORIGIN}/?view=${streamId}&cleanoutput&autostart&noaudio`} />
 }

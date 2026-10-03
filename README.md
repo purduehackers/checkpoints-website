@@ -17,6 +17,7 @@ Needs [Bun](https://bun.sh). Copy `.env.example` to `.env` and fill it in (leave
 ```
 bun install
 bun dev          # Elysia on :3000 + Astro on :4321 (proxies /api). Open http://localhost:4321
+                 # Astro's dev server runs in the background; stop it with `bunx astro dev stop`
 bun test         # queue logic tests (in-memory db)
 bun run build    # static site into dist/
 ```
@@ -25,7 +26,7 @@ bun run build    # static site into dist/
 |---|---|
 | `/` | Hackers: join, share from your seat, Ready, End |
 | `/admin` | Organizer (passcode = `ADMIN_PASSCODE`): start/end, call next, preview, skip, remove, stop |
-| `/host` | Projector: lobby, live share with name bar and 15s countdown. Click "Enable sound" once. |
+| `/host` | Projector: lobby, live share with name bar and 15s countdown. No audio: presenters talk to the room. |
 
 Browsers only allow screen sharing and notifications on `localhost` or HTTPS.
 
@@ -42,7 +43,8 @@ One project: Astro static build plus `api/server.ts` as a Bun function with nati
 
 ## Not verified yet (do these first)
 
-- **VDO.Ninja share events.** `PushFrame` treats `{action:"seeding"}` as sharing/stopped. The docs don't list the events, so open the console on a hacker page and check the `[vdo]` logs. If sharing is never detected, fall back to the prototype's WebRTC (see git history, `MVP/public/core.js`) by replacing `src/lib/vdo.tsx`.
+- **VDO.Ninja sharing, on two real laptops.** In automated headless Chrome, clicking VDO.Ninja's "Select screen to share" inside the iframe never started a capture (capture on our own page worked). It may be automation-only. Check by hand: share from `/`, confirm `/admin` preview and `/host` show it.
+- **VDO.Ninja share events.** The only event seen so far is `{action:"this-label"}`. `PushFrame` guesses `{action:"seeding"}` for sharing/stopped; check the `[vdo]` console logs while sharing and fix the mapping, or the "stopped" banner and admin share status won't update. If sharing can't be made reliable, fall back to the prototype's WebRTC (git history, `MVP/public/core.js`) by replacing `src/lib/vdo.tsx`.
 - **Vercel deploy.** WebSocket routing through the `/api/:path*` rewrite and `Bun.serve` via Elysia's `listen()` are untested. The socket closes at max duration; the client reconnects on its own.
 - **Poll cost.** `TICK_MS` is 1s (marked `??` in `server/index.ts`).
 - **Mobile Safari/phones** show "use a laptop to share".

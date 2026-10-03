@@ -27,6 +27,7 @@ export async function api(path: string, body?: object, admin = false): Promise<S
 export function useLive(role: Role) {
   const [state, setState] = useState<State | null>(null)
   const [online, setOnline] = useState(false)
+  const [denied, setDenied] = useState(false) // admin token refused (passcode changed or bad token)
   const skew = useRef(0)
   const apply = useCallback((s: State) => { skew.current = Date.now() - s.serverNow; setState(s) }, [])
   const now = useCallback(() => Date.now() - skew.current, [])
@@ -42,6 +43,7 @@ export function useLive(role: Role) {
       ws.onmessage = (e) => {
         const m = JSON.parse(e.data)
         if (m.serverNow) { setOnline(true); apply(m) }
+        if (m.error === 'Not authorized') { dead = true; setDenied(true); ws.close() }
       }
       ws.onclose = () => { setOnline(false); if (!dead) retry = setTimeout(open, delay), (delay = Math.min(delay * 2, 10000)) }
     }
@@ -49,7 +51,7 @@ export function useLive(role: Role) {
     return () => { dead = true; clearTimeout(retry); ws.close() }
   }, [role, apply])
 
-  return { state, online, apply, now }
+  return { state, online, denied, apply, now }
 }
 
 // Ticking clock for countdowns.
