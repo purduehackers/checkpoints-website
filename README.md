@@ -10,6 +10,41 @@ Organizers get an admin panel to see the queue, preview each share before it goe
 
 The full plan is in PRD.docx. It covers the user flow, the MVP goals, and the features planned after the MVP, such as checkpoint recordings and a history of past checkpoints on the home page.
 
-## Status
+## Run it
 
-The project is in planning. No code has been written yet.
+Needs [Bun](https://bun.sh). Copy `.env.example` to `.env` and fill it in (leave the Turso vars unset to use a local `local.db` file).
+
+```
+bun install
+bun dev          # Elysia on :3000 + Astro on :4321 (proxies /api). Open http://localhost:4321
+bun test         # queue logic tests (in-memory db)
+bun run build    # static site into dist/
+```
+
+| Page | Who |
+|---|---|
+| `/` | Hackers: join, share from your seat, Ready, End |
+| `/admin` | Organizer (passcode = `ADMIN_PASSCODE`): start/end, call next, preview, skip, remove, stop |
+| `/host` | Projector: lobby, live share with name bar and 15s countdown. Click "Enable sound" once. |
+
+Browsers only allow screen sharing and notifications on `localhost` or HTTPS.
+
+## How it works
+
+- `server/queue.ts` holds all SQL and every state transition. Turso is the only source of truth, so a restart loses nothing.
+- `server/index.ts` is the Elysia app: REST actions plus one WebSocket (`/api/ws`) that pushes each client its own view of the state. Every second each instance runs `expire()` (the server-owned 2:00 cutoff) and re-sends any view that changed.
+- `src/lib/vdo.tsx` is the only file that knows about VDO.Ninja. The server only hands out private stream IDs (admin, and the host while someone is live).
+- Hacker identity is a random token in `localStorage`. No Squid yet.
+
+## Deploy (Vercel Pro)
+
+One project: Astro static build plus `api/server.ts` as a Bun function with native WebSockets (Fluid compute, public beta). Set `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `ADMIN_PASSCODE` in the project. `vercel.json` sets `bunVersion` and rewrites `/api/*`.
+
+## Not verified yet (do these first)
+
+- **VDO.Ninja share events.** `PushFrame` treats `{action:"seeding"}` as sharing/stopped. The docs don't list the events, so open the console on a hacker page and check the `[vdo]` logs. If sharing is never detected, fall back to the prototype's WebRTC (see git history, `MVP/public/core.js`) by replacing `src/lib/vdo.tsx`.
+- **Vercel deploy.** WebSocket routing through the `/api/:path*` rewrite and `Bun.serve` via Elysia's `listen()` are untested. The socket closes at max duration; the client reconnects on its own.
+- **Poll cost.** `TICK_MS` is 1s (marked `??` in `server/index.ts`).
+- **Mobile Safari/phones** show "use a laptop to share".
+
+Post-MVP: Squid login, recording, mic picker, moderation. The old prototype (recording, mic finder, designs) is in git history before this branch.
