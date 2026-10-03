@@ -98,7 +98,7 @@ Identity for the MVP: a hacker is a random token stored in their browser (one qu
 
 ## Epic 4: My turn
 
-### US-4.1 Up-next alert (MVP, M)
+### ✅ US-4.1 Up-next alert (MVP, M)
 *As a hacker, I'm alerted when I'm next, so I don't miss my turn while I'm heads-down.*
 - When I become #1 in line, my page plays a sound, shows a browser notification, and highlights itself (a full-page color pulse).
 - Notification permission is requested at join time, after a click, so browsers allow it.

@@ -97,6 +97,7 @@ export default function Hacker() {
     <Shell>
       <Badge online={online} />
       {countdown && <div className="fixed left-3 top-3 z-40 rounded bg-red-600 px-3 py-1 text-2xl font-bold tabular-nums">{fmt(msTotal!)}</div>}
+      {me?.status === 'waiting' && me.position === 1 && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-amber-400/25" />}
       {body}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
       {me?.status === 'called' && (
