@@ -12,7 +12,7 @@ The showcase works if all of these hold during a live run with at least 5 laptop
 
 1. The organizer starts a session, and the projector shows the join code and the live queue.
 2. Hackers join with the code, their name and their project, then share a screen from their seats and see their position and a preview.
-3. The person next in line gets a sound, a notification and a highlighted page.
+3. The person next in line gets a notification and a highlighted page.
 4. The organizer previews the next share, then presses **Call next**. The hacker's page dims to a **Ready** button.
 5. On Ready, the share appears on the projector with the hacker's name and project.
 6. A countdown shows for the last 15 seconds, and the share ends on its own at 2:00. The projector goes back to the screensaver.
@@ -137,7 +137,7 @@ The plan assumes **2–4 people** in four tracks: **A** server, **B** hacker pag
 | Track | Work | Stories |
 |---|---|---|
 | A | Server-owned deadline timer (re-armed from the DB on restart) that auto-ends the slot; end-session endpoint | US-4.4, US-1.3 |
-| B | Up-next sound, notification and highlight; last-15-second countdown; share stops at the end | US-4.1, US-4.4 |
+| B | Up-next notification and highlight; last-15-second countdown; share stops at the end | US-4.1, US-4.4 |
 | C | Projector screensaver and countdown; admin "End checkpoints" | US-6.1, US-1.3 |
 
 **M3:** everything in "MVP done" works on localhost and on the deployed URL.
@@ -185,7 +185,7 @@ The plan assumes **2–4 people** in four tracks: **A** server, **B** hacker pag
 1. US-5.5 reorder and time limit (already a stretch).
 2. Skip, keeping Remove.
 3. The disconnected grace logic in US-2.4. Keep a plain refresh restore.
-4. The browser notification in US-4.1. Keep the sound and highlight.
+4. The browser notification in US-4.1. Keep the highlight.
 5. The automatic preview of the next person in US-5.3. Keep the manual Preview button.
 
 **Never cut** the server-owned 2:00 cutoff, the Ready gate, or sharing from your seat. They are the reason this project exists.

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Badge, api, beep, fmt, hackerToken, useLive, useTick } from '../lib/live'
+import { Badge, api, fmt, hackerToken, useLive, useTick } from '../lib/live'
 import { ShareBox } from '../lib/vdo'
 import type { ShareState } from '../../shared/types'
 
@@ -32,10 +32,9 @@ export default function Hacker() {
   // US-4.1 / 4.2 alerts
   const key = me ? `${me.status}:${me.position}` : ''
   useEffect(() => {
-    const alert = me?.status === 'called' ? ["It's your turn!", 'Walk up and press Ready.', 3] as const
-      : me?.status === 'waiting' && me.position === 1 ? ["You're up next!", 'Get your screen ready.', 1] as const : null
+    const alert = me?.status === 'called' ? ["It's your turn!", 'Walk up and press Ready.'] as const
+      : me?.status === 'waiting' && me.position === 1 ? ["You're up next!", 'Get your screen ready.'] as const : null
     if (!alert) return
-    beep(alert[2])
     try { if (document.hidden && Notification.permission === 'granted') new Notification(alert[0], { body: alert[1] }) } catch {}
   }, [key])
   useEffect(() => {

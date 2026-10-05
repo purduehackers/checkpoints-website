@@ -26,7 +26,7 @@ bun run build    # static site into dist/
 |---|---|
 | `/` | Hackers: join, share from your seat, Ready, End |
 | `/admin` | Organizer (passcode = `ADMIN_PASSCODE`): start/end, call next, preview, skip, remove, stop |
-| `/host` | Projector: lobby, live share with name bar and 15s countdown. No audio: presenters talk to the room. |
+| `/host` | Projector: lobby, live share with name bar and 15s countdown. Plays the presenter's shared tab/system audio (click Enable sound once). |
 
 Browsers only allow screen sharing and notifications on `localhost` or HTTPS.
 
