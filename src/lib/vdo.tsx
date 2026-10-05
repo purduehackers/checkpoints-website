@@ -1,6 +1,8 @@
 // Everything VDO.Ninja lives here.
 // Sharing: we capture the screen ourselves (so we know exactly when it starts and stops) and the
 // VDO.Ninja SDK handles signalling, peer connections and TURN. Viewing: plain vdo.ninja iframes.
+// Audio: the picker's "share audio" box adds an audio track that the SDK publishes with the video.
+// Only the projector plays it; the hacker's own preview and the admin preview stay silent.
 import { useEffect, useRef, useState } from 'react'
 import VDONinjaSDK from '@vdoninja/sdk'
 import type { ShareState } from '../../shared/types'
@@ -12,6 +14,7 @@ export function ShareBox({ streamId, label, onState }: { streamId: string; label
   const stream = useRef<MediaStream | null>(null)
   const [state, setState] = useState<ShareState>('not_shared')
   const [error, setError] = useState('')
+  const [hasAudio, setHasAudio] = useState(false)
   const report = (s: ShareState) => { setState(s); onState(s) }
 
   const stop = () => {
@@ -25,12 +28,14 @@ export function ShareBox({ streamId, label, onState }: { streamId: string; label
     setError('')
     let s: MediaStream
     try {
-      s = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }) // no audio in the MVP
+      // systemAudio is a Chromium hint; other browsers ignore it and just give video.
+      s = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true, systemAudio: 'include' } as DisplayMediaStreamOptions)
     } catch {
       return setError('Screen share was cancelled or blocked.')
     }
     stop() // "Change window": replace the previous share
     stream.current = s
+    setHasAudio(s.getAudioTracks().length > 0)
     video.current!.srcObject = s
     // Fires when the hacker clicks the browser's "Stop sharing" or the window closes.
     s.getVideoTracks()[0].onended = () => { if (stream.current === s) { stop(); report('stopped') } }
@@ -62,14 +67,19 @@ export function ShareBox({ streamId, label, onState }: { streamId: string; label
         )}
       </div>
       {state === 'stopped' && <p className="mt-2 rounded bg-red-900 p-2 text-sm">Your share stopped. Click “Share again”.</p>}
-      {state === 'not_shared' && <p className="mt-2 text-sm text-neutral-400">Pick a screen, window or tab. Only the organizer sees it until you go live.</p>}
-      {state === 'sharing' && <button className="mt-2 text-sm underline" onClick={share}>Change window</button>}
+      {state === 'not_shared' && <p className="mt-2 text-sm text-neutral-400">Pick a screen, window or tab and tick “Share audio” to play sound on the projector. Only the organizer sees it until you go live.</p>}
+      {state === 'sharing' && (
+        <p className="mt-2 text-sm">
+          {hasAudio ? <span className="text-green-400">Sharing with sound.</span> : <span className="text-neutral-400">No sound. Use “Change window” and tick “Share audio” (Chrome or Edge).</span>}{' '}
+          <button className="underline" onClick={share}>Change window</button>
+        </p>
+      )}
       {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
     </div>
   )
 }
 
-// No audio in the MVP: the presenter talks to the room. We capture no audio and viewers never play sound.
-export function ViewFrame({ streamId, className = '' }: { streamId: string; className?: string }) {
-  return <iframe allow="autoplay; fullscreen" className={`border-0 ${className}`} src={`https://vdo.ninja/?view=${streamId}&cleanoutput&autostart&noaudio`} />
+// Silent unless `audio` is set (the projector only).
+export function ViewFrame({ streamId, className = '', audio = false }: { streamId: string; className?: string; audio?: boolean }) {
+  return <iframe allow="autoplay; fullscreen" className={`border-0 ${className}`} src={`https://vdo.ninja/?view=${streamId}&cleanoutput&autostart${audio ? '' : '&noaudio'}`} />
 }

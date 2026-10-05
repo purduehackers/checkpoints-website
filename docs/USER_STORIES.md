@@ -165,7 +165,7 @@ Identity for the MVP: a hacker is a random token stored in their browser (one qu
 
 ### ✅ US-6.2 Live view (MVP, S)
 *As the projector, I show the live share full screen with the name bar and the final 15-second countdown.*
-- ~~One click to "Enable sound" on load~~ Dropped: the MVP carries no audio, the presenter talks to the room.
+- One click to "Enable sound" on load, so the browser allows the shared tab/system audio to play.
 - Fullscreen button, with the cursor hidden after a few seconds.
 
 ---
