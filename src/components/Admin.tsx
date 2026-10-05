@@ -86,6 +86,8 @@ function Panel({ onDenied }: { onDenied: () => void }) {
               <div className="grow"><b>{e.name}</b> · {e.project}
                 <div className="text-sm text-neutral-400">{e.connected ? SHARE_LABEL[e.shareState] : 'disconnected'} · waiting {fmt(now() - e.joinedAt)}</div></div>
               <button className="text-sm underline" onClick={() => { setPinned(true); setPreview(e.streamId!) }}>Preview</button>
+              <button className="text-sm disabled:opacity-30" disabled={i === 0} aria-label="Move up" onClick={() => act('/move', { id: e.id, dir: -1 })}>▲</button>
+              <button className="text-sm disabled:opacity-30" disabled={i === state.queue.length - 1} aria-label="Move down" onClick={() => act('/move', { id: e.id, dir: 1 })}>▼</button>
               <button className="text-sm underline" onClick={() => act('/skip', { id: e.id })}>Skip</button>
               <button className="text-sm text-red-400 underline" onClick={() => confirm(`Remove ${e.name}?`) && act('/remove', { id: e.id })}>Remove</button>
             </li>

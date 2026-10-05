@@ -1,6 +1,6 @@
 // All SQL and every state transition lives here.
 import { db, ready } from './db'
-import type { Current, Me, QueueItem, Role, ShareState, State } from '../shared/types'
+import type { Current, QueueItem, Role, ShareState, State } from '../shared/types'
 
 const DISCONNECTED_MS = 3 * 60_000 // US-2.4 grace period
 // Join order is a counter, not a timestamp: two joins in the same millisecond still get distinct keys.
@@ -22,10 +22,12 @@ export async function startSession(limitSec = 120) {
   await run(`INSERT INTO sessions (id, status, limit_sec, created_at) VALUES (?, 'open', ?, ?)`, [crypto.randomUUID(), limitSec, Date.now()])
 }
 
+const finishCurrent = (sid: string) => run(`UPDATE queue_entries SET status = 'done' WHERE session_id = ? AND status IN ('called','live')`, [sid])
+
 export async function endSession() {
   const s = await openSession()
   if (!s) return
-  await run(`UPDATE queue_entries SET status = 'done' WHERE session_id = ? AND status IN ('called','live')`, [s.id])
+  await finishCurrent(s.id)
   await run(`UPDATE sessions SET status = 'closed' WHERE id = ?`, [s.id])
 }
 
@@ -53,28 +55,27 @@ export async function join(token: string, name: string, project: string) {
   } // else: already has a spot (or finished / was removed): joining again returns it unchanged
 }
 
-const mineSql = `UPDATE queue_entries SET %SET% WHERE client_token = ? AND session_id IN (SELECT id FROM sessions WHERE status = 'open') AND status %WHERE%`
-const mutateMine = (set: string, where: string, token: string, args: any[] = []) =>
-  run(mineSql.replace('%SET%', set).replace('%WHERE%', where), [...args, token])
+const ACTIVE = `IN ('waiting','called','live')`
+const OPEN = `session_id IN (SELECT id FROM sessions WHERE status = 'open')`
+const mutate = (set: string, status: string, token: string, args: any[] = []) =>
+  run(`UPDATE queue_entries SET ${set} WHERE client_token = ? AND ${OPEN} AND status ${status}`, [...args, token])
 
-export const leave = (token: string) => mutateMine(`status = 'left'`, `IN ('waiting','called','live')`, token)
-export const setShare = (token: string, state: ShareState) => mutateMine(`share_state = ?`, `IN ('waiting','called','live')`, token, [state])
-export const end = (token: string) => mutateMine(`status = 'done'`, `= 'live'`, token)
-export const touch = (token: string) => mutateMine(`last_seen_at = ?`, `IN ('waiting','called','live')`, token, [Date.now()])
+export const leave = (token: string) => mutate(`status = 'left'`, ACTIVE, token)
+export const setShare = (token: string, state: ShareState) => mutate(`share_state = ?`, ACTIVE, token, [state])
+export const end = (token: string) => mutate(`status = 'done'`, `= 'live'`, token)
+export const touch = (token: string) => mutate(`last_seen_at = ?`, ACTIVE, token, [Date.now()])
 
 // Ready gate: called -> live, and the server fixes the deadline.
-async function goLive(where: string, arg: string) {
+export async function adminReady(entryId: string) {
   const s = await openSession()
   if (!s) return
   const now = Date.now()
-  await run(
-    `UPDATE queue_entries SET status = 'live', started_at = ?, deadline = ?
-     WHERE session_id = ? AND status = 'called' AND ${where} = ?`,
-    [now, now + s.limit_sec * 1000, s.id, arg],
-  )
+  await run(`UPDATE queue_entries SET status = 'live', started_at = ?, deadline = ? WHERE session_id = ? AND status = 'called' AND id = ?`, [now, now + s.limit_sec * 1000, s.id, entryId])
 }
-export const hackerReady = (token: string) => goLive('client_token', token)
-export const adminReady = (entryId: string) => goLive('id', entryId)
+export async function hackerReady(token: string) {
+  const e = await one(`SELECT id FROM queue_entries WHERE client_token = ? AND ${OPEN}`, [token])
+  if (e) await adminReady(e.id as string)
+}
 
 // `expect` is the entry the caller saw on stage (or null). If the stage changed since, do nothing:
 // a double-click or two organizers clicking at once must not skip people.
@@ -98,7 +99,10 @@ export async function callNext(expect: string | null) {
   }
 }
 
-export const stop = async () => run(`UPDATE queue_entries SET status = 'done' WHERE status IN ('called','live') AND session_id IN (SELECT id FROM sessions WHERE status = 'open')`)
+export async function stop() {
+  const s = await openSession()
+  if (s) await finishCurrent(s.id)
+}
 export const remove = (id: string) => run(`UPDATE queue_entries SET status = 'removed' WHERE id = ? AND status IN ('waiting','called','live')`, [id])
 
 // Move behind the next waiting person.
@@ -111,6 +115,16 @@ export async function skip(id: string) {
   const next = w[i + 1].sort_key as number
   const after = w[i + 2]?.sort_key as number | undefined
   await run(`UPDATE queue_entries SET sort_key = ? WHERE id = ?`, [after === undefined ? next + 1 : (next + after) / 2, id])
+}
+
+// US-5.5: swap places with the neighbouring waiting entry (dir -1 = up, 1 = down).
+export async function move(id: string, dir: -1 | 1) {
+  const s = await openSession()
+  if (!s) return
+  const w = await all(`SELECT id, sort_key FROM queue_entries WHERE session_id = ? AND status = 'waiting' ORDER BY sort_key`, [s.id])
+  const i = w.findIndex((r) => r.id === id), j = i + dir
+  if (i < 0 || j < 0 || j >= w.length) return
+  await run(`UPDATE queue_entries SET sort_key = CASE id WHEN ? THEN ? ELSE ? END WHERE id IN (?, ?)`, [id, w[j].sort_key, w[i].sort_key, id, w[j].id])
 }
 
 // The server-owned cutoff. Called every tick, so it also catches deadlines passed while the server was down.
@@ -139,8 +153,7 @@ export async function loadState(role: Role, token?: string): Promise<State> {
   const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec }, current, queue }
   const mine = role === 'hacker' && token ? rows.find((r) => r.client_token === token) : undefined
   if (mine) {
-    const me: Me = { entryId: mine.id, name: mine.name, project: mine.project, status: mine.status, position: waiting.indexOf(mine) + 1, streamId: mine.stream_id }
-    state.me = me
+    state.me = { entryId: mine.id, name: mine.name, project: mine.project, status: mine.status, position: waiting.indexOf(mine) + 1, streamId: mine.stream_id }
   }
   return state
 }

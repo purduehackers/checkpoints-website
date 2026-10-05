@@ -23,19 +23,17 @@ export interface Current {
   streamId?: string // admin always; host only while live
 }
 
-export interface Me {
-  entryId: string
-  name: string
-  project: string
-  status: EntryStatus
-  position: number // 1-based among waiting; 0 if not waiting
-  streamId: string
-}
-
 export interface State {
   serverNow: number
   session: { status: 'open' | 'closed'; limitSec: number } | null
   current: Current | null
   queue: QueueItem[]
-  me?: Me
+  me?: {
+    entryId: string
+    name: string
+    project: string
+    status: EntryStatus
+    position: number // 1-based among waiting; 0 if not waiting
+    streamId: string
+  }
 }

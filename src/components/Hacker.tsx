@@ -6,11 +6,6 @@ import type { ShareState } from '../../shared/types'
 const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`
 const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia
 
-function alertMe(title: string, body: string, beeps: number) {
-  beep(beeps)
-  try { if (document.hidden && Notification.permission === 'granted') new Notification(title, { body }) } catch {}
-}
-
 export default function Hacker() {
   const { state, online, apply, now } = useLive('hacker')
   const [error, setError] = useState('')
@@ -37,8 +32,11 @@ export default function Hacker() {
   // US-4.1 / 4.2 alerts
   const key = me ? `${me.status}:${me.position}` : ''
   useEffect(() => {
-    if (me?.status === 'waiting' && me.position === 1) alertMe("You're up next!", 'Get your screen ready.', 1)
-    if (me?.status === 'called') alertMe("It's your turn!", 'Walk up and press Ready.', 3)
+    const alert = me?.status === 'called' ? ["It's your turn!", 'Walk up and press Ready.', 3] as const
+      : me?.status === 'waiting' && me.position === 1 ? ["You're up next!", 'Get your screen ready.', 1] as const : null
+    if (!alert) return
+    beep(alert[2])
+    try { if (document.hidden && Notification.permission === 'granted') new Notification(alert[0], { body: alert[1] }) } catch {}
   }, [key])
   useEffect(() => {
     document.title = me?.status === 'called' ? "It's your turn! · Checkpoints" : me?.status === 'waiting' && me.position === 1 ? "You're up next! · Checkpoints" : 'Checkpoints'
@@ -97,6 +95,7 @@ export default function Hacker() {
     <Shell>
       <Badge online={online} />
       {countdown && <div className="fixed left-3 top-3 z-40 rounded bg-red-600 px-3 py-1 text-2xl font-bold tabular-nums">{fmt(msTotal!)}</div>}
+      {me?.status === 'waiting' && me.position === 1 && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-amber-400/25" />}
       {body}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
       {me?.status === 'called' && (
