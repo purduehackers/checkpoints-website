@@ -26,7 +26,7 @@ bun run build    # static site into dist/
 |---|---|
 | `/` | Hackers: join, share from your seat, Ready, End |
 | `/admin` | Organizer (passcode = `ADMIN_PASSCODE`): start/end, call next, preview, skip, remove, stop |
-| `/host` | Projector: lobby, live share with name bar and 15s countdown. No audio: presenters talk to the room. |
+| `/host` | Projector: lobby, live share with name bar and 15s countdown. Plays the presenter's shared tab/system audio (click Enable sound once). |
 
 Browsers only allow screen sharing and notifications on `localhost` or HTTPS.
 
@@ -34,7 +34,7 @@ Browsers only allow screen sharing and notifications on `localhost` or HTTPS.
 
 - `server/queue.ts` holds all SQL and every state transition. Turso is the only source of truth, so a restart loses nothing.
 - `server/index.ts` is the Elysia app: REST actions plus one WebSocket (`/api/ws`) that pushes each client its own view of the state. Every second each instance runs `expire()` (the server-owned 2:00 cutoff) and re-sends any view that changed.
-- `src/lib/vdo.tsx` is the only file that knows about VDO.Ninja. The server only hands out private stream IDs (admin, and the host while someone is live).
+- `src/lib/vdo.tsx` is the only file that knows about VDO.Ninja. Hackers capture their screen on our page (`getDisplayMedia`, so we know exactly when sharing starts and stops) and publish it with the [VDO.Ninja SDK](https://github.com/steveseguin/ninjasdk) (`@vdoninja/sdk`, MPL-2.0), which handles signalling, peer connections and TURN. Admin preview and projector watch it in plain `vdo.ninja/?view=<id>` iframes. The server only hands out private stream IDs (admin, and the host while someone is live).
 - Hacker identity is a random token in `localStorage`. No Squid yet.
 
 ## Deploy (Vercel Pro)
@@ -43,8 +43,7 @@ One project: Astro static build plus `api/server.ts` as a Bun function with nati
 
 ## Not verified yet (do these first)
 
-- **VDO.Ninja sharing, on two real laptops.** In automated headless Chrome, clicking VDO.Ninja's "Select screen to share" inside the iframe never started a capture (capture on our own page worked). It may be automation-only. Check by hand: share from `/`, confirm `/admin` preview and `/host` show it.
-- **VDO.Ninja share events.** The only event seen so far is `{action:"this-label"}`. `PushFrame` guesses `{action:"seeding"}` for sharing/stopped; check the `[vdo]` console logs while sharing and fix the mapping, or the "stopped" banner and admin share status won't update. If sharing can't be made reliable, fall back to the prototype's WebRTC (git history, `MVP/public/core.js`) by replacing `src/lib/vdo.tsx`.
+- **VDO.Ninja on real laptops and campus Wi-Fi.** Tested end to end in automated Chrome with a fake screen (hacker preview, admin preview, projector, stop/share again). Not yet tried across two real laptops or on campus Wi-Fi.
 - **Vercel deploy.** WebSocket routing through the `/api/:path*` rewrite and `Bun.serve` via Elysia's `listen()` are untested. The socket closes at max duration; the client reconnects on its own.
 - **Poll cost.** `TICK_MS` is 1s (marked `??` in `server/index.ts`).
 - **Mobile Safari/phones** show "use a laptop to share".

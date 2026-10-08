@@ -62,3 +62,98 @@ test('ending the session closes joining', async () => {
   expect((await q.loadState('host')).current).toBeNull()
   expect(q.join('tok-dddddddd', 'Di', 'Zip')).rejects.toThrow('No checkpoint')
 })
+
+// ---- a second session: leave/rejoin, share state, end early, limit, disconnect ----
+const host = () => q.loadState('host')
+const names = async () => (await host()).queue.map((e) => e.name)
+
+test('leave drops me from the line; rejoining sends me to the back', async () => {
+  await q.startSession(120)
+  await q.join('tok-eeeeeeee', 'Eve', 'A')
+  await q.join('tok-ffffffff', 'Fay', 'B')
+  await q.leave('tok-eeeeeeee')
+  expect(await names()).toEqual(['Fay'])
+  expect((await q.loadState('hacker', 'tok-eeeeeeee')).me?.status).toBe('left')
+  await q.join('tok-eeeeeeee', 'Eve', 'A')
+  expect(await names()).toEqual(['Fay', 'Eve'])
+})
+
+test('join validates and trims; a second session cannot start while one is open', async () => {
+  expect(q.join('tok-gggggggg', '  ', 'x')).rejects.toThrow('required')
+  expect(q.join('tok-gggggggg', 'x', '')).rejects.toThrow('required')
+  await q.join('tok-gggggggg', ` ${'N'.repeat(100)} `, 'P')
+  expect((await host()).queue.at(-1)!.name).toHaveLength(60)
+  await q.startSession(30) // no-op: already open
+  expect((await host()).session?.limitSec).toBe(120)
+  await q.leave('tok-gggggggg')
+})
+
+test('share state is recorded for the admin and the current slot', async () => {
+  await q.setShare('tok-ffffffff', 'sharing')
+  expect((await host()).queue[0].shareState).toBe('sharing')
+  await q.setShare('tok-ffffffff', 'stopped')
+  expect((await host()).queue[0].shareState).toBe('stopped')
+  await q.setShare('tok-ffffffff', 'sharing')
+  await q.callNext(null)
+  expect((await host()).current).toMatchObject({ name: 'Fay', shareState: 'sharing' })
+})
+
+test('only a live presenter can end early; ready on a waiting entry does nothing', async () => {
+  await q.end('tok-ffffffff') // still `called`, so ignored
+  expect((await host()).current?.status).toBe('called')
+  await q.hackerReady('tok-eeeeeeee') // Eve is waiting, not called
+  expect((await q.loadState('hacker', 'tok-eeeeeeee')).me?.status).toBe('waiting')
+  await q.adminReady((await host()).current!.entryId)
+  expect((await host()).current?.status).toBe('live')
+  await q.end('tok-ffffffff')
+  expect((await host()).current).toBeNull()
+  expect((await q.loadState('hacker', 'tok-ffffffff')).me?.status).toBe('done')
+})
+
+test('time limit is validated and applies to the next slot', async () => {
+  expect(q.setLimit(5)).rejects.toThrow('limit')
+  expect(q.setLimit(99999)).rejects.toThrow('limit')
+  await q.setLimit(60)
+  await q.callNext(null)
+  await q.adminReady((await host()).current!.entryId)
+  const c = (await host()).current!
+  expect(c.deadline! - c.startedAt!).toBe(60_000)
+})
+
+test('stop ends the current presenter; remove works on the current one too', async () => {
+  await q.stop()
+  expect((await host()).current).toBeNull()
+  await q.join('tok-hhhhhhhh', 'Hal', 'C')
+  await q.callNext(null)
+  await q.remove((await host()).current!.entryId)
+  expect((await host()).current).toBeNull()
+  expect((await q.loadState('hacker', 'tok-hhhhhhhh')).me?.status).toBe('removed')
+})
+
+test('an entry unseen for 3+ minutes shows as disconnected until it is touched', async () => {
+  await q.join('tok-iiiiiiii', 'Ivy', 'D')
+  expect((await host()).queue[0].connected).toBe(true)
+  const realNow = Date.now
+  Date.now = () => realNow() + 4 * 60_000
+  try {
+    expect((await host()).queue[0].connected).toBe(false)
+    await q.touch('tok-iiiiiiii')
+    expect((await host()).queue[0].connected).toBe(true)
+  } finally { Date.now = realNow }
+})
+
+// ---- US-5.5 reorder ----
+test('move shifts a waiting entry up or down one place; edges and non-waiting are no-ops', async () => {
+  await q.stop(); await q.leave('tok-iiiiiiii')
+  for (const [t, n] of [['tok-jjjjjjjj', 'Jo'], ['tok-kkkkkkkk', 'Ki'], ['tok-llllllll', 'Lu']]) await q.join(t, n, 'P')
+  const id = async (n: string) => (await host()).queue.find((e) => e.name === n)!.id
+  await q.move(await id('Lu'), -1)
+  expect(await names()).toEqual(['Jo', 'Lu', 'Ki'])
+  await q.move(await id('Jo'), 1)
+  expect(await names()).toEqual(['Lu', 'Jo', 'Ki'])
+  await q.move(await id('Lu'), -1) // already first
+  await q.move(await id('Ki'), 1) // already last
+  expect(await names()).toEqual(['Lu', 'Jo', 'Ki'])
+  await q.move('no-such-id', -1)
+  expect(await names()).toEqual(['Lu', 'Jo', 'Ki'])
+})

@@ -65,18 +65,6 @@ export const fmt = (ms: number) => {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
 
-export function beep(count = 1) {
-  try {
-    const ac = new AudioContext()
-    for (let i = 0; i < count; i++) {
-      const t = ac.currentTime + i * 0.22, o = ac.createOscillator(), g = ac.createGain()
-      o.type = 'square'; o.frequency.value = i % 2 ? 1175 : 880
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.15, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18)
-      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.2)
-    }
-  } catch {}
-}
-
 export function Badge({ online }: { online: boolean }) {
   return online ? null : <div className="fixed right-2 top-2 z-50 rounded bg-amber-500 px-2 py-1 text-xs font-medium text-black">reconnecting…</div>
 }
