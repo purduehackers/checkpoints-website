@@ -18,13 +18,13 @@ const isAdmin = (t?: string) => {
 }
 
 // ---- live sockets held by THIS instance ----
-type Sub = { send: (s: string) => void; role: Role; token?: string; last?: string }
+type Sub = { send: (s: string) => void; role: Role; token?: string; projector?: boolean; last?: string }
 const subs = new Map<string, Sub>()
 let timer: ReturnType<typeof setInterval> | undefined
 let ticks = 0
 
 async function push(sub: Sub, force = false) {
-  const state = await q.loadState(sub.role, sub.token)
+  const state = await q.loadState(sub.role, sub.token, sub.projector)
   const { serverNow, ...rest } = state
   const key = JSON.stringify(rest) // only send when something changed
   if (force || key !== sub.last) { sub.last = key; sub.send(JSON.stringify(state)) }
@@ -89,11 +89,12 @@ export const app = new Elysia({ prefix: '/api' })
   )
 
   .ws('/ws', {
-    // First message from the client: { role, token?, adminToken? }
+    // First message from the client: { role, token?, adminToken? }. A host with the admin token is the projector.
     async message(ws, msg: any) {
       if (!msg || !['hacker', 'admin', 'host'].includes(msg.role)) return
       if (msg.role === 'admin' && !isAdmin(msg.adminToken)) { ws.send(JSON.stringify({ error: 'Not authorized' })); return } // returning send()'s byte count would echo it
-      const sub: Sub = { send: (s) => ws.send(s), role: msg.role, token: msg.role === 'hacker' ? String(msg.token ?? '') : undefined }
+      const sub: Sub = { send: (s) => ws.send(s), role: msg.role, token: msg.role === 'hacker' ? String(msg.token ?? '') : undefined,
+        projector: msg.role === 'host' && !!msg.adminToken && isAdmin(msg.adminToken) }
       subs.set(String(ws.id), sub)
       timer ??= setInterval(() => tick().catch(console.error), TICK_MS)
       await q.expire() // first message must not show a slot whose deadline passed while nobody was connected

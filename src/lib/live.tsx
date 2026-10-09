@@ -38,7 +38,7 @@ export function useLive(role: Role) {
       ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`)
       ws.onopen = () => {
         delay = 500
-        ws.send(JSON.stringify({ role, token: role === 'hacker' ? hackerToken() : undefined, adminToken: role === 'admin' ? adminToken() : undefined }))
+        ws.send(JSON.stringify({ role, token: role === 'hacker' ? hackerToken() : undefined, adminToken: role === 'hacker' ? undefined : adminToken() || undefined })) // host + admin token = projector
       }
       ws.onmessage = (e) => {
         const m = JSON.parse(e.data)

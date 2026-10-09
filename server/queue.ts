@@ -138,7 +138,9 @@ export async function expire(now = Date.now()) {
   await run(`UPDATE queue_entries SET status = 'done' WHERE status = 'live' AND deadline <= ?`, [now])
 }
 
-export async function loadState(role: Role, token?: string): Promise<State> {
+// `projector`: a host page that holds the admin token. Only it gets the live stream, so presenters
+// watching /host on their own laptops don't add encodes or loop their audio back.
+export async function loadState(role: Role, token?: string, projector = false): Promise<State> {
   const serverNow = Date.now()
   const s = await latestSession()
   if (!s) return { serverNow, session: null, current: null, queue: [] }
@@ -149,7 +151,7 @@ export async function loadState(role: Role, token?: string): Promise<State> {
   const current: Current | null = !cur ? null : {
     entryId: cur.id, name: cur.name, project: cur.project, status: cur.status,
     startedAt: cur.started_at, deadline: cur.deadline, shareState: cur.share_state,
-    ...((admin || (role === 'host' && cur.status === 'live')) && { streamId: cur.stream_id }),
+    ...((admin || (role === 'host' && projector && cur.status === 'live')) && { streamId: cur.stream_id }),
   }
   const queue: QueueItem[] = waiting.map((r) => ({
     id: r.id, name: r.name, project: r.project, shareState: r.share_state, joinedAt: r.joined_at,
