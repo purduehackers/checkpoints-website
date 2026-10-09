@@ -50,6 +50,16 @@ export function statsCollector(sdk: VDONinjaSDK) {
 
 export const pushSample = (h: Sample[], s: Sample | null) => (s ? [...h, s].slice(-HISTORY) : h)
 
+// Samples arrive from the presenter's browser, so rebuild them from known fields: a tampered sample
+// (objects, huge strings, NaN) must not be able to crash or bloat the projector page.
+const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+const str = (v: unknown) => String(v ?? '?').slice(0, 40)
+const cleanSample = (s: any): Sample => ({
+  fps: num(s.fps), w: num(s.w), h: num(s.h), vKbps: num(s.vKbps), aKbps: num(s.aKbps),
+  rtt: s.rtt == null ? null : num(s.rtt), loss: s.loss == null ? null : num(s.loss),
+  limit: str(s.limit), codec: str(s.codec), path: str(s.path), viewers: num(s.viewers),
+})
+
 // Listen to a presenter's stats from /host or /admin.
 export function useRemoteStats(streamId: string | null, enabled: boolean) {
   const [history, setHistory] = useState<Sample[]>([])
@@ -57,9 +67,12 @@ export function useRemoteStats(streamId: string | null, enabled: boolean) {
     setHistory([])
     if (!streamId || !enabled) return
     const sdk = new VDONinjaSDK({ salt: 'vdo.ninja' })
+    let last = 0
     sdk.addEventListener('dataReceived', (e: any) => {
       const s = e.detail?.data?.cpStats
-      if (s) setHistory((h) => pushSample(h, s))
+      if (!s || typeof s !== 'object' || performance.now() - last < 500) return // ~1/s expected; drop floods
+      last = performance.now()
+      setHistory((h) => pushSample(h, cleanSample(s)))
     })
     sdk.connect().then(() => sdk.view(streamId, { dataOnly: true, downloads: false })).catch(() => {})
     return () => { sdk.disconnect().catch(() => {}) }
