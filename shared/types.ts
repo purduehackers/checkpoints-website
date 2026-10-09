@@ -34,7 +34,7 @@ export interface Current {
 
 export interface State {
   serverNow: number
-  session: { status: 'open' | 'closed'; limitSec: number; quality: Quality } | null
+  session: { status: 'open' | 'closed'; limitSec: number; quality: Quality; audio: boolean } | null
   current: Current | null
   queue: QueueItem[]
   me?: {

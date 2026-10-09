@@ -66,6 +66,9 @@ function Panel({ onDenied }: { onDenied: () => void }) {
           {open && <label className="text-sm">Quality <select value={state.session!.quality} onChange={(e) => act('/quality', { quality: e.target.value as Quality })} className="rounded bg-neutral-800 p-1">
             {Object.keys(QUALITY).map((q) => <option key={q} value={q}>{q === 'source' ? 'Source' : q}</option>)}
           </select></label>}
+          {open && <button className={`rounded px-3 py-1 text-sm ${state.session!.audio ? 'bg-neutral-700' : 'bg-red-800'}`} onClick={() => act('/audio', { on: !state.session!.audio })}>
+            Projector sound: {state.session!.audio ? 'On' : 'Off'}
+          </button>}
         </div>
         {!state.session && <p className="text-neutral-400">No session yet.</p>}
         {state.session && !open && <p className="text-neutral-400">Session ended.</p>}

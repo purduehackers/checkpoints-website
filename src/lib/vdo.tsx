@@ -113,7 +113,8 @@ export function ShareBox({ streamId, label, live, quality, onState }: { streamId
   )
 }
 
-// Silent unless `audio` is set (the projector only).
+// Silent unless `audio` is set (the projector only). &stereo asks for full-band stereo Opus in the
+// viewer's SDP answer, which the sender's encoder honours; bitrate/scale params would be ignored.
 export function ViewFrame({ streamId, className = '', audio = false }: { streamId: string; className?: string; audio?: boolean }) {
-  return <iframe allow="autoplay; fullscreen" className={`border-0 ${className}`} src={`https://vdo.ninja/?view=${streamId}&cleanoutput&autostart${audio ? '' : '&noaudio'}`} />
+  return <iframe allow="autoplay; fullscreen" className={`border-0 ${className}`} src={`https://vdo.ninja/?view=${streamId}&cleanoutput&autostart${audio ? '&stereo' : '&noaudio'}`} />
 }

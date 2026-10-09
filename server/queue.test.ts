@@ -39,12 +39,14 @@ test('call-next -> ready -> live sets a deadline; host sees stream only when liv
   expect(host.current?.streamId).toBeString()
 })
 
-test('quality round-trips; bad quality is rejected', async () => {
-  expect((await q.loadState('host')).session).toMatchObject({ quality: '1080p' })
+test('quality and projector audio round-trip; bad quality is rejected', async () => {
+  expect((await q.loadState('host')).session).toMatchObject({ quality: '1080p', audio: true })
   await q.setQuality('720p')
-  expect((await q.loadState('hacker', 'tok-aaaaaaaa')).session).toMatchObject({ quality: '720p' })
+  await q.setAudio(false)
+  expect((await q.loadState('hacker', 'tok-aaaaaaaa')).session).toMatchObject({ quality: '720p', audio: false })
   await expect(q.setQuality('8k')).rejects.toThrow()
   await q.setQuality('1080p')
+  await q.setAudio(true)
 })
 
 test('expire ends a live slot at its deadline, not before', async () => {

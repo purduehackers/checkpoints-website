@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   status TEXT NOT NULL CHECK (status IN ('open','closed')),
   limit_sec INTEGER NOT NULL DEFAULT 120,
   created_at INTEGER NOT NULL,
-  quality TEXT NOT NULL DEFAULT '1080p'
+  quality TEXT NOT NULL DEFAULT '1080p',
+  audio INTEGER NOT NULL DEFAULT 1
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_open_session ON sessions(status) WHERE status = 'open';
 
@@ -40,6 +41,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_active_entry ON queue_entries(session_id) 
 // Columns added after the first deploy. SQLite has no ADD COLUMN IF NOT EXISTS, so ignore "duplicate column".
 const ADDED = [
   `ALTER TABLE sessions ADD COLUMN quality TEXT NOT NULL DEFAULT '1080p'`,
+  `ALTER TABLE sessions ADD COLUMN audio INTEGER NOT NULL DEFAULT 1`,
 ]
 export const ready = db.executeMultiple(SCHEMA).then(async () => {
   for (const sql of ADDED) await db.execute(sql).catch((e) => { if (!/duplicate column/i.test(String(e))) throw e })

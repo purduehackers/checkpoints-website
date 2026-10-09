@@ -84,7 +84,8 @@ export const app = new Elysia({ prefix: '/api' })
       .post('/ready', async ({ body }) => (await q.adminReady(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
       .post('/limit', async ({ body }) => (await q.setLimit(body.seconds), reply('admin')), { body: t.Object({ seconds: t.Number() }) })
       .post('/quality', async ({ body }) => (await q.setQuality(body.quality), reply('admin')),
-        { body: t.Object({ quality: t.Union(Object.keys(QUALITY).map((k) => t.Literal(k))) }) }),
+        { body: t.Object({ quality: t.Union(Object.keys(QUALITY).map((k) => t.Literal(k))) }) })
+      .post('/audio', async ({ body }) => (await q.setAudio(body.on), reply('admin')), { body: t.Object({ on: t.Boolean() }) }),
   )
 
   .ws('/ws', {

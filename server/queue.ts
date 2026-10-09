@@ -40,6 +40,7 @@ export async function setQuality(quality: string) {
   if (!(quality in QUALITY)) throw new Error('unknown quality')
   await run(`UPDATE sessions SET quality = ? WHERE status = 'open'`, [quality])
 }
+export const setAudio = (on: boolean) => run(`UPDATE sessions SET audio = ? WHERE status = 'open'`, [on ? 1 : 0])
 
 export async function join(token: string, name: string, project: string) {
   name = name.trim().slice(0, 60)
@@ -155,7 +156,7 @@ export async function loadState(role: Role, token?: string): Promise<State> {
     connected: serverNow - r.last_seen_at < DISCONNECTED_MS,
     ...(admin && { streamId: r.stream_id }),
   }))
-  const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec, quality: s.quality }, current, queue }
+  const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec, quality: s.quality, audio: !!s.audio }, current, queue }
   const mine = role === 'hacker' && token ? rows.find((r) => r.client_token === token) : undefined
   if (mine) {
     state.me = { entryId: mine.id, name: mine.name, project: mine.project, status: mine.status, position: waiting.indexOf(mine) + 1, streamId: mine.stream_id }

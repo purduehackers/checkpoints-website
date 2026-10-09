@@ -5,7 +5,6 @@ import { ViewFrame } from '../lib/vdo'
 export default function Host() {
   const { state, online, now } = useLive('host')
   const [idle, setIdle] = useState(false)
-  const [soundOn, setSoundOn] = useState(false) // the click is the user gesture that lets the stream play sound
   useTick()
 
   // Hide the cursor after 3s without movement.
@@ -20,6 +19,7 @@ export default function Host() {
   const live = c?.status === 'live' && c.streamId
   const left = c?.deadline ? c.deadline - now() : null
   const open = state?.session?.status === 'open'
+  const audio = state?.session?.audio ?? true
 
   return (
     <main className={`relative flex h-screen flex-col ${idle ? 'cursor-none' : ''}`}>
@@ -27,7 +27,7 @@ export default function Host() {
       {live ? (
         <>
           <div className="flex items-center gap-4 bg-neutral-900 px-6 py-3 text-2xl"><b>{c!.name}</b><span className="text-neutral-400">{c!.project}</span></div>
-          <ViewFrame streamId={c!.streamId!} className="w-full grow bg-black" audio />
+          <ViewFrame key={String(audio)} streamId={c!.streamId!} className="w-full grow bg-black" audio={audio} />
           {left !== null && left <= 15_000 && <div className="absolute left-4 top-20 rounded bg-red-600 px-4 py-2 text-5xl font-bold tabular-nums">{fmt(left)}</div>}
         </>
       ) : (
@@ -46,7 +46,6 @@ export default function Host() {
         </div>
       )}
       <div className="absolute bottom-3 right-3 flex gap-2 opacity-60 hover:opacity-100">
-        {!soundOn && <button className="rounded bg-amber-500 px-3 py-1 font-semibold text-black" onClick={() => setSoundOn(true)}>Enable sound</button>}
         <button className="rounded bg-neutral-800 px-3 py-1" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>Fullscreen</button>
       </div>
     </main>
