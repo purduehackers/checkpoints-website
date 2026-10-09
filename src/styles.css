@@ -1,1 +1,9 @@
 @import "tailwindcss";
+
+button:not(:disabled), select:not(:disabled), [role="button"], summary { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+
+/* Hide scrollbars everywhere; scrolling still works. */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; }
+.cursor-none button { cursor: none; }

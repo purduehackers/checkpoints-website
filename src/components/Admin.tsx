@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Badge, adminKey, adminToken, api, fmt, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
+import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
+import { QUALITY, type Quality } from '../../shared/types'
 
 const SHARE_LABEL = { sharing: 'sharing', not_shared: 'not sharing', stopped: 'stopped' }
 
@@ -48,6 +50,9 @@ function Panel({ onDenied }: { onDenied: () => void }) {
   // US-5.3: preview the next person automatically unless the organizer chose someone else.
   const first = state?.queue[0]?.streamId ?? null
   useEffect(() => { if (!pinned) setPreview(first) }, [first, pinned])
+  const stats = useStatsToggle()
+  const statsStream = preview ?? state?.current?.streamId ?? null // nobody previewed: show the presenter
+  const history = useRemoteStats(statsStream, stats.on)
 
   if (!state) return <main className="p-6"><Badge online={online} />Loading…</main>
   const open = state.session?.status === 'open'
@@ -56,12 +61,20 @@ function Panel({ onDenied }: { onDenied: () => void }) {
   return (
     <main className="mx-auto grid max-w-5xl gap-6 p-6 md:grid-cols-[1fr_320px]">
       <Badge online={online} />
+      {stats.menu}
+      {stats.on && <StatsOverlay history={history} title={statsStream && statsStream === c?.streamId ? `On stage: ${c.name}` : 'Previewed stream'} onClose={stats.toggle} />}
       <fieldset disabled={busy} className="min-w-0 space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           {open ? <button className="rounded bg-red-700 px-3 py-2" onClick={() => confirm('End checkpoints?') && act('/session/end')}>End checkpoints</button>
                 : <button className="rounded bg-green-600 px-3 py-2" onClick={() => act('/session/start')}>Start checkpoint</button>}
           {open && <button className="rounded bg-amber-500 px-3 py-2 font-semibold text-black" onClick={() => act('/call-next', { expect: c?.entryId ?? null })}>Call next</button>}
           {open && <label className="ml-auto text-sm">Limit (s) <input type="number" key={state.session!.limitSec} defaultValue={state.session!.limitSec} min={10} className="w-20 rounded bg-neutral-800 p-1" onBlur={(e) => Number(e.target.value) !== state.session!.limitSec && act('/limit', { seconds: Number(e.target.value) })} /></label>}
+          {open && <label className="text-sm">Quality <select value={state.session!.quality} onChange={(e) => act('/quality', { quality: e.target.value as Quality })} className="rounded bg-neutral-800 p-1">
+            {Object.keys(QUALITY).map((q) => <option key={q} value={q}>{q === 'source' ? 'Source' : q}</option>)}
+          </select></label>}
+          {open && <button className={`rounded px-3 py-1 text-sm ${state.session!.audio ? 'bg-neutral-700' : 'bg-red-800'}`} onClick={() => act('/audio', { on: !state.session!.audio })}>
+            Projector sound: {state.session!.audio ? 'On' : 'Off'}
+          </button>}
         </div>
         {!state.session && <p className="text-neutral-400">No session yet.</p>}
         {state.session && !open && <p className="text-neutral-400">Session ended.</p>}
@@ -97,6 +110,7 @@ function Panel({ onDenied }: { onDenied: () => void }) {
       </fieldset>
       <aside>
         <h2 className="mb-2 text-sm text-neutral-400">Preview{pinned && <button className="ml-2 underline" onClick={() => setPinned(false)}>follow next</button>}</h2>
+        <StatsButton onClick={stats.toggle} className="mb-2" />
         {preview ? <ViewFrame streamId={preview} className="aspect-video w-full rounded bg-black" /> : <div className="aspect-video rounded bg-neutral-900" />}
       </aside>
     </main>

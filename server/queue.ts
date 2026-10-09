@@ -1,6 +1,6 @@
 // All SQL and every state transition lives here.
 import { db, ready } from './db'
-import type { Current, QueueItem, Role, ShareState, State } from '../shared/types'
+import { QUALITY, type Current, type QueueItem, type Role, type ShareState, type State } from '../shared/types'
 
 const DISCONNECTED_MS = 3 * 60_000 // US-2.4 grace period
 // Join order is a counter, not a timestamp: two joins in the same millisecond still get distinct keys.
@@ -36,14 +36,29 @@ export async function setLimit(sec: number) {
   await run(`UPDATE sessions SET limit_sec = ? WHERE status = 'open'`, [Math.round(sec)])
 }
 
+export async function setQuality(quality: string) {
+  if (!(quality in QUALITY)) throw new Error('unknown quality')
+  await run(`UPDATE sessions SET quality = ? WHERE status = 'open'`, [quality])
+}
+export const setAudio = (on: boolean) => run(`UPDATE sessions SET audio = ? WHERE status = 'open'`, [on ? 1 : 0])
+
+const MAX_WAITING = 200 // a script can't bury the line; far above a real hack night. Reset = end + start a session.
+// Names go on the projector: drop control/format chars (bidi overrides, zero-width) and cap stacked combining marks.
+const clean = (s: string, max: number) =>
+  s.normalize('NFC').replace(/\s+/g, ' ').replace(/\p{C}/gu, '').replace(/(\p{M}{2})\p{M}+/gu, '$1').trim().slice(0, max)
+
 export async function join(token: string, name: string, project: string) {
-  name = name.trim().slice(0, 60)
-  project = project.trim().slice(0, 80)
+  name = clean(name, 60)
+  project = clean(project, 80)
   if (!name || !project) throw new Error('name and project are required')
   const s = await openSession()
   if (!s) throw new Error('No checkpoint is running')
   const now = Date.now()
   const mine = await one(`SELECT * FROM queue_entries WHERE session_id = ? AND client_token = ?`, [s.id, token])
+  if (!mine || mine.status === 'left') {
+    const { n } = (await one(`SELECT COUNT(*) AS n FROM queue_entries WHERE session_id = ? AND status = 'waiting'`, [s.id]))!
+    if (n >= MAX_WAITING) throw new Error('The queue is full')
+  }
   if (!mine) {
     await run(
       `INSERT INTO queue_entries (id, session_id, client_token, name, project, stream_id, sort_key, joined_at, last_seen_at)
@@ -63,7 +78,10 @@ const mutate = (set: string, status: string, token: string, args: any[] = []) =>
 export const leave = (token: string) => mutate(`status = 'left'`, ACTIVE, token)
 export const setShare = (token: string, state: ShareState) => mutate(`share_state = ?`, ACTIVE, token, [state])
 export const end = (token: string) => mutate(`status = 'done'`, `= 'live'`, token)
-export const touch = (token: string) => mutate(`last_seen_at = ?`, ACTIVE, token, [Date.now()])
+// One statement for every connected hacker, instead of one per socket.
+export const touch = (tokens: string[]) => tokens.length
+  ? run(`UPDATE queue_entries SET last_seen_at = ? WHERE client_token IN (${tokens.map(() => '?').join()}) AND ${OPEN} AND status ${ACTIVE}`, [Date.now(), ...tokens])
+  : undefined
 
 // Ready gate: called -> live, and the server fixes the deadline.
 export async function adminReady(entryId: string) {
@@ -132,25 +150,35 @@ export async function expire(now = Date.now()) {
   await run(`UPDATE queue_entries SET status = 'done' WHERE status = 'live' AND deadline <= ?`, [now])
 }
 
-export async function loadState(role: Role, token?: string): Promise<State> {
-  const serverNow = Date.now()
+// Two reads cover every client: broadcasts build each socket's view from one snapshot, so DB load
+// doesn't grow with the number of open sockets.
+export async function snapshot() {
   const s = await latestSession()
+  return { s, rows: s ? await all(`SELECT * FROM queue_entries WHERE session_id = ? ORDER BY sort_key`, [s.id]) : [] }
+}
+export type Snapshot = Awaited<ReturnType<typeof snapshot>>
+
+export const loadState = async (role: Role, token?: string, projector = false) => view(await snapshot(), role, token, projector)
+
+// `projector`: a host page that holds the admin token. Only it gets the live stream, so presenters
+// watching /host on their own laptops don't add encodes or loop their audio back.
+export function view({ s, rows }: Snapshot, role: Role, token?: string, projector = false): State {
+  const serverNow = Date.now()
   if (!s) return { serverNow, session: null, current: null, queue: [] }
-  const rows = await all(`SELECT * FROM queue_entries WHERE session_id = ? ORDER BY sort_key`, [s.id])
   const admin = role === 'admin'
   const cur = rows.find((r) => r.status === 'called' || r.status === 'live')
   const waiting = s.status === 'open' ? rows.filter((r) => r.status === 'waiting') : [] // a closed session has no line
   const current: Current | null = !cur ? null : {
     entryId: cur.id, name: cur.name, project: cur.project, status: cur.status,
     startedAt: cur.started_at, deadline: cur.deadline, shareState: cur.share_state,
-    ...((admin || (role === 'host' && cur.status === 'live')) && { streamId: cur.stream_id }),
+    ...((admin || (role === 'host' && projector && cur.status === 'live')) && { streamId: cur.stream_id }),
   }
   const queue: QueueItem[] = waiting.map((r) => ({
     id: r.id, name: r.name, project: r.project, shareState: r.share_state, joinedAt: r.joined_at,
     connected: serverNow - r.last_seen_at < DISCONNECTED_MS,
     ...(admin && { streamId: r.stream_id }),
   }))
-  const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec }, current, queue }
+  const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec, quality: s.quality, audio: !!s.audio }, current, queue }
   const mine = role === 'hacker' && token ? rows.find((r) => r.client_token === token) : undefined
   if (mine) {
     state.me = { entryId: mine.id, name: mine.name, project: mine.project, status: mine.status, position: waiting.indexOf(mine) + 1, streamId: mine.stream_id }

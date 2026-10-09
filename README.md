@@ -1,51 +1,81 @@
-# Checkpoints Website
+# Checkpoints
 
-Checkpoints Website is a planned web app for running Hack Night Checkpoints at Purdue Hackers.
+Run Hack Night checkpoints from the browser. Hackers join a queue and share their screen from their seats. When it's their turn they walk up, press **Ready**, and their screen goes on the projector. It turns off on its own after two minutes. Nobody plugs in a cable.
 
-Right now every presenter walks up with a laptop and plugs in over HDMI or USB C. Screen sharing breaks, people stand in line holding their laptops, and organizers have to cut in when someone goes over two minutes. This project moves all of that to the browser.
+This guide is for the organizer running a checkpoint night. Developers: see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
-An organizer starts a checkpoint session and a join code shows up on the projector, much like a Kahoot lobby. Hackers log in with their Squid account, enter the code, and pick the screen or window they want to share while still at their seats. The page shows their place in the queue and a small preview of their share. When they are next, the page plays a sound, sends a browser notification, and highlights itself. At the podium they press Ready and their screen goes up. A countdown appears for the last 15 seconds and the share turns off on its own at two minutes.
+## What you need
 
-Organizers get an admin panel to see the queue, preview each share before it goes live, and remove people when needed. If someone cannot connect, an organizer can help them while the next person presents.
+- The site URL and the **organizer passcode**. Ask whoever deployed it.
+- A **projector laptop** running Chrome or Edge, plugged into the projector and speakers.
+- Optionally, a second laptop for yourself to run the queue. You can also run everything from the projector laptop.
 
-The full plan is in PRD.docx. It covers the user flow, the MVP goals, and the features planned after the MVP, such as checkpoint recordings and a history of past checkpoints on the home page.
+There are three pages:
 
-## Run it
-
-Needs [Bun](https://bun.sh). Copy `.env.example` to `.env` and fill it in (leave the Turso vars unset to use a local `local.db` file).
-
-```
-bun install
-bun dev          # Elysia on :3000 + Astro on :4321 (proxies /api). Open http://localhost:4321
-                 # Astro's dev server runs in the background; stop it with `bunx astro dev stop`
-bun test         # queue logic tests (in-memory db)
-bun run build    # static site into dist/
-```
-
-| Page | Who |
+| Page | Who uses it |
 |---|---|
-| `/` | Hackers: join, share from your seat, Ready, End |
-| `/admin` | Organizer (passcode = `ADMIN_PASSCODE`): start/end, call next, preview, skip, remove, stop |
-| `/host` | Projector: lobby, live share with name bar and 15s countdown. Plays the presenter's shared tab/system audio (click Enable sound once). |
+| `/` | Hackers: join the line and share a screen |
+| `/admin` | You: run the queue |
+| `/host` | The projector |
 
-Browsers only allow screen sharing and notifications on `localhost` or HTTPS.
+## Before the night (5 minutes)
 
-## How it works
+1. **On the projector laptop, open `/admin` and enter the passcode.** This step is required. Only a browser that's logged in as an organizer shows people's screens on `/host`. Anyone else who opens `/host` sees names only.
+2. **In a second tab on the same laptop, open `/host`.** Click **Fullscreen**. The click also lets the page play sound.
+3. **On your own laptop, open `/admin`** and log in, if you're running the queue from there.
+4. **Click Start checkpoint.** The projector now shows the join address and the line.
 
-- `server/queue.ts` holds all SQL and every state transition. Turso is the only source of truth, so a restart loses nothing.
-- `server/index.ts` is the Elysia app: REST actions plus one WebSocket (`/api/ws`) that pushes each client its own view of the state. Every second each instance runs `expire()` (the server-owned 2:00 cutoff) and re-sends any view that changed.
-- `src/lib/vdo.tsx` is the only file that knows about VDO.Ninja. Hackers capture their screen on our page (`getDisplayMedia`, so we know exactly when sharing starts and stops) and publish it with the [VDO.Ninja SDK](https://github.com/steveseguin/ninjasdk) (`@vdoninja/sdk`, MPL-2.0), which handles signalling, peer connections and TURN. Admin preview and projector watch it in plain `vdo.ninja/?view=<id>` iframes. The server only hands out private stream IDs (admin, and the host while someone is live).
-- Hacker identity is a random token in `localStorage`. No Squid yet.
+## Running the queue
 
-## Deploy (Vercel Pro)
+Hackers open the site, enter their name and project, and click **Join queue**. They can share their screen while they wait. You see everyone in the list on `/admin`.
 
-One project: Astro static build plus `api/server.ts` as a Bun function with native WebSockets (Fluid compute, public beta). Set `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `ADMIN_PASSCODE` in the project. `vercel.json` sets `bunVersion` and rewrites `/api/*`.
+For each presenter:
 
-## Not verified yet (do these first)
+1. **Check the Preview panel.** It automatically shows whoever is next, so you can catch the wrong window before the room sees it. Click **Preview** on any row to look at someone else. Click **follow next** to go back to following the line.
+2. **Click Call next.** The presenter's page tells them to walk up and shows a big **Ready** button.
+3. **They press Ready at the podium,** or you press **Ready** for them. Their screen goes on the projector with their name and project.
+4. **The last 15 seconds show a countdown,** and the slot ends by itself at the time limit. They can also click **End my checkpoint** when they finish early.
+5. **Click Call next** for the next person.
 
-- **VDO.Ninja on real laptops and campus Wi-Fi.** Tested end to end in automated Chrome with a fake screen (hacker preview, admin preview, projector, stop/share again). Not yet tried across two real laptops or on campus Wi-Fi.
-- **Vercel deploy.** WebSocket routing through the `/api/:path*` rewrite and `Bun.serve` via Elysia's `listen()` are untested. The socket closes at max duration; the client reconnects on its own.
-- **Poll cost.** `TICK_MS` is 1s (marked `??` in `server/index.ts`).
-- **Mobile Safari/phones** show "use a laptop to share".
+### Your controls
 
-Post-MVP: Squid login, recording, mic picker, moderation. The old prototype (recording, mic finder, designs) is in git history before this branch.
+| Control | What it does |
+|---|---|
+| **Call next** | Ends the current slot, if any, and calls the next person |
+| **Ready** | Puts the called person on screen, if they can't press it themselves |
+| **Stop** | Ends the current presenter now |
+| **Skip** | Moves someone behind the next person, for when they aren't ready yet |
+| **▲ / ▼** | Moves someone up or down the line |
+| **Remove** | Takes someone out of the line |
+| **Limit (s)** | Time per presenter in seconds (default 120). Applies to the next presenter |
+| **Quality** | Stream resolution: 720p, 1080p (default), 1440p or Source. Changes the live stream without restarting it |
+| **Projector sound** | Turns the presenter's sound on the projector on or off |
+| **End checkpoints** | Closes the line for the night |
+
+The row under each name shows whether that person is **sharing**, **not sharing**, **stopped** or **disconnected**.
+
+## What to tell hackers
+
+- **Use Chrome or Edge on a laptop.** Phones can join the line but can't share a screen. Firefox and Safari can share a screen but not sound.
+- **For sound, share a Chrome tab and tick "Share audio".** Sound only plays on the projector while they're live.
+- **Don't open the projector page on your own laptop.**
+- **Keep the page open.** Refreshing is fine, and they keep their spot.
+
+## When something goes wrong
+
+| Problem | Fix |
+|---|---|
+| The projector shows a name but no screen | The projector browser isn't logged in. Open `/admin` on it, log in, then reload `/host` |
+| No sound on the projector | Check that **Projector sound** is On. Click **Fullscreen** on the projector once. Then check that the presenter ticked "Share audio" |
+| Someone shared the wrong window | They click **Change window** on their page. They keep their spot |
+| A presenter isn't ready | Click **Skip** |
+| The stream is choppy | Click **Stats for nerds**, or right-click anywhere on the page. If **limited by** says `bandwidth`, lower **Quality**. If it says `cpu`, have the presenter close other apps or lower **Quality** |
+| A "reconnecting…" badge stays on | Check the network connection. The page reconnects by itself |
+| The line is full of fake names | Click **End checkpoints**, then **Start checkpoint**. This starts a fresh, empty line |
+| "Too many attempts" when logging in | Wait 15 minutes. Check the passcode with whoever deployed the site |
+
+## Keeping it safe
+
+- **Use a long random passcode,** 20+ characters. Changing it logs out every organizer and the projector.
+- **The projector laptop is logged in as an organizer.** Don't leave it unlocked and unattended.
+- **Anyone can join the line from a new browser.** There are no accounts yet. Use **Remove** for anyone who shouldn't be there.

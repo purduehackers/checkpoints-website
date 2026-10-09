@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Badge, api, fmt, hackerToken, useLive, useTick } from '../lib/live'
 import { ShareBox } from '../lib/vdo'
+import { StatsButton, useStatsToggle } from '../lib/stats'
 import type { ShareState } from '../../shared/types'
 
 const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`
@@ -12,6 +13,7 @@ export default function Hacker() {
   const [form, setForm] = useState({ name: '', project: '' })
   const [shareState, setShareState] = useState<ShareState>('not_shared')
   const reported = useRef<ShareState>('not_shared')
+  const stats = useStatsToggle()
   useTick()
 
   const token = hackerToken()
@@ -80,7 +82,7 @@ export default function Hacker() {
           </div>
         )}
         {canShare ? (
-          <ShareBox streamId={me.streamId} label={me.name} onState={setShareState} />
+          <ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} />
         ) : (
           <p className="rounded bg-neutral-800 p-3 text-sm">Use a laptop to share your screen. You can still wait here.</p>
         )}
@@ -93,6 +95,8 @@ export default function Hacker() {
   return (
     <Shell>
       <Badge online={online} />
+      {stats.menu}
+      {active && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
       {countdown && <div className="fixed left-3 top-3 z-40 rounded bg-red-600 px-3 py-1 text-2xl font-bold tabular-nums">{fmt(msTotal!)}</div>}
       {me?.status === 'waiting' && me.position === 1 && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-amber-400/25" />}
       {body}

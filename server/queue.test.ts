@@ -27,16 +27,27 @@ test('skip moves behind the next person', async () => {
   expect((await q.loadState('host')).queue.map((e) => e.name)).toEqual(['Bob', 'Ada', 'Cy'])
 })
 
-test('call-next -> ready -> live sets a deadline; host sees stream only when live', async () => {
+test('call-next -> ready -> live sets a deadline; only the projector host sees the stream, only when live', async () => {
   await q.callNext(null)
-  let host = await q.loadState('host')
+  let host = await q.loadState('host', undefined, true)
   expect(host.current).toMatchObject({ name: 'Bob', status: 'called' })
   expect(host.current?.streamId).toBeUndefined()
   await q.hackerReady('tok-bbbbbbbb')
-  host = await q.loadState('host')
+  host = await q.loadState('host', undefined, true)
   expect(host.current?.status).toBe('live')
   expect(host.current?.deadline).toBe(host.current!.startedAt! + 120_000)
   expect(host.current?.streamId).toBeString()
+  expect((await q.loadState('host')).current?.streamId).toBeUndefined() // a presenter's own /host tab
+})
+
+test('quality and projector audio round-trip; bad quality is rejected', async () => {
+  expect((await q.loadState('host')).session).toMatchObject({ quality: '1080p', audio: true })
+  await q.setQuality('720p')
+  await q.setAudio(false)
+  expect((await q.loadState('hacker', 'tok-aaaaaaaa')).session).toMatchObject({ quality: '720p', audio: false })
+  await expect(q.setQuality('8k')).rejects.toThrow()
+  await q.setQuality('1080p')
+  await q.setAudio(true)
 })
 
 test('expire ends a live slot at its deadline, not before', async () => {
@@ -137,7 +148,7 @@ test('an entry unseen for 3+ minutes shows as disconnected until it is touched',
   Date.now = () => realNow() + 4 * 60_000
   try {
     expect((await host()).queue[0].connected).toBe(false)
-    await q.touch('tok-iiiiiiii')
+    await q.touch(['tok-iiiiiiii'])
     expect((await host()).queue[0].connected).toBe(true)
   } finally { Date.now = realNow }
 })
@@ -156,4 +167,20 @@ test('move shifts a waiting entry up or down one place; edges and non-waiting ar
   expect(await names()).toEqual(['Lu', 'Jo', 'Ki'])
   await q.move('no-such-id', -1)
   expect(await names()).toEqual(['Lu', 'Jo', 'Ki'])
+})
+
+// ---- abuse ----
+test('names are cleaned: bidi overrides, zero-width and control chars dropped, combining marks capped', async () => {
+  await q.join('tok-mmmmmmmm', '‮evil\u0000​ ' + 'Z̶̶̶̶', 'line\n\nbreak')
+  const me = (await q.loadState('hacker', 'tok-mmmmmmmm')).me!
+  expect(me.name).toBe('evil Z̶̶')
+  expect(me.project).toBe('line break')
+  await expect(q.join('tok-nnnnnnnn', '​‮', 'P')).rejects.toThrow('required')
+})
+
+test('the waiting line is capped so a script cannot flood it', async () => {
+  await q.endSession(); await q.startSession()
+  for (let i = 0; i < 200; i++) await q.join(`flood-${String(i).padStart(4, '0')}`, 'bot', 'spam')
+  await expect(q.join('tok-oooooooo', 'Real', 'Person')).rejects.toThrow('full')
+  expect((await host()).queue).toHaveLength(200)
 })
