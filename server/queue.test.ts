@@ -168,3 +168,19 @@ test('move shifts a waiting entry up or down one place; edges and non-waiting ar
   await q.move('no-such-id', -1)
   expect(await names()).toEqual(['Lu', 'Jo', 'Ki'])
 })
+
+// ---- abuse ----
+test('names are cleaned: bidi overrides, zero-width and control chars dropped, combining marks capped', async () => {
+  await q.join('tok-mmmmmmmm', '‮evil\u0000​ ' + 'Z̶̶̶̶', 'line\n\nbreak')
+  const me = (await q.loadState('hacker', 'tok-mmmmmmmm')).me!
+  expect(me.name).toBe('evil Z̶̶')
+  expect(me.project).toBe('line break')
+  await expect(q.join('tok-nnnnnnnn', '​‮', 'P')).rejects.toThrow('required')
+})
+
+test('the waiting line is capped so a script cannot flood it', async () => {
+  await q.endSession(); await q.startSession()
+  for (let i = 0; i < 200; i++) await q.join(`flood-${String(i).padStart(4, '0')}`, 'bot', 'spam')
+  await expect(q.join('tok-oooooooo', 'Real', 'Person')).rejects.toThrow('full')
+  expect((await host()).queue).toHaveLength(200)
+})

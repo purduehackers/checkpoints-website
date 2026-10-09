@@ -42,14 +42,23 @@ export async function setQuality(quality: string) {
 }
 export const setAudio = (on: boolean) => run(`UPDATE sessions SET audio = ? WHERE status = 'open'`, [on ? 1 : 0])
 
+const MAX_WAITING = 200 // a script can't bury the line; far above a real hack night. Reset = end + start a session.
+// Names go on the projector: drop control/format chars (bidi overrides, zero-width) and cap stacked combining marks.
+const clean = (s: string, max: number) =>
+  s.normalize('NFC').replace(/\s+/g, ' ').replace(/\p{C}/gu, '').replace(/(\p{M}{2})\p{M}+/gu, '$1').trim().slice(0, max)
+
 export async function join(token: string, name: string, project: string) {
-  name = name.trim().slice(0, 60)
-  project = project.trim().slice(0, 80)
+  name = clean(name, 60)
+  project = clean(project, 80)
   if (!name || !project) throw new Error('name and project are required')
   const s = await openSession()
   if (!s) throw new Error('No checkpoint is running')
   const now = Date.now()
   const mine = await one(`SELECT * FROM queue_entries WHERE session_id = ? AND client_token = ?`, [s.id, token])
+  if (!mine || mine.status === 'left') {
+    const { n } = (await one(`SELECT COUNT(*) AS n FROM queue_entries WHERE session_id = ? AND status = 'waiting'`, [s.id]))!
+    if (n >= MAX_WAITING) throw new Error('The queue is full')
+  }
   if (!mine) {
     await run(
       `INSERT INTO queue_entries (id, session_id, client_token, name, project, stream_id, sort_key, joined_at, last_seen_at)
