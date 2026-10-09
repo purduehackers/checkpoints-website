@@ -2,5 +2,14 @@
   "bunVersion": "1.4.x",
   "framework": "astro",
   "functions": { "api/server.ts": { "maxDuration": 1800 } },
-  "rewrites": [{ "source": "/api/:path*", "destination": "/api/server" }]
+  "rewrites": [{ "source": "/api/:path*", "destination": "/api/server" }],
+  "headers": [{
+    "source": "/(.*)",
+    "headers": [
+      { "key": "X-Frame-Options", "value": "DENY" },
+      { "key": "Content-Security-Policy", "value": "frame-ancestors 'none'" },
+      { "key": "X-Content-Type-Options", "value": "nosniff" },
+      { "key": "Referrer-Policy", "value": "no-referrer" }
+    ]
+  }]
 }
