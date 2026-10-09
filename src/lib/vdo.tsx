@@ -3,12 +3,20 @@
 // VDO.Ninja SDK handles signalling, peer connections and TURN. Viewing: plain vdo.ninja iframes.
 // Audio: the picker's "share audio" box adds an audio track that the SDK publishes with the video.
 // Only the projector plays it; the hacker's own preview and the admin preview stay silent.
+// Quality: the SDK publisher ignores vdo.ninja viewer params like &bitrate/&scale, so the sender
+// sets resolution (capture constraints) and bitrate (encoder) from the organizer's preset.
 import { useEffect, useRef, useState } from 'react'
 import VDONinjaSDK from '@vdoninja/sdk'
-import type { ShareState } from '../../shared/types'
+import { QUALITY, type Quality, type ShareState } from '../../shared/types'
+
+const videoConstraints = (q: Quality): MediaTrackConstraints => {
+  const { width, height } = QUALITY[q]
+  // crop-and-scale: without it Chrome won't downscale a capture to meet a max width/height
+  return { frameRate: { ideal: 30, max: 30 }, resizeMode: 'crop-and-scale', ...(width && { width: { max: width }, height: { max: height } }) } as MediaTrackConstraints
+}
 
 // Hacker's share with its own preview. Unmounting it ends the share.
-export function ShareBox({ streamId, label, onState }: { streamId: string; label: string; onState: (s: ShareState) => void }) {
+export function ShareBox({ streamId, label, quality, onState }: { streamId: string; label: string; quality: Quality; onState: (s: ShareState) => void }) {
   const video = useRef<HTMLVideoElement>(null)
   const sdk = useRef<VDONinjaSDK | null>(null)
   const stream = useRef<MediaStream | null>(null)
@@ -29,7 +37,7 @@ export function ShareBox({ streamId, label, onState }: { streamId: string; label
     let s: MediaStream
     try {
       // systemAudio is a Chromium hint; other browsers ignore it and just give video.
-      s = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true, systemAudio: 'include' } as DisplayMediaStreamOptions)
+      s = await navigator.mediaDevices.getDisplayMedia({ video: videoConstraints(quality), audio: true, systemAudio: 'include' } as DisplayMediaStreamOptions)
     } catch {
       return setError('Screen share was cancelled or blocked.')
     }
@@ -45,7 +53,8 @@ export function ShareBox({ streamId, label, onState }: { streamId: string; label
         sdk.current = new VDONinjaSDK({ salt: 'vdo.ninja', label })
         await sdk.current.connect()
       }
-      await sdk.current.publish(s, { streamID: streamId })
+      // Bitrate only: given a resolution or frameRate, the SDK calls applyConstraints, which wipes our capture caps.
+      await sdk.current.publish(s, { streamID: streamId, media: { video: { maxBitrate: QUALITY[quality].kbps } } })
       report('sharing')
     } catch (e) {
       stop()
@@ -55,6 +64,14 @@ export function ShareBox({ streamId, label, onState }: { streamId: string; label
   }
 
   useEffect(() => () => { stop(); sdk.current?.disconnect().catch(() => {}) }, [])
+
+  // Organizer changed the quality: re-cap the capture and the encoder without restarting the share.
+  useEffect(() => {
+    const track = stream.current?.getVideoTracks()[0]
+    if (!track) return
+    track.applyConstraints(videoConstraints(quality)).catch(() => {})
+    sdk.current?.updatePublisherMedia({ media: { video: { maxBitrate: QUALITY[quality].kbps } } }).catch(() => {})
+  }, [quality])
 
   return (
     <div>

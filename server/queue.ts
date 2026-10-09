@@ -1,6 +1,6 @@
 // All SQL and every state transition lives here.
 import { db, ready } from './db'
-import type { Current, QueueItem, Role, ShareState, State } from '../shared/types'
+import { QUALITY, type Current, type QueueItem, type Role, type ShareState, type State } from '../shared/types'
 
 const DISCONNECTED_MS = 3 * 60_000 // US-2.4 grace period
 // Join order is a counter, not a timestamp: two joins in the same millisecond still get distinct keys.
@@ -34,6 +34,11 @@ export async function endSession() {
 export async function setLimit(sec: number) {
   if (!(sec >= 10 && sec <= 3600)) throw new Error('limit must be 10–3600 seconds')
   await run(`UPDATE sessions SET limit_sec = ? WHERE status = 'open'`, [Math.round(sec)])
+}
+
+export async function setQuality(quality: string) {
+  if (!(quality in QUALITY)) throw new Error('unknown quality')
+  await run(`UPDATE sessions SET quality = ? WHERE status = 'open'`, [quality])
 }
 
 export async function join(token: string, name: string, project: string) {
@@ -150,7 +155,7 @@ export async function loadState(role: Role, token?: string): Promise<State> {
     connected: serverNow - r.last_seen_at < DISCONNECTED_MS,
     ...(admin && { streamId: r.stream_id }),
   }))
-  const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec }, current, queue }
+  const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec, quality: s.quality }, current, queue }
   const mine = role === 'hacker' && token ? rows.find((r) => r.client_token === token) : undefined
   if (mine) {
     state.me = { entryId: mine.id, name: mine.name, project: mine.project, status: mine.status, position: waiting.indexOf(mine) + 1, streamId: mine.stream_id }

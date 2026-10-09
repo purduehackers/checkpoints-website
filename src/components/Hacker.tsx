@@ -80,7 +80,7 @@ export default function Hacker() {
           </div>
         )}
         {canShare ? (
-          <ShareBox streamId={me.streamId} label={me.name} onState={setShareState} />
+          <ShareBox streamId={me.streamId} label={me.name} quality={state.session!.quality} onState={setShareState} />
         ) : (
           <p className="rounded bg-neutral-800 p-3 text-sm">Use a laptop to share your screen. You can still wait here.</p>
         )}

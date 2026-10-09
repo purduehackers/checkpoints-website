@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia'
 import { timingSafeEqual } from 'node:crypto'
 import * as q from './queue'
-import type { Role, State } from '../shared/types'
+import { QUALITY, type Role, type State } from '../shared/types'
 
 // ?? Assumes Vercel Pro and ~1s latency. Each tick is a few Turso reads per open socket-holding instance;
 // ?? if that gets costly or 1s feels slow, move cross-instance sync to Redis pub/sub and tick only for expire().
@@ -82,7 +82,9 @@ export const app = new Elysia({ prefix: '/api' })
       .post('/move', async ({ body }) => (await q.move(body.id, body.dir), reply('admin')), { body: t.Object({ id: t.String(), dir: t.Union([t.Literal(-1), t.Literal(1)]) }) })
       .post('/remove', async ({ body }) => (await q.remove(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
       .post('/ready', async ({ body }) => (await q.adminReady(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
-      .post('/limit', async ({ body }) => (await q.setLimit(body.seconds), reply('admin')), { body: t.Object({ seconds: t.Number() }) }),
+      .post('/limit', async ({ body }) => (await q.setLimit(body.seconds), reply('admin')), { body: t.Object({ seconds: t.Number() }) })
+      .post('/quality', async ({ body }) => (await q.setQuality(body.quality), reply('admin')),
+        { body: t.Object({ quality: t.Union(Object.keys(QUALITY).map((k) => t.Literal(k))) }) }),
   )
 
   .ws('/ws', {

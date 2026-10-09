@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Badge, adminKey, adminToken, api, fmt, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
+import { QUALITY, type Quality } from '../../shared/types'
 
 const SHARE_LABEL = { sharing: 'sharing', not_shared: 'not sharing', stopped: 'stopped' }
 
@@ -62,6 +63,9 @@ function Panel({ onDenied }: { onDenied: () => void }) {
                 : <button className="rounded bg-green-600 px-3 py-2" onClick={() => act('/session/start')}>Start checkpoint</button>}
           {open && <button className="rounded bg-amber-500 px-3 py-2 font-semibold text-black" onClick={() => act('/call-next', { expect: c?.entryId ?? null })}>Call next</button>}
           {open && <label className="ml-auto text-sm">Limit (s) <input type="number" key={state.session!.limitSec} defaultValue={state.session!.limitSec} min={10} className="w-20 rounded bg-neutral-800 p-1" onBlur={(e) => Number(e.target.value) !== state.session!.limitSec && act('/limit', { seconds: Number(e.target.value) })} /></label>}
+          {open && <label className="text-sm">Quality <select value={state.session!.quality} onChange={(e) => act('/quality', { quality: e.target.value as Quality })} className="rounded bg-neutral-800 p-1">
+            {Object.keys(QUALITY).map((q) => <option key={q} value={q}>{q === 'source' ? 'Source' : q}</option>)}
+          </select></label>}
         </div>
         {!state.session && <p className="text-neutral-400">No session yet.</p>}
         {state.session && !open && <p className="text-neutral-400">Session ended.</p>}
