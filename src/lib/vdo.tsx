@@ -2,13 +2,15 @@
 // Sharing: we capture the screen ourselves (so we know exactly when it starts and stops) and the
 // VDO.Ninja SDK handles signalling, peer connections and TURN. Viewing: plain vdo.ninja iframes.
 // Audio: the picker's "share audio" box adds an audio track that the SDK publishes with the video.
-// Only the projector plays it; the hacker's own preview and the admin preview stay silent.
+// The track stays disabled (silent) until the hacker is live, and only the projector plays it.
 // Quality: the SDK publisher ignores vdo.ninja viewer params like &bitrate/&scale, so the sender
 // sets resolution (capture constraints) and bitrate (encoder) from the organizer's preset.
 import { useEffect, useRef, useState } from 'react'
 import VDONinjaSDK from '@vdoninja/sdk'
 import { QUALITY, type Quality, type ShareState } from '../../shared/types'
 
+const AUDIO_KBPS = 128
+const noAudioBrowser = typeof navigator !== 'undefined' && /firefox|^((?!chrome|android).)*safari/i.test(navigator.userAgent)
 const videoConstraints = (q: Quality): MediaTrackConstraints => {
   const { width, height } = QUALITY[q]
   // crop-and-scale: without it Chrome won't downscale a capture to meet a max width/height
@@ -16,7 +18,7 @@ const videoConstraints = (q: Quality): MediaTrackConstraints => {
 }
 
 // Hacker's share with its own preview. Unmounting it ends the share.
-export function ShareBox({ streamId, label, quality, onState }: { streamId: string; label: string; quality: Quality; onState: (s: ShareState) => void }) {
+export function ShareBox({ streamId, label, live, quality, onState }: { streamId: string; label: string; live: boolean; quality: Quality; onState: (s: ShareState) => void }) {
   const video = useRef<HTMLVideoElement>(null)
   const sdk = useRef<VDONinjaSDK | null>(null)
   const stream = useRef<MediaStream | null>(null)
@@ -24,6 +26,9 @@ export function ShareBox({ streamId, label, quality, onState }: { streamId: stri
   const [error, setError] = useState('')
   const [hasAudio, setHasAudio] = useState(false)
   const report = (s: ShareState) => { setState(s); onState(s) }
+  const liveRef = useRef(live)
+  liveRef.current = live
+  const muteUnlessLive = () => stream.current?.getAudioTracks().forEach((t) => (t.enabled = liveRef.current))
 
   const stop = () => {
     stream.current?.getTracks().forEach((t) => t.stop())
@@ -37,12 +42,21 @@ export function ShareBox({ streamId, label, quality, onState }: { streamId: stri
     let s: MediaStream
     try {
       // systemAudio is a Chromium hint; other browsers ignore it and just give video.
-      s = await navigator.mediaDevices.getDisplayMedia({ video: videoConstraints(quality), audio: true, systemAudio: 'include' } as DisplayMediaStreamOptions)
+      s = await navigator.mediaDevices.getDisplayMedia({
+        video: videoConstraints(quality),
+        // Raw audio: Chrome's voice processing (echo cancel, denoise, auto gain) mangles music and demos.
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        systemAudio: 'include',
+        suppressLocalAudioPlayback: true, // a shared tab goes quiet locally; the projector plays it
+        selfBrowserSurface: 'exclude', // don't offer this tab
+        surfaceSwitching: 'include',
+      } as DisplayMediaStreamOptions)
     } catch {
       return setError('Screen share was cancelled or blocked.')
     }
     stop() // "Change window": replace the previous share
     stream.current = s
+    muteUnlessLive()
     setHasAudio(s.getAudioTracks().length > 0)
     video.current!.srcObject = s
     // Fires when the hacker clicks the browser's "Stop sharing" or the window closes.
@@ -54,7 +68,7 @@ export function ShareBox({ streamId, label, quality, onState }: { streamId: stri
         await sdk.current.connect()
       }
       // Bitrate only: given a resolution or frameRate, the SDK calls applyConstraints, which wipes our capture caps.
-      await sdk.current.publish(s, { streamID: streamId, media: { video: { maxBitrate: QUALITY[quality].kbps } } })
+      await sdk.current.publish(s, { streamID: streamId, media: { video: { maxBitrate: QUALITY[quality].kbps }, audio: { maxBitrate: AUDIO_KBPS } } })
       report('sharing')
     } catch (e) {
       stop()
@@ -64,6 +78,7 @@ export function ShareBox({ streamId, label, quality, onState }: { streamId: stri
   }
 
   useEffect(() => () => { stop(); sdk.current?.disconnect().catch(() => {}) }, [])
+  useEffect(muteUnlessLive, [live])
 
   // Organizer changed the quality: re-cap the capture and the encoder without restarting the share.
   useEffect(() => {
@@ -87,7 +102,9 @@ export function ShareBox({ streamId, label, quality, onState }: { streamId: stri
       {state === 'not_shared' && <p className="mt-2 text-sm text-neutral-400">Pick a screen, window or tab and tick “Share audio” to play sound on the projector. Only the organizer sees it until you go live.</p>}
       {state === 'sharing' && (
         <p className="mt-2 text-sm">
-          {hasAudio ? <span className="text-green-400">Sharing with sound.</span> : <span className="text-neutral-400">No sound. Use “Change window” and tick “Share audio” (Chrome or Edge).</span>}{' '}
+          {hasAudio ? <span className="text-green-400">Sharing with sound{live ? '' : ' (plays on the projector once you’re live)'}.</span>
+            : noAudioBrowser ? <span className="text-amber-400">This browser can’t share sound. Use Chrome or Edge if your demo needs audio.</span>
+            : <span className="text-neutral-400">No sound. Use “Change window” and tick “Share audio”.</span>}{' '}
           <button className="underline" onClick={share}>Change window</button>
         </p>
       )}
