@@ -33,7 +33,8 @@ export default function Host() {
       {stats.on && <StatsOverlay history={history} title={live ? `Live: ${c!.name}` : 'Nobody live'} onClose={stats.toggle} />}
       {live ? (
         <>
-          <div className="flex items-center gap-4 bg-neutral-900 px-6 py-3 text-2xl"><b>{c!.name}</b><span className="text-neutral-400">{c!.project}</span></div>
+          <div className="flex items-center gap-4 bg-neutral-900 px-6 py-3 text-2xl"><b>{c!.name}</b><span className="text-neutral-400">{c!.project}</span>
+            {open && <span className="ml-auto text-xl">Join at <b className="text-amber-400">{location.host}</b></span>}</div>
           <ViewFrame key={String(audio)} streamId={c!.streamId!} className="w-full grow bg-black" audio={audio} />
           {left !== null && left <= 15_000 && <div className="absolute left-4 top-20 rounded bg-red-600 px-4 py-2 text-5xl font-bold tabular-nums">{fmt(left)}</div>}
         </>
