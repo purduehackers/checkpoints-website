@@ -42,13 +42,21 @@ Browsers only allow screen sharing and notifications on `localhost` or HTTPS. So
 
 ## Deploy (Vercel Pro)
 
-One project: Astro static build plus `api/server.ts` as a Bun function with native WebSockets (Fluid compute, public beta). Set `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `ADMIN_PASSCODE` in the project. `vercel.json` sets `bunVersion` and rewrites `/api/*`.
+One project: Astro static build plus `api/server.ts` as a Bun function with native WebSockets (Fluid compute, public beta). Set `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `ADMIN_PASSCODE` in the project (Production and Preview). `vercel.json` sets `bunVersion`, rewrites `/api/*` and sends anti-framing headers.
+
+## Security notes
+
+- **Use a long random `ADMIN_PASSCODE`** (20+ characters). Login is rate limited per IP, but the passcode is the real defence. Changing it signs every organizer and the projector out.
+- **The projector holds the admin token** (it logged in at `/admin`). Don't leave it unattended and unlocked.
+- **Limits** (in `server/index.ts`, per server instance): requests and sockets per IP, total sockets, socket message size, request body size, and a 200-person waiting line. They're sized so a whole room behind one campus IP still works. If the line gets spammed, end the checkpoint and start a new one.
+- Names are cleaned of control and invisible characters before they reach the projector. Stats from a presenter's browser are treated as untrusted.
+- Until Squid login, anyone can join from a new browser; there are no accounts to ban.
 
 ## Not verified yet (do these first)
 
 - **VDO.Ninja on real laptops and campus Wi-Fi.** Tested end to end in automated Chrome with a fake tab share (quality switch, live-only audio, projector-only stream, stats relay). Not yet tried across two real laptops or on campus Wi-Fi: open Stats for nerds and watch `limited by` and `path` (relay = TURN).
 - **Vercel deploy.** WebSocket routing through the `/api/:path*` rewrite and `Bun.serve` via Elysia's `listen()` are untested. The socket closes at max duration; the client reconnects on its own.
-- **Poll cost.** `TICK_MS` is 1s (marked `??` in `server/index.ts`).
+- **Poll cost.** `TICK_MS` is 1s (marked `??` in `server/index.ts`). Each tick is a constant few Turso reads per instance, not per socket.
 - **Mobile Safari/phones** show "use a laptop to share".
 
 Post-MVP: Squid login, recording, mic picker, moderation. The old prototype (recording, mic finder, designs) is in git history before this branch.
