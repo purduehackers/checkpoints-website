@@ -25,16 +25,19 @@ bun run build    # static site into dist/
 | Page | Who |
 |---|---|
 | `/` | Hackers: join, share from your seat, Ready, End |
-| `/admin` | Organizer (passcode = `ADMIN_PASSCODE`): start/end, call next, preview, skip, remove, stop |
-| `/host` | Projector: lobby, live share with name bar and 15s countdown. Plays the presenter's shared tab/system audio (click Enable sound once). |
+| `/admin` | Organizer (passcode = `ADMIN_PASSCODE`): start/end, call next, preview, skip, remove, stop, stream quality, projector sound on/off |
+| `/host` | Projector: lobby, live share with name bar and 15s countdown, presenter's audio. **Log in at `/admin` on the projector machine first**: only a `/host` holding the admin token gets the live stream (others see the name only), so presenters watching `/host` on their laptops can't loop audio or add encodes. |
 
-Browsers only allow screen sharing and notifications on `localhost` or HTTPS.
+Browsers only allow screen sharing and notifications on `localhost` or HTTPS. Sound sharing needs Chrome or Edge (Firefox and Safari share video only). If the projector stays silent, click Fullscreen once (autoplay needs a click) or set the site's Sound permission to Allow.
+
+**Stats for nerds:** button or right-click on any page. Shows the presenter's send fps, resolution, video/audio bitrate, RTT, loss, what's limiting quality (`cpu` / `bandwidth`), direct vs relayed path and viewer count. `/host` and `/admin` receive it from the presenter over the VDO.Ninja data channel.
 
 ## How it works
 
 - `server/queue.ts` holds all SQL and every state transition. Turso is the only source of truth, so a restart loses nothing.
 - `server/index.ts` is the Elysia app: REST actions plus one WebSocket (`/api/ws`) that pushes each client its own view of the state. Every second each instance runs `expire()` (the server-owned 2:00 cutoff) and re-sends any view that changed.
-- `src/lib/vdo.tsx` is the only file that knows about VDO.Ninja. Hackers capture their screen on our page (`getDisplayMedia`, so we know exactly when sharing starts and stops) and publish it with the [VDO.Ninja SDK](https://github.com/steveseguin/ninjasdk) (`@vdoninja/sdk`, MPL-2.0), which handles signalling, peer connections and TURN. Admin preview and projector watch it in plain `vdo.ninja/?view=<id>` iframes. The server only hands out private stream IDs (admin, and the host while someone is live).
+- `src/lib/vdo.tsx` holds the VDO.Ninja sharing and viewing (`src/lib/stats.tsx` only uses its data channel). Hackers capture their screen on our page (`getDisplayMedia`, so we know exactly when sharing starts and stops) and publish it with the [VDO.Ninja SDK](https://github.com/steveseguin/ninjasdk) (`@vdoninja/sdk`, MPL-2.0), which handles signalling, peer connections and TURN. Admin preview and projector watch it in plain `vdo.ninja/?view=<id>` iframes. The server only hands out private stream IDs (admin, and the logged-in projector while someone is live).
+- Quality is set on the sender: the SDK publisher ignores vdo.ninja viewer params like `&bitrate`/`&scale`, so the presenter's browser caps the capture (`applyConstraints`, `crop-and-scale`) and the encoder bitrate from the organizer's preset. Audio is captured raw (no echo cancel/denoise/auto gain), sent at 128 kbps, and muted until the presenter is live; the projector's `&stereo` makes it stereo.
 - Hacker identity is a random token in `localStorage`. No Squid yet.
 
 ## Deploy (Vercel Pro)
@@ -43,7 +46,7 @@ One project: Astro static build plus `api/server.ts` as a Bun function with nati
 
 ## Not verified yet (do these first)
 
-- **VDO.Ninja on real laptops and campus Wi-Fi.** Tested end to end in automated Chrome with a fake screen (hacker preview, admin preview, projector, stop/share again). Not yet tried across two real laptops or on campus Wi-Fi.
+- **VDO.Ninja on real laptops and campus Wi-Fi.** Tested end to end in automated Chrome with a fake tab share (quality switch, live-only audio, projector-only stream, stats relay). Not yet tried across two real laptops or on campus Wi-Fi: open Stats for nerds and watch `limited by` and `path` (relay = TURN).
 - **Vercel deploy.** WebSocket routing through the `/api/:path*` rewrite and `Bun.serve` via Elysia's `listen()` are untested. The socket closes at max duration; the client reconnects on its own.
 - **Poll cost.** `TICK_MS` is 1s (marked `??` in `server/index.ts`).
 - **Mobile Safari/phones** show "use a laptop to share".
