@@ -6,7 +6,7 @@ This guide is for the organizer running a checkpoint night. Developers: see [doc
 
 ## What you need
 
-- The site URL and the **organizer passcode**. Ask whoever deployed it.
+- The site URL and the **organizer passcode**. In the discord (will be changed when auth is finished).
 - A **projector laptop** running Chrome or Edge, plugged into the projector and speakers.
 - Optionally, a second laptop for yourself to run the queue. You can also run everything from the projector laptop.
 
@@ -21,7 +21,7 @@ There are three pages:
 ## Before the night (5 minutes)
 
 1. **On the projector laptop, open `/host`.** Click **Fullscreen**. The click also lets the page play sound.
-2. **Open `/admin` and enter the passcode,** on your own laptop or in another tab on the projector laptop.
+2. **Open `/admin` and enter the passcode,** on your own laptop.
 3. **Click Start checkpoint.** The projector now shows the join address and the line.
 
 ## Running the queue
@@ -36,12 +36,12 @@ For each presenter:
 4. **The last 15 seconds show a countdown,** and the slot ends by itself at the time limit. They can also click **End my checkpoint** when they finish early.
 5. **Click Call next** for the next person.
 
-### Your controls
+### Controls
 
 | Control | What it does |
 |---|---|
 | **Call next** | Ends the current slot, if any, and calls the next person |
-| **Ready** | Puts the called person on screen, if they can't press it themselves |
+| **Ready** | (ALLOW THE HACKER TO DO THIS, use only if necessary) Puts the called person on screen, if they can't press it themselves |
 | **Stop** | Ends the current presenter now |
 | **Skip** | Moves someone behind the next person, for when they aren't ready yet |
 | **▲ / ▼** | Moves someone up or down the line |
