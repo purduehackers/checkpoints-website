@@ -7,18 +7,43 @@ import { QUALITY, type Role, type State } from '../shared/types'
 // ?? many sockets it holds; if 1s feels slow, move cross-instance sync to Redis pub/sub and tick only for expire().
 const TICK_MS = 1000
 const TOUCH_EVERY = 20 // ticks between last_seen refreshes
+const MAX_SUBS = 500 // sockets per instance; a hack night needs ~1 per person
+// Per IP. Campus Wi-Fi puts many people behind one address, so these are generous: they stop one
+// machine from hogging the server, not a room. Bigger floods are for Vercel's firewall.
+const IP_SOCKETS = 100
+const IP_REQUESTS = 300, IP_WINDOW_MS = 10_000
+const LOGIN_TRIES = 10, LOGIN_WINDOW_MS = 15 * 60_000
 
-const adminToken = () => {
+const passcode = () => {
   if (!process.env.ADMIN_PASSCODE) throw new Error('ADMIN_PASSCODE is not set on the server')
-  return new Bun.CryptoHasher('sha256', process.env.ADMIN_PASSCODE).update('admin').digest('hex')
+  return process.env.ADMIN_PASSCODE
 }
-const isAdmin = (t?: string) => {
-  const want = Buffer.from(adminToken()), got = Buffer.from(t ?? '')
-  return want.length === got.length && timingSafeEqual(want, got)
+const adminToken = () => new Bun.CryptoHasher('sha256', passcode()).update('admin').digest('hex')
+// Constant-time; anything that isn't a string (from JSON over the socket) is simply wrong.
+const same = (a: unknown, b: string) => {
+  const x = Buffer.from(typeof a === 'string' ? a : ''), y = Buffer.from(b)
+  return x.length === y.length && timingSafeEqual(x, y)
 }
+const isAdmin = (t: unknown) => same(t, adminToken())
+const fail = (message: string, status: number) => Object.assign(new Error(message), { status })
+
+// Fixed-window counters, in memory per instance (Vercel may run a few). x-real-ip is set by Vercel.
+const windows = new Map<string, { n: number; reset: number }>()
+const allow = (key: string, max: number, ms: number) => {
+  const now = Date.now()
+  let w = windows.get(key)
+  if (!w || w.reset <= now) {
+    if (windows.size > 50_000) windows.clear() // bound memory under a many-IP flood
+    windows.set(key, (w = { n: 0, reset: now + ms }))
+  }
+  return ++w.n <= max
+}
+const ipOf = (request: Request, server: { requestIP(r: Request): { address: string } | null } | null) =>
+  request.headers.get('x-real-ip') ?? server?.requestIP(request)?.address ?? '?'
+const ipSockets = new Map<string, number>()
 
 // ---- live sockets held by THIS instance ----
-type Sub = { send: (s: string) => void; role: Role; token?: string; projector?: boolean; last?: string }
+type Sub = { send: (s: string) => void; role: Role; token?: string; projector?: boolean; ip: string; last?: string }
 const subs = new Map<string, Sub>()
 let timer: ReturnType<typeof setInterval> | undefined
 let ticks = 0
@@ -55,10 +80,25 @@ const reply = async (role: Role, token?: string): Promise<State> => {
 const tok = t.String({ minLength: 8, maxLength: 64 })
 const hackerBody = t.Object({ token: tok })
 
-export const app = new Elysia({ prefix: '/api' })
-  .onError(({ error, set }) => {
-    set.status = (error as any).status === 401 ? 401 : 400
-    return { error: error instanceof Error ? error.message : String(error) }
+export const app = new Elysia({
+  prefix: '/api',
+  serve: { maxRequestBodySize: 64 * 1024 },
+  websocket: { maxPayloadLength: 4096 }, // the only client message is a small JSON hello; bigger closes the socket
+})
+  .onRequest(({ request, server, set }) => {
+    if (!allow('ip:' + ipOf(request, server), IP_REQUESTS, IP_WINDOW_MS)) {
+      set.status = 429
+      return { error: 'Too many requests. Slow down.' }
+    }
+  })
+  .onError(({ code, error, set }) => {
+    if (code === 'NOT_FOUND') { set.status = 404; return { error: 'Not found' } }
+    if (code === 'VALIDATION' || code === 'PARSE') { set.status = 400; return { error: 'Invalid request' } }
+    // Our own errors are plain Errors with a user-facing message; anything else (DB, bugs) stays in the logs.
+    if (error instanceof Error && error.constructor === Error) { set.status = (error as any).status ?? 400; return { error: error.message } }
+    console.error(error)
+    set.status = 500
+    return { error: 'Server error' }
   })
   .get('/health', () => ({ ok: true }))
 
@@ -72,10 +112,14 @@ export const app = new Elysia({ prefix: '/api' })
     { body: t.Object({ token: tok, state: t.Union([t.Literal('not_shared'), t.Literal('sharing'), t.Literal('stopped')]) }) })
 
   // admin
-  .post('/admin/login', ({ body }) => {
-    if (!process.env.ADMIN_PASSCODE || body.passcode !== process.env.ADMIN_PASSCODE) throw new Error('Wrong passcode')
+  .post('/admin/login', ({ body, request, server }) => {
+    // Every attempt counts, so guessing is slow; a long random passcode is still the real defence.
+    if (!allow('login:' + ipOf(request, server), LOGIN_TRIES, LOGIN_WINDOW_MS)) {
+      throw fail('Too many attempts. Try again in 15 minutes.', 429)
+    }
+    if (!same(body.passcode, passcode())) throw fail('Wrong passcode', 401)
     return { token: adminToken() }
-  }, { body: t.Object({ passcode: t.String() }) })
+  }, { body: t.Object({ passcode: t.String({ maxLength: 200 }) }) })
   .group('/admin', (g) =>
     g
       // transform runs before body validation, so unauthenticated callers learn nothing about the schema
@@ -99,16 +143,24 @@ export const app = new Elysia({ prefix: '/api' })
   .ws('/ws', {
     // First message from the client: { role, token?, adminToken? }. A host with the admin token is the projector.
     async message(ws, msg: any) {
-      if (!msg || !['hacker', 'admin', 'host'].includes(msg.role)) return
-      if (msg.role === 'admin' && !isAdmin(msg.adminToken)) { ws.send(JSON.stringify({ error: 'Not authorized' })); return } // returning send()'s byte count would echo it
-      const sub: Sub = { send: (s) => ws.send(s), role: msg.role, token: msg.role === 'hacker' ? String(msg.token ?? '') : undefined,
-        projector: msg.role === 'host' && !!msg.adminToken && isAdmin(msg.adminToken) }
-      subs.set(String(ws.id), sub)
+      const id = String(ws.id)
+      if (subs.has(id)) return // one subscription per socket; repeats would only make the server re-query
+      const role = msg?.role, token = msg?.token
+      if (!['hacker', 'admin', 'host'].includes(role)) return
+      if (role === 'hacker' && !(typeof token === 'string' && token.length >= 8 && token.length <= 64)) return
+      if (role === 'admin' && !isAdmin(msg.adminToken)) { ws.send(JSON.stringify({ error: 'Not authorized' })); return } // returning send()'s byte count would echo it
+      const ip = ws.data.headers['x-real-ip'] ?? ws.remoteAddress
+      if (subs.size >= MAX_SUBS || (ipSockets.get(ip) ?? 0) >= IP_SOCKETS) { ws.close(1013, 'Server busy'); return } // the client retries with backoff
+      const sub: Sub = { send: (s) => ws.send(s), role, token: role === 'hacker' ? token : undefined, projector: role === 'host' && isAdmin(msg.adminToken), ip }
+      subs.set(id, sub)
+      ipSockets.set(ip, (ipSockets.get(ip) ?? 0) + 1)
       timer ??= setInterval(() => tick().catch(console.error), TICK_MS)
       await q.expire() // first message must not show a slot whose deadline passed while nobody was connected
       push(sub, await q.snapshot(), true)
     },
     close(ws) {
+      const sub = subs.get(String(ws.id))
+      if (sub) { const n = (ipSockets.get(sub.ip) ?? 1) - 1; n > 0 ? ipSockets.set(sub.ip, n) : ipSockets.delete(sub.ip) }
       subs.delete(String(ws.id))
       if (!subs.size) { clearInterval(timer); timer = undefined }
     },
