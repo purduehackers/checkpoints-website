@@ -158,11 +158,9 @@ export async function snapshot() {
 }
 export type Snapshot = Awaited<ReturnType<typeof snapshot>>
 
-export const loadState = async (role: Role, token?: string, projector = false) => view(await snapshot(), role, token, projector)
+export const loadState = async (role: Role, token?: string) => view(await snapshot(), role, token)
 
-// `projector`: a host page that holds the admin token. Only it gets the live stream, so presenters
-// watching /host on their own laptops don't add encodes or loop their audio back.
-export function view({ s, rows }: Snapshot, role: Role, token?: string, projector = false): State {
+export function view({ s, rows }: Snapshot, role: Role, token?: string): State {
   const serverNow = Date.now()
   if (!s) return { serverNow, session: null, current: null, queue: [] }
   const admin = role === 'admin'
@@ -171,7 +169,7 @@ export function view({ s, rows }: Snapshot, role: Role, token?: string, projecto
   const current: Current | null = !cur ? null : {
     entryId: cur.id, name: cur.name, project: cur.project, status: cur.status,
     startedAt: cur.started_at, deadline: cur.deadline, shareState: cur.share_state,
-    ...((admin || (role === 'host' && projector && cur.status === 'live')) && { streamId: cur.stream_id }),
+    ...((admin || (role === 'host' && cur.status === 'live')) && { streamId: cur.stream_id }),
   }
   const queue: QueueItem[] = waiting.map((r) => ({
     id: r.id, name: r.name, project: r.project, shareState: r.share_state, joinedAt: r.joined_at,

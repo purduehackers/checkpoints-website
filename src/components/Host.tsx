@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Badge, adminToken, fmt, useLive, useTick } from '../lib/live'
+import { Badge, fmt, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
-
-const projector = !!adminToken() // only a host logged in as admin gets the live stream (see loadState)
 
 export default function Host() {
   const { state, online, now } = useLive('host')
@@ -44,7 +42,6 @@ export default function Host() {
           {state && !state.session && <p className="text-2xl text-neutral-400">Waiting for an organizer to start</p>}
           {state?.session && !open && <p className="text-3xl">Checkpoints have ended. Thanks for coming!</p>}
           {open && <p className="text-4xl">Join at <b className="text-amber-400">{location.host}</b></p>}
-          {c?.status === 'live' && !projector && <p className="text-sm text-neutral-500">Screens only show on the projector. Log in at /admin on this device to show them here.</p>}
           {c && <p className="text-3xl">Up now: <b>{c.name}</b> · {c.project} <span className="text-neutral-400">({c.status === 'live' ? 'live' : 'getting ready'})</span></p>}
           {open && !c && state!.queue[0] && <p className="text-2xl">Up next: <b>{state!.queue[0].name}</b></p>}
           {open && (

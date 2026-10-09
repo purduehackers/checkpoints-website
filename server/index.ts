@@ -43,13 +43,13 @@ const ipOf = (request: Request, server: { requestIP(r: Request): { address: stri
 const ipSockets = new Map<string, number>()
 
 // ---- live sockets held by THIS instance ----
-type Sub = { send: (s: string) => void; role: Role; token?: string; projector?: boolean; ip: string; last?: string }
+type Sub = { send: (s: string) => void; role: Role; token?: string; ip: string; last?: string }
 const subs = new Map<string, Sub>()
 let timer: ReturnType<typeof setInterval> | undefined
 let ticks = 0
 
 function push(sub: Sub, snap: q.Snapshot, force = false) {
-  const state = q.view(snap, sub.role, sub.token, sub.projector)
+  const state = q.view(snap, sub.role, sub.token)
   const { serverNow, ...rest } = state
   const key = JSON.stringify(rest) // only send when something changed
   if (force || key !== sub.last) { sub.last = key; sub.send(JSON.stringify(state)) }
@@ -141,7 +141,7 @@ export const app = new Elysia({
   )
 
   .ws('/ws', {
-    // First message from the client: { role, token?, adminToken? }. A host with the admin token is the projector.
+    // First message from the client: { role, token?, adminToken? }
     async message(ws, msg: any) {
       const id = String(ws.id)
       if (subs.has(id)) return // one subscription per socket; repeats would only make the server re-query
@@ -151,7 +151,7 @@ export const app = new Elysia({
       if (role === 'admin' && !isAdmin(msg.adminToken)) { ws.send(JSON.stringify({ error: 'Not authorized' })); return } // returning send()'s byte count would echo it
       const ip = ws.data.headers['x-real-ip'] ?? ws.remoteAddress
       if (subs.size >= MAX_SUBS || (ipSockets.get(ip) ?? 0) >= IP_SOCKETS) { ws.close(1013, 'Server busy'); return } // the client retries with backoff
-      const sub: Sub = { send: (s) => ws.send(s), role, token: role === 'hacker' ? token : undefined, projector: role === 'host' && isAdmin(msg.adminToken), ip }
+      const sub: Sub = { send: (s) => ws.send(s), role, token: role === 'hacker' ? token : undefined, ip }
       subs.set(id, sub)
       ipSockets.set(ip, (ipSockets.get(ip) ?? 0) + 1)
       timer ??= setInterval(() => tick().catch(console.error), TICK_MS)

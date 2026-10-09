@@ -27,17 +27,16 @@ test('skip moves behind the next person', async () => {
   expect((await q.loadState('host')).queue.map((e) => e.name)).toEqual(['Bob', 'Ada', 'Cy'])
 })
 
-test('call-next -> ready -> live sets a deadline; only the projector host sees the stream, only when live', async () => {
+test('call-next -> ready -> live sets a deadline; host sees stream only when live', async () => {
   await q.callNext(null)
-  let host = await q.loadState('host', undefined, true)
+  let host = await q.loadState('host')
   expect(host.current).toMatchObject({ name: 'Bob', status: 'called' })
   expect(host.current?.streamId).toBeUndefined()
   await q.hackerReady('tok-bbbbbbbb')
-  host = await q.loadState('host', undefined, true)
+  host = await q.loadState('host')
   expect(host.current?.status).toBe('live')
   expect(host.current?.deadline).toBe(host.current!.startedAt! + 120_000)
   expect(host.current?.streamId).toBeString()
-  expect((await q.loadState('host')).current?.streamId).toBeUndefined() // a presenter's own /host tab
 })
 
 test('quality and projector audio round-trip; bad quality is rejected', async () => {

@@ -20,10 +20,9 @@ There are three pages:
 
 ## Before the night (5 minutes)
 
-1. **On the projector laptop, open `/admin` and enter the passcode.** This step is required. Only a browser that's logged in as an organizer shows people's screens on `/host`. Anyone else who opens `/host` sees names only.
-2. **In a second tab on the same laptop, open `/host`.** Click **Fullscreen**. The click also lets the page play sound.
-3. **On your own laptop, open `/admin`** and log in, if you're running the queue from there.
-4. **Click Start checkpoint.** The projector now shows the join address and the line.
+1. **On the projector laptop, open `/host`.** Click **Fullscreen**. The click also lets the page play sound.
+2. **Open `/admin` and enter the passcode,** on your own laptop or in another tab on the projector laptop.
+3. **Click Start checkpoint.** The projector now shows the join address and the line.
 
 ## Running the queue
 
@@ -65,7 +64,6 @@ The row under each name shows whether that person is **sharing**, **not sharing*
 
 | Problem | Fix |
 |---|---|
-| The projector shows a name but no screen | The projector browser isn't logged in. Open `/admin` on it, log in, then reload `/host` |
 | No sound on the projector | Check that **Projector sound** is On. Click **Fullscreen** on the projector once. Then check that the presenter ticked "Share audio" |
 | Someone shared the wrong window | They click **Change window** on their page. They keep their spot |
 | A presenter isn't ready | Click **Skip** |
@@ -76,6 +74,5 @@ The row under each name shows whether that person is **sharing**, **not sharing*
 
 ## Keeping it safe
 
-- **Use a long random passcode,** 20+ characters. Changing it logs out every organizer and the projector.
-- **The projector laptop is logged in as an organizer.** Don't leave it unlocked and unattended.
+- **Use a long random passcode,** 20+ characters. Changing it logs out every organizer.
 - **Anyone can join the line from a new browser.** There are no accounts yet. Use **Remove** for anyone who shouldn't be there.
