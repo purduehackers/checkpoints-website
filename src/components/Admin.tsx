@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Badge, adminKey, adminToken, api, fmt, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
+import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
 import { QUALITY, type Quality } from '../../shared/types'
 
 const SHARE_LABEL = { sharing: 'sharing', not_shared: 'not sharing', stopped: 'stopped' }
@@ -49,6 +50,9 @@ function Panel({ onDenied }: { onDenied: () => void }) {
   // US-5.3: preview the next person automatically unless the organizer chose someone else.
   const first = state?.queue[0]?.streamId ?? null
   useEffect(() => { if (!pinned) setPreview(first) }, [first, pinned])
+  const stats = useStatsToggle()
+  const statsStream = preview ?? state?.current?.streamId ?? null // nobody previewed: show the presenter
+  const history = useRemoteStats(statsStream, stats.on)
 
   if (!state) return <main className="p-6"><Badge online={online} />Loading…</main>
   const open = state.session?.status === 'open'
@@ -57,6 +61,8 @@ function Panel({ onDenied }: { onDenied: () => void }) {
   return (
     <main className="mx-auto grid max-w-5xl gap-6 p-6 md:grid-cols-[1fr_320px]">
       <Badge online={online} />
+      {stats.menu}
+      {stats.on && <StatsOverlay history={history} title={statsStream && statsStream === c?.streamId ? `On stage: ${c.name}` : 'Previewed stream'} onClose={stats.toggle} />}
       <fieldset disabled={busy} className="min-w-0 space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           {open ? <button className="rounded bg-red-700 px-3 py-2" onClick={() => confirm('End checkpoints?') && act('/session/end')}>End checkpoints</button>
@@ -104,6 +110,7 @@ function Panel({ onDenied }: { onDenied: () => void }) {
       </fieldset>
       <aside>
         <h2 className="mb-2 text-sm text-neutral-400">Preview{pinned && <button className="ml-2 underline" onClick={() => setPinned(false)}>follow next</button>}</h2>
+        <StatsButton onClick={stats.toggle} className="mb-2" />
         {preview ? <ViewFrame streamId={preview} className="aspect-video w-full rounded bg-black" /> : <div className="aspect-video rounded bg-neutral-900" />}
       </aside>
     </main>

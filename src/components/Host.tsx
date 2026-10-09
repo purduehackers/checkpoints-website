@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Badge, adminToken, fmt, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
+import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
 
 const projector = !!adminToken() // only a host logged in as admin gets the live stream (see loadState)
 
@@ -22,10 +23,14 @@ export default function Host() {
   const left = c?.deadline ? c.deadline - now() : null
   const open = state?.session?.status === 'open'
   const audio = state?.session?.audio ?? true
+  const stats = useStatsToggle()
+  const history = useRemoteStats(live ? c!.streamId! : null, stats.on)
 
   return (
     <main className={`relative flex h-screen flex-col ${idle ? 'cursor-none' : ''}`}>
       <Badge online={online} />
+      {stats.menu}
+      {stats.on && <StatsOverlay history={history} title={live ? `Live: ${c!.name}` : 'Nobody live'} onClose={stats.toggle} />}
       {live ? (
         <>
           <div className="flex items-center gap-4 bg-neutral-900 px-6 py-3 text-2xl"><b>{c!.name}</b><span className="text-neutral-400">{c!.project}</span></div>
@@ -49,6 +54,7 @@ export default function Host() {
         </div>
       )}
       <div className="absolute bottom-3 right-3 flex gap-2 opacity-60 hover:opacity-100">
+        <StatsButton onClick={stats.toggle} />
         <button className="rounded bg-neutral-800 px-3 py-1" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>Fullscreen</button>
       </div>
     </main>

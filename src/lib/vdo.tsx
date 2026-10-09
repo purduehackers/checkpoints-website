@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 import VDONinjaSDK from '@vdoninja/sdk'
 import { QUALITY, type Quality, type ShareState } from '../../shared/types'
+import { StatsOverlay, pushSample, statsCollector, type Sample } from './stats'
 
 const AUDIO_KBPS = 128
 const noAudioBrowser = typeof navigator !== 'undefined' && /firefox|^((?!chrome|android).)*safari/i.test(navigator.userAgent)
@@ -18,13 +19,16 @@ const videoConstraints = (q: Quality): MediaTrackConstraints => {
 }
 
 // Hacker's share with its own preview. Unmounting it ends the share.
-export function ShareBox({ streamId, label, live, quality, onState }: { streamId: string; label: string; live: boolean; quality: Quality; onState: (s: ShareState) => void }) {
+export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState }: {
+  streamId: string; label: string; live: boolean; quality: Quality; stats: boolean; onCloseStats: () => void; onState: (s: ShareState) => void
+}) {
   const video = useRef<HTMLVideoElement>(null)
   const sdk = useRef<VDONinjaSDK | null>(null)
   const stream = useRef<MediaStream | null>(null)
   const [state, setState] = useState<ShareState>('not_shared')
   const [error, setError] = useState('')
   const [hasAudio, setHasAudio] = useState(false)
+  const [history, setHistory] = useState<Sample[]>([])
   const report = (s: ShareState) => { setState(s); onState(s) }
   const liveRef = useRef(live)
   liveRef.current = live
@@ -88,6 +92,18 @@ export function ShareBox({ streamId, label, live, quality, onState }: { streamId
     sdk.current?.updatePublisherMedia({ media: { video: { maxBitrate: QUALITY[quality].kbps } } }).catch(() => {})
   }, [quality])
 
+  // Once a second while sharing: measure, and pipe the sample to /host and /admin stats listeners.
+  useEffect(() => {
+    if (state !== 'sharing' || !sdk.current) return
+    const collect = statsCollector(sdk.current)
+    const i = setInterval(async () => {
+      const s = await collect().catch(() => null)
+      setHistory((h) => pushSample(h, s))
+      if (s) try { sdk.current?.sendData({ cpStats: s }) } catch {}
+    }, 1000)
+    return () => { clearInterval(i); setHistory([]) }
+  }, [state])
+
   return (
     <div>
       <div className="relative aspect-video w-full overflow-hidden rounded bg-neutral-900">
@@ -109,6 +125,7 @@ export function ShareBox({ streamId, label, live, quality, onState }: { streamId
         </p>
       )}
       {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+      {stats && <StatsOverlay history={history} title="Your stream" onClose={onCloseStats} />}
     </div>
   )
 }
