@@ -69,7 +69,10 @@ const mutate = (set: string, status: string, token: string, args: any[] = []) =>
 export const leave = (token: string) => mutate(`status = 'left'`, ACTIVE, token)
 export const setShare = (token: string, state: ShareState) => mutate(`share_state = ?`, ACTIVE, token, [state])
 export const end = (token: string) => mutate(`status = 'done'`, `= 'live'`, token)
-export const touch = (token: string) => mutate(`last_seen_at = ?`, ACTIVE, token, [Date.now()])
+// One statement for every connected hacker, instead of one per socket.
+export const touch = (tokens: string[]) => tokens.length
+  ? run(`UPDATE queue_entries SET last_seen_at = ? WHERE client_token IN (${tokens.map(() => '?').join()}) AND ${OPEN} AND status ${ACTIVE}`, [Date.now(), ...tokens])
+  : undefined
 
 // Ready gate: called -> live, and the server fixes the deadline.
 export async function adminReady(entryId: string) {
@@ -138,13 +141,21 @@ export async function expire(now = Date.now()) {
   await run(`UPDATE queue_entries SET status = 'done' WHERE status = 'live' AND deadline <= ?`, [now])
 }
 
+// Two reads cover every client: broadcasts build each socket's view from one snapshot, so DB load
+// doesn't grow with the number of open sockets.
+export async function snapshot() {
+  const s = await latestSession()
+  return { s, rows: s ? await all(`SELECT * FROM queue_entries WHERE session_id = ? ORDER BY sort_key`, [s.id]) : [] }
+}
+export type Snapshot = Awaited<ReturnType<typeof snapshot>>
+
+export const loadState = async (role: Role, token?: string, projector = false) => view(await snapshot(), role, token, projector)
+
 // `projector`: a host page that holds the admin token. Only it gets the live stream, so presenters
 // watching /host on their own laptops don't add encodes or loop their audio back.
-export async function loadState(role: Role, token?: string, projector = false): Promise<State> {
+export function view({ s, rows }: Snapshot, role: Role, token?: string, projector = false): State {
   const serverNow = Date.now()
-  const s = await latestSession()
   if (!s) return { serverNow, session: null, current: null, queue: [] }
-  const rows = await all(`SELECT * FROM queue_entries WHERE session_id = ? ORDER BY sort_key`, [s.id])
   const admin = role === 'admin'
   const cur = rows.find((r) => r.status === 'called' || r.status === 'live')
   const waiting = s.status === 'open' ? rows.filter((r) => r.status === 'waiting') : [] // a closed session has no line

@@ -3,8 +3,8 @@ import { timingSafeEqual } from 'node:crypto'
 import * as q from './queue'
 import { QUALITY, type Role, type State } from '../shared/types'
 
-// ?? Assumes Vercel Pro and ~1s latency. Each tick is a few Turso reads per open socket-holding instance;
-// ?? if that gets costly or 1s feels slow, move cross-instance sync to Redis pub/sub and tick only for expire().
+// ?? Assumes Vercel Pro and ~1s latency. Each tick is a few Turso reads per socket-holding instance, however
+// ?? many sockets it holds; if 1s feels slow, move cross-instance sync to Redis pub/sub and tick only for expire().
 const TICK_MS = 1000
 const TOUCH_EVERY = 20 // ticks between last_seen refreshes
 
@@ -23,24 +23,32 @@ const subs = new Map<string, Sub>()
 let timer: ReturnType<typeof setInterval> | undefined
 let ticks = 0
 
-async function push(sub: Sub, force = false) {
-  const state = await q.loadState(sub.role, sub.token, sub.projector)
+function push(sub: Sub, snap: q.Snapshot, force = false) {
+  const state = q.view(snap, sub.role, sub.token, sub.projector)
   const { serverNow, ...rest } = state
   const key = JSON.stringify(rest) // only send when something changed
   if (force || key !== sub.last) { sub.last = key; sub.send(JSON.stringify(state)) }
 }
-const pushAll = () => Promise.all([...subs.values()].map((s) => push(s).catch(() => {})))
+// At most one broadcast in flight plus one queued, so a burst of requests can't multiply DB reads.
+let pushing = false, again = false
+async function pushAll() {
+  if (pushing) { again = true; return }
+  pushing = true
+  try {
+    do { again = false; const snap = await q.snapshot(); for (const s of subs.values()) push(s, snap) } while (again)
+  } finally { pushing = false }
+}
 
 async function tick() {
   await q.expire()
-  if (++ticks % TOUCH_EVERY === 0) await Promise.all([...subs.values()].filter((s) => s.token).map((s) => q.touch(s.token!)))
+  if (++ticks % TOUCH_EVERY === 0) await q.touch([...subs.values()].flatMap((s) => (s.token ? [s.token] : [])))
   await pushAll()
 }
 
 // Mutations answer with the caller's fresh state, then nudge sockets on this instance.
 const reply = async (role: Role, token?: string): Promise<State> => {
   await q.expire()
-  pushAll()
+  pushAll().catch(console.error)
   return q.loadState(role, token)
 }
 
@@ -98,7 +106,7 @@ export const app = new Elysia({ prefix: '/api' })
       subs.set(String(ws.id), sub)
       timer ??= setInterval(() => tick().catch(console.error), TICK_MS)
       await q.expire() // first message must not show a slot whose deadline passed while nobody was connected
-      await push(sub, true)
+      push(sub, await q.snapshot(), true)
     },
     close(ws) {
       subs.delete(String(ws.id))

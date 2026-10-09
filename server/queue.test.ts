@@ -148,7 +148,7 @@ test('an entry unseen for 3+ minutes shows as disconnected until it is touched',
   Date.now = () => realNow() + 4 * 60_000
   try {
     expect((await host()).queue[0].connected).toBe(false)
-    await q.touch('tok-iiiiiiii')
+    await q.touch(['tok-iiiiiiii'])
     expect((await host()).queue[0].connected).toBe(true)
   } finally { Date.now = realNow }
 })
