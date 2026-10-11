@@ -91,6 +91,10 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
         sdk.current = new VDONinjaSDK({ salt: 'vdo.ninja', label })
         await sdk.current.connect()
       }
+      // stop() above finishes asynchronously; publishing again before it does throws "Already publishing".
+      const sdkNow = sdk.current
+      if (sdkNow.state.publishing) await new Promise((r) => sdkNow.addEventListener('publishingStopped', r, { once: true }))
+      if (stream.current !== s) return // replaced or ended while we waited
       // Bitrate only: given a resolution or frameRate, the SDK calls applyConstraints, which wipes our capture caps.
       await sdk.current.publish(s, { streamID: streamId, media: { video: { maxBitrate: QUALITY[quality].kbps }, audio: { maxBitrate: AUDIO_KBPS } } })
       report('sharing')
