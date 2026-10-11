@@ -57,6 +57,7 @@ The row under each name shows whether that person is **sharing**, **not sharing*
 
 - **Use Chrome or Edge on a laptop.** Phones can join the line but can't share a screen. Firefox and Safari can share a screen but not sound.
 - **For sound, share a Chrome tab and tick "Share audio".** Sound only plays on the projector while they're live.
+- **On Linux, if sharing a screen or window fails or goes black, share a browser tab instead.**
 - **Don't open the projector page on your own laptop.**
 - **Keep the page open.** Refreshing is fine, and they keep their spot.
 
@@ -70,6 +71,7 @@ The row under each name shows whether that person is **sharing**, **not sharing*
 | The stream is choppy | Click **Stats for nerds**, or right-click anywhere on the page. If **limited by** says `bandwidth`, lower **Quality**. If it says `cpu`, have the presenter close other apps or lower **Quality** |
 | A "reconnecting…" badge stays on | Check the network connection. The page reconnects by itself |
 | The line is full of fake names | Click **End checkpoints**, then **Start checkpoint**. This starts a fresh, empty line |
+| A hacker's share fails with an error name in brackets, like `(NotReadableError)` | Have them click **Try basic share**. If that fails too, share a browser tab. Screenshot the error and send it to the devs |
 | "Too many attempts" when logging in | Wait 15 minutes. Check the passcode with whoever deployed the site |
 
 ## Keeping it safe

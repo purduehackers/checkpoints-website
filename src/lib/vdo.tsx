@@ -11,7 +11,22 @@ import { QUALITY, type Quality, type ShareState } from '../../shared/types'
 import { StatsOverlay, pushSample, statsCollector, type Sample } from './stats'
 
 const AUDIO_KBPS = 128
-const noAudioBrowser = typeof navigator !== 'undefined' && /firefox|^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+const noAudioBrowser = /firefox|^((?!chrome|android).)*safari/i.test(ua)
+const linux = /linux/i.test(ua) && !/android/i.test(ua)
+const mac = /macintosh/i.test(ua)
+// getDisplayMedia failures, in plain words. The raw name stays so a screenshot tells us what broke.
+// A plain NotAllowedError is the hacker cancelling; "by system" is the OS refusing.
+function captureError(e: unknown): { msg: string; retry: boolean } {
+  const name = String((e as Error)?.name ?? 'Error')
+  const denied = name === 'NotAllowedError' && /system/i.test(String((e as Error)?.message))
+  const tabHint = linux ? ' Try sharing a browser tab instead, which avoids the system picker.' : ''
+  if (name === 'NotAllowedError' && !denied) return { msg: 'Sharing was cancelled or blocked.', retry: false }
+  const msg = denied && mac ? 'Your Mac blocked screen sharing. Allow your browser in System Settings › Privacy & Security › Screen Recording, then restart it.'
+    : denied || name === 'NotReadableError' || name === 'AbortError' ? "Your computer couldn't start the screen capture." + tabHint
+    : 'Screen share failed.'
+  return { msg: `${msg} (${name})`, retry: true }
+}
 const videoConstraints = (q: Quality): MediaTrackConstraints => {
   const { width, height } = QUALITY[q]
   // crop-and-scale: without it Chrome won't downscale a capture to meet a max width/height
@@ -27,6 +42,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
   const stream = useRef<MediaStream | null>(null)
   const [state, setState] = useState<ShareState>('not_shared')
   const [error, setError] = useState('')
+  const [retry, setRetry] = useState(false)
   const [hasAudio, setHasAudio] = useState(false)
   const [history, setHistory] = useState<Sample[]>([])
   const report = (s: ShareState) => { setState(s); onState(s) }
@@ -41,12 +57,14 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     try { sdk.current?.stopPublishing() } catch {}
   }
 
-  async function share() {
+  // basic: no extra options, for a browser that rejects ours. A button, not an auto-retry: each call needs a fresh click.
+  async function share(basic = false) {
     setError('')
+    setRetry(false)
     let s: MediaStream
     try {
       // systemAudio is a Chromium hint; other browsers ignore it and just give video.
-      s = await navigator.mediaDevices.getDisplayMedia({
+      s = await navigator.mediaDevices.getDisplayMedia(basic ? { video: true, audio: true } : {
         video: videoConstraints(quality),
         // Raw audio: Chrome's voice processing (echo cancel, denoise, auto gain) mangles music and demos.
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
@@ -55,8 +73,10 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
         selfBrowserSurface: 'exclude', // don't offer this tab
         surfaceSwitching: 'include',
       } as DisplayMediaStreamOptions)
-    } catch {
-      return setError('Screen share was cancelled or blocked.')
+    } catch (e) {
+      const { msg, retry } = captureError(e)
+      setRetry(retry && !basic)
+      return setError(msg)
     }
     stop() // "Change window": replace the previous share
     stream.current = s
@@ -109,7 +129,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
       <div className="relative aspect-video w-full overflow-hidden rounded bg-neutral-900">
         <video ref={video} autoPlay muted playsInline className="h-full w-full object-contain" />
         {state !== 'sharing' && (
-          <button onClick={share} className="absolute inset-0 m-auto h-fit w-fit rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-black">
+          <button onClick={() => share()} className="absolute inset-0 m-auto h-fit w-fit rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-black">
             {state === 'stopped' ? 'Share again' : 'Share your screen'}
           </button>
         )}
@@ -120,11 +140,11 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
         <p className="mt-2 text-sm">
           {hasAudio ? <span className="text-green-400">Sharing with sound{live ? '' : ' (plays on the projector once you’re live)'}.</span>
             : noAudioBrowser ? <span className="text-amber-400">This browser can’t share sound. Use Chrome or Edge if your demo needs audio.</span>
-            : <span className="text-neutral-400">No sound. Use “Change window” and tick “Share audio”.</span>}{' '}
-          <button className="underline" onClick={share}>Change window</button>
+            : <span className="text-neutral-400">No sound. To play sound, use “Change window”, share a browser tab and tick “Share audio”.</span>}{' '}
+          <button className="underline" onClick={() => share()}>Change window</button>
         </p>
       )}
-      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-400">{error}{retry && <> <button className="underline" onClick={() => share(true)}>Try basic share</button></>}</p>}
       {stats && <StatsOverlay history={history} title="Your stream" onClose={onCloseStats} />}
     </div>
   )
