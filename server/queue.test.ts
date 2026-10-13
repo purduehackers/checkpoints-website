@@ -130,8 +130,9 @@ test('time limit is validated and applies to the next slot', async () => {
   expect(q.setLimit(99999)).rejects.toThrow('limit')
   await q.setLimit(60)
   await q.callNext(null)
-  await q.adminReady((await host()).current!.entryId)
+  await q.hackerReady('tok-eeeeeeee', true) // Eve isn't sharing but chose to present without a screen
   const c = (await host()).current!
+  expect(c).toMatchObject({ name: 'Eve', status: 'live', shareState: 'not_shared' })
   expect(c.deadline! - c.startedAt!).toBe(60_000)
 })
 

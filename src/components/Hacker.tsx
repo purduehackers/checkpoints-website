@@ -85,6 +85,14 @@ export default function Hacker() {
         ) : (
           <p className="rounded bg-neutral-800 p-3 text-sm">Use a laptop to share your screen. You can still wait here.</p>
         )}
+        {/* Take the stage with no share from this page: talk-only, a phone, or the backup share. */}
+        {/* Shown while waiting too, so people find it early; Ready only works once called. */}
+        {me.status !== 'live' && shareState !== 'sharing' && (
+          <button disabled={me.status !== 'called'} className="w-full rounded-lg border border-green-500 px-4 py-3 font-medium text-green-400 disabled:border-neutral-700 disabled:text-neutral-500"
+            onClick={() => confirm('Start your time without sharing your screen here?') && act('/ready', { noShare: true })}>
+            Present without sharing{me.status !== 'called' && ' (when it’s your turn)'}
+          </button>
+        )}
         {me.status === 'live' && <button className="rounded bg-red-600 px-4 py-2" onClick={() => act('/end')}>End my checkpoint</button>}
         {me.status !== 'live' && <button className="text-sm text-neutral-400 underline" onClick={() => confirm('Leave the queue?') && act('/leave')}>Leave queue</button>}
       </div>

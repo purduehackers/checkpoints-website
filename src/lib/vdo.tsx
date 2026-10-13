@@ -150,9 +150,9 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
       )}
       {error && <p className="mt-2 text-sm text-red-400">{error}{retry && <> <button className="underline" onClick={() => share(true)}>Try basic share</button></>}</p>}
       {/* Fallback: vdo.ninja's own share page, publishing to the same stream the projector watches.
-          Stop and disconnect ours first, so the stream ID is free and two publishers don't fight. The server sees "not sharing", so the organizer presses Ready. */}
-      <a className="mt-2 block text-xs text-neutral-500 underline" href={`https://vdo.ninja/?push=${streamId}&screenshare`} target="_blank" rel="noopener noreferrer"
-        onClick={() => { stop(); sdk.current?.disconnect().catch(() => {}); sdk.current = null; report('not_shared') }}>Having trouble? Use backup share, then ask the organizer to press Ready.</a>
+          Stop and disconnect ours first, so the stream ID is free and two publishers don't fight. The server sees "not sharing", so Ready goes through "Present without sharing". */}
+      <a className="mt-3 block rounded-lg border border-neutral-600 px-4 py-3 text-center font-medium text-neutral-200 hover:bg-neutral-800" href={`https://vdo.ninja/?push=${streamId}&screenshare`} target="_blank" rel="noopener noreferrer"
+        onClick={() => { stop(); sdk.current?.disconnect().catch(() => {}); sdk.current = null; report('not_shared') }}>Having trouble? Use backup share, then press “Present without sharing”.</a>
       {stats && <StatsOverlay history={history} title="Your stream" onClose={onCloseStats} />}
     </div>
   )

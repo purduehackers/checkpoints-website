@@ -92,10 +92,11 @@ export async function adminReady(entryId: string) {
 }
 // The hacker's own Ready needs a running share, so the clock never starts on a blank screen.
 // adminReady stays unconditional: the organizer's override (e.g. someone on the backup share).
-export async function hackerReady(token: string) {
+// noShare: the hacker chose to present without a screen (talk only, phone, backup share).
+export async function hackerReady(token: string, noShare = false) {
   const e = await one(`SELECT id, status, share_state FROM queue_entries WHERE client_token = ? AND ${OPEN}`, [token])
   if (!e) return
-  if (e.status === 'called' && e.share_state !== 'sharing') throw new Error('Share your screen first, then press Ready.')
+  if (e.status === 'called' && e.share_state !== 'sharing' && !noShare) throw new Error('Share your screen first, then press Ready.')
   await adminReady(e.id as string)
 }
 
