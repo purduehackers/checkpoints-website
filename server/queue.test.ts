@@ -32,6 +32,11 @@ test('call-next -> ready -> live sets a deadline; host sees stream only when liv
   let host = await q.loadState('host')
   expect(host.current).toMatchObject({ name: 'Bob', status: 'called' })
   expect(host.current?.streamId).toBeUndefined()
+  // No share yet: the hacker's Ready is refused and the clock doesn't start.
+  await expect(q.hackerReady('tok-bbbbbbbb')).rejects.toThrow('Share your screen first')
+  host = await q.loadState('host')
+  expect(host.current).toMatchObject({ status: 'called', deadline: null })
+  await q.setShare('tok-bbbbbbbb', 'sharing')
   await q.hackerReady('tok-bbbbbbbb')
   host = await q.loadState('host')
   expect(host.current?.status).toBe('live')

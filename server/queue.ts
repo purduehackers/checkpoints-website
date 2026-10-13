@@ -90,9 +90,13 @@ export async function adminReady(entryId: string) {
   const now = Date.now()
   await run(`UPDATE queue_entries SET status = 'live', started_at = ?, deadline = ? WHERE session_id = ? AND status = 'called' AND id = ?`, [now, now + s.limit_sec * 1000, s.id, entryId])
 }
+// The hacker's own Ready needs a running share, so the clock never starts on a blank screen.
+// adminReady stays unconditional: the organizer's override (e.g. someone on the backup share).
 export async function hackerReady(token: string) {
-  const e = await one(`SELECT id FROM queue_entries WHERE client_token = ? AND ${OPEN}`, [token])
-  if (e) await adminReady(e.id as string)
+  const e = await one(`SELECT id, status, share_state FROM queue_entries WHERE client_token = ? AND ${OPEN}`, [token])
+  if (!e) return
+  if (e.status === 'called' && e.share_state !== 'sharing') throw new Error('Share your screen first, then press Ready.')
+  await adminReady(e.id as string)
 }
 
 // `expect` is the entry the caller saw on stage (or null). If the stage changed since, do nothing:

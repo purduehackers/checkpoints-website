@@ -31,8 +31,8 @@ Hackers open the site, enter their name and project, and click **Join queue**. T
 For each presenter:
 
 1. **Check the Preview panel.** It automatically shows whoever is next, so you can catch the wrong window before the room sees it. Click **Preview** on any row to look at someone else. Click **follow next** to go back to following the line.
-2. **Click Call next.** The presenter's page tells them to walk up and shows a big **Ready** button.
-3. **They press Ready at the podium,** or you press **Ready** for them. Their screen goes on the projector with their name and project.
+2. **Click Call next.** The presenter's page tells them it's their turn.
+3. **They share their screen, then press Ready at the podium,** or you press **Ready** for them. Their page won't offer Ready until they're sharing, so the clock never starts on a blank screen. Their screen goes on the projector with their name and project.
 4. **The last 15 seconds show a countdown,** and the slot ends by itself at the time limit. They can also click **End my checkpoint** when they finish early.
 5. **Click Call next** for the next person.
 
@@ -72,6 +72,7 @@ The row under each name shows whether that person is **sharing**, **not sharing*
 | A "reconnecting…" badge stays on | Check the network connection. The page reconnects by itself |
 | The line is full of fake names | Click **End checkpoints**, then **Start checkpoint**. This starts a fresh, empty line |
 | A hacker's share fails with an error name in brackets, like `(NotReadableError)` | Have them click **Try basic share**. If that fails too, share a browser tab. Screenshot the error and send it to the devs |
+| A share still won't work | Have them click **Use backup share** at the bottom of their page. It opens vdo.ninja's own screen share. Then press **Ready** for them. Last resort: plug their laptop into the projector over HDMI |
 | "Too many attempts" when logging in | Wait 15 minutes. Check the passcode with whoever deployed the site |
 
 ## Keeping it safe

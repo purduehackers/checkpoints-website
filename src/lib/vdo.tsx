@@ -139,7 +139,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
         )}
       </div>
       {state === 'stopped' && <p className="mt-2 rounded bg-red-900 p-2 text-sm">Your share stopped. Click “Share again”.</p>}
-      {state === 'not_shared' && <p className="mt-2 text-sm text-neutral-400">Pick a screen, window or tab and tick “Share audio” to play sound on the projector. Only the organizer sees it until you go live.</p>}
+      {state === 'not_shared' && <p className="mt-2 text-sm text-neutral-400">Pick a screen, window or tab and tick “Share audio” to play sound on the projector. Only the organizer sees it until you go live.{linux && ' On Linux, a browser tab is the most reliable choice.'}</p>}
       {state === 'sharing' && (
         <p className="mt-2 text-sm">
           {hasAudio ? <span className="text-green-400">Sharing with sound{live ? '' : ' (plays on the projector once you’re live)'}.</span>
@@ -149,6 +149,10 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
         </p>
       )}
       {error && <p className="mt-2 text-sm text-red-400">{error}{retry && <> <button className="underline" onClick={() => share(true)}>Try basic share</button></>}</p>}
+      {/* Fallback: vdo.ninja's own share page, publishing to the same stream the projector watches.
+          Stop and disconnect ours first, so the stream ID is free and two publishers don't fight. The server sees "not sharing", so the organizer presses Ready. */}
+      <a className="mt-2 block text-xs text-neutral-500 underline" href={`https://vdo.ninja/?push=${streamId}&screenshare`} target="_blank" rel="noopener noreferrer"
+        onClick={() => { stop(); sdk.current?.disconnect().catch(() => {}); sdk.current = null; report('not_shared') }}>Having trouble? Use backup share, then ask the organizer to press Ready.</a>
       {stats && <StatsOverlay history={history} title="Your stream" onClose={onCloseStats} />}
     </div>
   )
