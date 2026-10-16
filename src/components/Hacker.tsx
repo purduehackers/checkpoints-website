@@ -6,7 +6,21 @@ import type { ShareState } from '../../shared/types'
 
 const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`
 const span = (sec: number) => sec % 60 ? `${sec} seconds` : `${sec / 60} minute${sec === 60 ? '' : 's'}`
-const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia
+// Phones can't screen share from a browser (Android Chrome may still expose getDisplayMedia, so check the device too).
+// iPadOS reports itself as a Mac; touch points give it away.
+const phone = typeof navigator !== 'undefined' &&
+  (/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent) || (/macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1))
+const canShare = !phone && typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia
+
+function PhoneNote() {
+  return (
+    <div className="space-y-3 rounded-lg bg-neutral-800 p-4 text-sm">
+      <p><b>Your phone is great. It’s just a very small projector.</b> Checkpoints works best on a laptop, where you can share your screen. You can still join the line here and present without sharing.</p>
+      <a href="https://www.amazon.com/s?k=computer+monitor" target="_blank" rel="noopener noreferrer"
+        className="inline-block rounded-lg bg-amber-500 px-4 py-2 font-semibold text-black">Buy a screen</a>
+    </div>
+  )
+}
 
 export default function Hacker() {
   const { state, online, apply, now } = useLive('hacker')
@@ -40,6 +54,17 @@ export default function Hacker() {
     document.title = me?.status === 'called' ? "It's your turn! · Checkpoints" : me?.status === 'waiting' && me.position === 1 ? "You're up next! · Checkpoints" : 'Checkpoints'
   }, [key])
 
+  // Closing the tab takes you out of the line. beforeunload only asks (it also fires on refresh, which is fine);
+  // pagehide tells the server, which waits 15s so a refresh (new socket) or a Wi-Fi blip (no pagehide) keeps the spot.
+  useEffect(() => {
+    if (!active) return
+    const ask = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    const bye = () => navigator.sendBeacon?.('/api/bye', new Blob([JSON.stringify({ token })], { type: 'application/json' }))
+    addEventListener('beforeunload', ask)
+    addEventListener('pagehide', bye)
+    return () => { removeEventListener('beforeunload', ask); removeEventListener('pagehide', bye) }
+  }, [active, token])
+
   if (!state) return <Shell><Badge online={online} /><p>Loading…</p></Shell>
 
   const msTotal = cur?.deadline ? cur.deadline - now() : null
@@ -57,6 +82,7 @@ export default function Hacker() {
         act('/join', form)
       }}>
         <h1 className="text-2xl font-semibold">Join the checkpoint</h1>
+        {phone && <PhoneNote />}
         <ol className="list-decimal space-y-1 rounded bg-neutral-800 p-3 pl-8 text-sm text-neutral-300">
           <li>Join the line.</li>
           <li>Share your screen while you wait. Only the organizer sees it until you're live. (Your browser will ask which screen, window or tab; that's the only permission.)</li>
@@ -90,8 +116,8 @@ export default function Hacker() {
         )}
         {canShare ? (
           <ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} />
-        ) : (
-          <p className="rounded bg-neutral-800 p-3 text-sm">Use a laptop to share your screen. You can still wait here.</p>
+        ) : phone ? <PhoneNote /> : (
+          <p className="rounded bg-neutral-800 p-3 text-sm">This browser can’t share a screen. Use Chrome or Edge on a laptop. You can still wait here.</p>
         )}
         {/* Take the stage with no share from this page: talk-only, a phone, or the backup share. */}
         {/* Shown while waiting too, so people find it early; Ready only works once called. */}

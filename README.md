@@ -59,7 +59,7 @@ The row under each name shows whether that person is **sharing**, **not sharing*
 - **For sound, share a Chrome tab and tick "Share audio".** Sound only plays on the projector while they're live.
 - **On Linux, if sharing a screen or window fails or goes black, share a browser tab instead.**
 - **Don't open the projector page on your own laptop.**
-- **Keep the page open.** Refreshing is fine, and they keep their spot.
+- **Keep the page open.** Refreshing is fine. Closing the tab takes you out of the line (the browser asks first).
 
 ## When something goes wrong
 

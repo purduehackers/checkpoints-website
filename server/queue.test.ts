@@ -293,3 +293,60 @@ test('concurrent finishes never leave two called/live entries', async () => {
   expect(await calledOrLive()).toBe(1)
   expect((await cur())!.name).not.toBe('A')
 })
+
+// ---- closed tab (bye) ----
+const status = async (n: string) => (await q.loadState('hacker', `aa-${n}-xxxx`)).me?.status
+
+test('bye then grace -> left; before grace nothing happens; waiting leaving does not advance', async () => {
+  await fresh('A', 'B', 'C')
+  await q.callNext(null) // A called
+  const t = Date.now()
+  await q.bye('aa-C-xxxx', t)
+  await q.sweepByes(t + 14_999)
+  expect(await status('C')).toBe('waiting')
+  await q.sweepByes(t + 15_000)
+  expect(await status('C')).toBe('left')
+  expect(await cur()).toMatchObject({ name: 'A', status: 'called' })
+  expect(await names()).toEqual(['B'])
+})
+
+test('back within the grace keeps the spot', async () => {
+  await fresh('A', 'B')
+  const t = Date.now()
+  await q.bye('aa-B-xxxx', t)
+  await q.back('aa-B-xxxx')
+  await q.sweepByes(t + 60_000)
+  expect(await status('B')).toBe('waiting')
+  await q.bye('aa-B-xxxx', t)
+  await q.touch(['aa-B-xxxx']) // any sign of life also cancels it
+  await q.sweepByes(t + 60_000)
+  expect(await status('B')).toBe('waiting')
+})
+
+test('a called or live presenter who closes the tab frees the stage for the next person', async () => {
+  await fresh('A', 'B', 'C')
+  await q.callNext(null)
+  const t = Date.now()
+  await q.bye('aa-A-xxxx', t)
+  await q.sweepByes(t + 15_000)
+  expect(await status('A')).toBe('left')
+  expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
+  await live('aa-B-xxxx')
+  await q.bye('aa-B-xxxx', t)
+  await q.expire(t + 15_000) // the tick path
+  expect(await status('B')).toBe('left')
+  expect(await cur()).toMatchObject({ name: 'C', status: 'called' })
+  expect(await calledOrLive()).toBe(1)
+})
+
+test('bye for an unknown token or a finished entry is a no-op, and bye_at is not exposed', async () => {
+  await fresh('A')
+  await q.bye('no-such-token')
+  await q.bye('aa-A-xxxx')
+  await q.sweepByes(Date.now() + 60_000)
+  expect(await status('A')).toBe('left')
+  await q.join('aa-A-xxxx', 'A', 'P') // rejoining clears the old bye
+  await q.sweepByes(Date.now() + 60_000)
+  expect(await status('A')).toBe('waiting')
+  expect(JSON.stringify(await q.loadState('hacker', 'aa-A-xxxx'))).not.toContain('bye')
+})

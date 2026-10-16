@@ -65,8 +65,11 @@ async function pushAll() {
 }
 
 async function tick() {
+  const tokens = [...subs.values()].flatMap((s) => (s.token ? [s.token] : []))
+  // Before the sweep: a hacker with another tab still open on any instance keeps their spot when one tab closes.
+  await q.back(...tokens)
   await q.expire()
-  if (++ticks % TOUCH_EVERY === 0) await q.touch([...subs.values()].flatMap((s) => (s.token ? [s.token] : [])))
+  if (++ticks % TOUCH_EVERY === 0) await q.touch(tokens)
   await pushAll()
 }
 
@@ -105,6 +108,8 @@ export const app = new Elysia({
   // hacker
   .post('/join', async ({ body }) => (await q.join(body.token, body.name, body.project), reply('hacker', body.token)),
     { body: t.Object({ token: tok, name: t.String({ maxLength: 200 }), project: t.String({ maxLength: 200 }) }) })
+  // sendBeacon from pagehide; the answer is never read. The 15s grace in expire() does the actual removal.
+  .post('/bye', async ({ body }) => (await q.bye(body.token), { ok: true }), { body: hackerBody })
   .post('/leave', async ({ body }) => (await q.leave(body.token), reply('hacker', body.token)), { body: hackerBody })
   .post('/ready', async ({ body }) => (await q.hackerReady(body.token, body.noShare), reply('hacker', body.token)), { body: t.Object({ token: tok, noShare: t.Optional(t.Boolean()) }) })
   .post('/end', async ({ body }) => (await q.end(body.token), reply('hacker', body.token)), { body: hackerBody })
@@ -155,6 +160,7 @@ export const app = new Elysia({
       subs.set(id, sub)
       ipSockets.set(ip, (ipSockets.get(ip) ?? 0) + 1)
       timer ??= setInterval(() => tick().catch(console.error), TICK_MS)
+      if (sub.token) await q.back(sub.token) // a refresh or reconnect cancels a pending bye
       await q.expire() // first message must not show a slot whose deadline passed while nobody was connected
       push(sub, await q.snapshot(), true)
     },
