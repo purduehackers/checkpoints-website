@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Role, State } from '../../shared/types'
 
 export const tokenKey = 'cp-token'
+// randomUUID needs Safari 15.4+ and a secure context; getRandomValues works everywhere.
+const uuid = () => crypto.randomUUID?.() ?? Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')
 export const hackerToken = () => {
   try {
     let t = localStorage.getItem(tokenKey)
-    if (!t) localStorage.setItem(tokenKey, (t = crypto.randomUUID()))
+    if (!t) localStorage.setItem(tokenKey, (t = uuid()))
     return t
-  } catch { return (window as any).__cpTok ??= crypto.randomUUID() }
+  } catch { return (window as any).__cpTok ??= uuid() }
 }
 export const adminKey = 'cp-admin'
 export const adminToken = () => { try { return localStorage.getItem(adminKey) ?? '' } catch { return '' } }

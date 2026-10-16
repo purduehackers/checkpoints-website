@@ -5,6 +5,7 @@ import { StatsButton, useStatsToggle } from '../lib/stats'
 import type { ShareState } from '../../shared/types'
 
 const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`
+const span = (sec: number) => sec % 60 ? `${sec} seconds` : `${sec / 60} minute${sec === 60 ? '' : 's'}`
 const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia
 
 export default function Hacker() {
@@ -17,8 +18,10 @@ export default function Hacker() {
   useTick()
 
   const token = hackerToken()
+  // One request at a time, in click order: a late share-state must not land after Ready, nor an old reply overwrite a newer one.
+  const chain = useRef(Promise.resolve())
   const act = (path: string, body: object = {}) =>
-    api(path, { token, ...body }).then(apply).catch((e) => setError(e.message))
+    (chain.current = chain.current.then(() => api(path, { token, ...body }).then(apply).catch((e) => setError(e.message))))
 
   const me = state?.me
   const cur = state?.current?.entryId === me?.entryId ? state?.current : null
@@ -31,14 +34,8 @@ export default function Hacker() {
   }, [shareState, active])
   useEffect(() => { if (!active) { reported.current = 'not_shared'; setShareState('not_shared') } }, [active])
 
-  // US-4.1 / 4.2 alerts
+  // US-4.1 / 4.2 alerts: tab title + the "up next" banner. No browser notifications: the prompt confused people at join.
   const key = me ? `${me.status}:${me.position}` : ''
-  useEffect(() => {
-    const alert = me?.status === 'called' ? ["It's your turn!", 'Walk up and press Ready.'] as const
-      : me?.status === 'waiting' && me.position === 1 ? ["You're up next!", 'Get your screen ready.'] as const : null
-    if (!alert) return
-    try { if (document.hidden && Notification.permission === 'granted') new Notification(alert[0], { body: alert[1] }) } catch {}
-  }, [key])
   useEffect(() => {
     document.title = me?.status === 'called' ? "It's your turn! · Checkpoints" : me?.status === 'waiting' && me.position === 1 ? "You're up next! · Checkpoints" : 'Checkpoints'
   }, [key])
@@ -57,10 +54,14 @@ export default function Hacker() {
     body = (
       <form className="space-y-3" onSubmit={(e) => {
         e.preventDefault(); setError('')
-        try { Notification.requestPermission() } catch {}
         act('/join', form)
       }}>
         <h1 className="text-2xl font-semibold">Join the checkpoint</h1>
+        <ol className="list-decimal space-y-1 rounded bg-neutral-800 p-3 pl-8 text-sm text-neutral-300">
+          <li>Join the line.</li>
+          <li>Share your screen while you wait. Only the organizer sees it until you're live. (Your browser will ask which screen, window or tab; that's the only permission.)</li>
+          <li>When it's your turn, walk up and press Start presenting. Your time ({span(state.session!.limitSec)}) starts then.</li>
+        </ol>
         <input required maxLength={60} placeholder="Your name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full rounded bg-neutral-800 p-3" />
         <input required maxLength={80} placeholder="Project name" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} className="w-full rounded bg-neutral-800 p-3" />
         <button className="w-full rounded bg-amber-500 p-3 font-semibold text-black">Join queue</button>
@@ -75,6 +76,12 @@ export default function Hacker() {
             <p className={me.position === 1 ? '' : 'text-neutral-400'}>{me.position === 1 ? 'Get your screen ready.' : `${me.position - 1} ${me.position === 2 ? 'person' : 'people'} ahead of you`}</p>
           </div>
         )}
+        {me.status === 'called' && shareState !== 'sharing' && (
+          <div className="rounded-lg bg-green-500 p-4 text-black">
+            <h1 className="text-3xl font-semibold">It's your turn!</h1>
+            <p>Share your screen below, then press Start presenting.</p>
+          </div>
+        )}
         {me.status === 'live' && (
           <div>
             <h1 className="text-3xl font-semibold">You're live</h1>
@@ -85,6 +92,14 @@ export default function Hacker() {
           <ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} />
         ) : (
           <p className="rounded bg-neutral-800 p-3 text-sm">Use a laptop to share your screen. You can still wait here.</p>
+        )}
+        {/* Take the stage with no share from this page: talk-only, a phone, or the backup share. */}
+        {/* Shown while waiting too, so people find it early; Ready only works once called. */}
+        {me.status !== 'live' && shareState !== 'sharing' && (
+          <button disabled={me.status !== 'called'} className="w-full rounded-lg border border-green-500 px-4 py-3 font-medium text-green-400 disabled:border-neutral-700 disabled:text-neutral-500"
+            onClick={() => confirm('Start your time without sharing your screen here?') && act('/ready', { noShare: true })}>
+            Present without sharing{me.status !== 'called' && ' (when it’s your turn)'}
+          </button>
         )}
         {me.status === 'live' && <button className="rounded bg-red-600 px-4 py-2" onClick={() => act('/end')}>End my checkpoint</button>}
         {me.status !== 'live' && <button className="text-sm text-neutral-400 underline" onClick={() => confirm('Leave the queue?') && act('/leave')}>Leave queue</button>}
@@ -98,13 +113,14 @@ export default function Hacker() {
       {stats.menu}
       {active && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
       {countdown && <div className="fixed left-3 top-3 z-40 rounded bg-red-600 px-3 py-1 text-2xl font-bold tabular-nums">{fmt(msTotal!)}</div>}
-      {me?.status === 'waiting' && me.position === 1 && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-amber-400/25" />}
       {body}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
-      {me?.status === 'called' && (
+      {/* Ready only once sharing: pressing it starts the clock, so it must not hide the Share button. */}
+      {me?.status === 'called' && shareState === 'sharing' && (
         <div className="fixed inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black/95">
           <p className="text-2xl">Walk to the podium</p>
-          <button className="rounded-lg bg-green-500 px-12 py-6 text-4xl font-bold text-black" onClick={() => act('/ready')}>Ready</button>
+          <button className="rounded-lg bg-green-500 px-12 py-6 text-4xl font-bold text-black" onClick={() => act('/ready')}>Start presenting</button>
+          {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
       )}
     </Shell>

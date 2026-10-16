@@ -3,7 +3,11 @@ import { Badge, fmt, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
 
+// The projector may be opened on an old/preview URL, so the shown address can be pinned (build-time var).
+const pinnedHost = import.meta.env.PUBLIC_JOIN_HOST
+
 export default function Host() {
+  const joinHost = pinnedHost || location.host
   const { state, online, now } = useLive('host')
   const [idle, setIdle] = useState(false)
   useTick()
@@ -32,8 +36,8 @@ export default function Host() {
       {live ? (
         <>
           <div className="flex items-center gap-4 bg-neutral-900 px-6 py-3 text-2xl"><b>{c!.name}</b><span className="text-neutral-400">{c!.project}</span>
-            {open && <span className="ml-auto text-xl">Join at <b className="text-amber-400">{location.host}</b></span>}</div>
-          <ViewFrame key={String(audio)} streamId={c!.streamId!} className="w-full grow bg-black" audio={audio} />
+            {open && <span className="ml-auto text-xl">Join at <b className="text-amber-400">{joinHost}</b></span>}</div>
+          <ViewFrame streamId={c!.streamId!} className="w-full grow bg-black" muted={!audio} />
           {left !== null && left <= 15_000 && <div className="absolute left-4 top-20 rounded bg-red-600 px-4 py-2 text-5xl font-bold tabular-nums">{fmt(left)}</div>}
         </>
       ) : (
@@ -41,7 +45,7 @@ export default function Host() {
           <h1 className="text-5xl font-bold">Purdue Hackers · Checkpoints</h1>
           {state && !state.session && <p className="text-2xl text-neutral-400">Waiting for an organizer to start</p>}
           {state?.session && !open && <p className="text-3xl">Checkpoints have ended. Thanks for coming!</p>}
-          {open && <p className="text-4xl">Join at <b className="text-amber-400">{location.host}</b></p>}
+          {open && <p className="text-4xl">Join at <b className="text-amber-400">{joinHost}</b></p>}
           {c && <p className="text-3xl">Up now: <b>{c.name}</b> · {c.project} <span className="text-neutral-400">({c.status === 'live' ? 'live' : 'getting ready'})</span></p>}
           {open && !c && state!.queue[0] && <p className="text-2xl">Up next: <b>{state!.queue[0].name}</b></p>}
           {open && (

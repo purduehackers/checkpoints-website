@@ -100,15 +100,15 @@ Identity for the MVP: a hacker is a random token stored in their browser (one qu
 
 ### ✅ US-4.1 Up-next alert (MVP, M)
 *As a hacker, I'm alerted when I'm next, so I don't miss my turn while I'm heads-down.*
-- When I become #1 in line, my page shows a browser notification, and highlights itself (a full-page color pulse).
-- Notification permission is requested at join time, after a click, so browsers allow it.
+- When I become #1 in line, my page highlights itself (a full-page color pulse).
+- No browser notifications: the permission prompt at join confused people. A Discord ping may replace them later.
 - The tab title changes, for example "You're up next! · Checkpoints".
 
 ### ✅ US-4.2 Ready screen (MVP, M)
 *As a hacker, when the organizer calls me, my page dims and shows a big Ready button, so I can walk to the podium before my screen goes up.*
-- On "called", the page shows a full-screen dimmed overlay with a large **Ready** button.
+- On "called", if I'm not sharing yet, my page asks me to share first. Once I'm sharing, it shows a full-screen dimmed overlay with a large **Ready** button. The server refuses my Ready until I'm sharing, so the clock never runs before my screen is up.
 - The projector shows "Up now: <name> · <project>" with a "getting ready" state. My screen is not on the projector yet.
-- The organizer can also press Ready for me (for example from the podium laptop).
+- The organizer can also press Ready for me (for example from the podium laptop, or when I'm using the backup share). This works even if I'm not sharing.
 
 ### ✅ US-4.3 Go live (MVP, M)
 *As the projector, I show the presenter's screen with their name and project above it once they press Ready.*

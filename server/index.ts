@@ -106,7 +106,7 @@ export const app = new Elysia({
   .post('/join', async ({ body }) => (await q.join(body.token, body.name, body.project), reply('hacker', body.token)),
     { body: t.Object({ token: tok, name: t.String({ maxLength: 200 }), project: t.String({ maxLength: 200 }) }) })
   .post('/leave', async ({ body }) => (await q.leave(body.token), reply('hacker', body.token)), { body: hackerBody })
-  .post('/ready', async ({ body }) => (await q.hackerReady(body.token), reply('hacker', body.token)), { body: hackerBody })
+  .post('/ready', async ({ body }) => (await q.hackerReady(body.token, body.noShare), reply('hacker', body.token)), { body: t.Object({ token: tok, noShare: t.Optional(t.Boolean()) }) })
   .post('/end', async ({ body }) => (await q.end(body.token), reply('hacker', body.token)), { body: hackerBody })
   .post('/share-state', async ({ body }) => (await q.setShare(body.token, body.state), reply('hacker', body.token)),
     { body: t.Object({ token: tok, state: t.Union([t.Literal('not_shared'), t.Literal('sharing'), t.Literal('stopped')]) }) })
