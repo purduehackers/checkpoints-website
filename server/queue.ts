@@ -3,6 +3,7 @@ import { db, ready } from './db'
 import { QUALITY, type Current, type QueueItem, type Role, type ShareState, type State } from '../shared/types'
 
 const DISCONNECTED_MS = 3 * 60_000 // US-2.4 grace period
+const BYE_GRACE_MS = 15_000 // closed tab -> out of the line; long enough for a refresh to reconnect
 // Join order is a counter, not a timestamp: two joins in the same millisecond still get distinct keys.
 const NEXT_KEY = `(SELECT COALESCE(MAX(sort_key), 0) + 1 FROM queue_entries WHERE session_id = ?)`
 type Row = Record<string, any>
@@ -18,14 +19,21 @@ const changes = async (sql: string, args: any[] = []) => {
   return (await db.execute({ sql, args })).rowsAffected
 }
 
-// Auto-advance: when a slot finishes, call the first waiting entry. One atomic statement, so two instances
-// or a double-click can never leave two entries called/live in a session.
-const advance = (sid: string) => run(
-  `UPDATE queue_entries SET status = 'called', called_at = ? WHERE id = (
-     SELECT id FROM queue_entries WHERE session_id = ? AND status = 'waiting' ORDER BY sort_key LIMIT 1)
-   AND NOT EXISTS (SELECT 1 FROM queue_entries WHERE session_id = ? AND status IN ('called','live'))`,
-  [Date.now(), sid, sid],
-)
+// Invariant: stage empty + someone waiting => the first waiting entry is called. Enforced after join and at
+// the end of every expire() (each tick and each reply), so it also heals slots finished by older code.
+// One atomic statement, so two instances or a double-click can never leave two entries called/live.
+const advance = async (sid: string) => {
+  try {
+    await run(
+      `UPDATE queue_entries SET status = 'called', called_at = ? WHERE id = (
+         SELECT id FROM queue_entries WHERE session_id = ? AND status = 'waiting' ORDER BY sort_key LIMIT 1)
+       AND NOT EXISTS (SELECT 1 FROM queue_entries WHERE session_id = ? AND status IN ('called','live'))`,
+      [Date.now(), sid, sid],
+    )
+  } catch (e: any) {
+    if (!/UNIQUE|constraint/i.test(String(e?.message))) throw e // one_active_entry: another writer won the race
+  }
+}
 const advanceOpen = async () => {
   const s = await openSession()
   if (s) await advance(s.id)
@@ -72,7 +80,9 @@ export async function join(token: string, name: string, project: string) {
   if (!s) throw new Error('No checkpoint is running')
   const now = Date.now()
   const mine = await one(`SELECT * FROM queue_entries WHERE session_id = ? AND client_token = ?`, [s.id, token])
-  if (!mine || mine.status === 'left') {
+  // Left or already presented: joining again goes to the back of the line. Removed stays out.
+  const again = mine?.status === 'left' || mine?.status === 'done'
+  if (!mine || again) {
     const { n } = (await one(`SELECT COUNT(*) AS n FROM queue_entries WHERE session_id = ? AND status = 'waiting'`, [s.id]))!
     if (n >= MAX_WAITING) throw new Error('The queue is full')
   }
@@ -83,15 +93,16 @@ export async function join(token: string, name: string, project: string) {
        ON CONFLICT (session_id, client_token) DO NOTHING`, // a double-submitted Join must not 500
       [crypto.randomUUID(), s.id, token, name, project, 'ck' + crypto.randomUUID().replaceAll('-', '').slice(0, 14), s.id, now, now],
     )
-  } else if (mine.status === 'left') {
-    await run(`UPDATE queue_entries SET status = 'waiting', name = ?, project = ?, share_state = 'not_shared', sort_key = ${NEXT_KEY}, joined_at = ?, last_seen_at = ? WHERE id = ?`, [name, project, s.id, now, now, mine.id])
-  } // else: already has a spot (or finished / was removed): joining again returns it unchanged
+  } else if (again) {
+    await run(`UPDATE queue_entries SET status = 'waiting', bye_at = NULL, name = ?, project = ?, share_state = 'not_shared', started_at = NULL, deadline = NULL, called_at = NULL, sort_key = ${NEXT_KEY}, joined_at = ?, last_seen_at = ? WHERE id = ? AND status IN ('left','done')`, [name, project, s.id, now, now, mine.id])
+  } // else: already has a spot (or was removed): joining again returns it unchanged
+  await advance(s.id) // empty stage: the joiner is up right away
 }
 
 const ACTIVE = `IN ('waiting','called','live')`
 const OPEN = `session_id IN (SELECT id FROM sessions WHERE status = 'open')`
 const mutate = (set: string, status: string, token: string, args: any[] = []) =>
-  run(`UPDATE queue_entries SET ${set} WHERE client_token = ? AND ${OPEN} AND status ${status}`, [...args, token])
+  run(`UPDATE queue_entries SET ${set}, bye_at = NULL WHERE client_token = ? AND ${OPEN} AND status ${status}`, [...args, token])
 
 // Finishing the called/live entry advances the line; a waiting entry leaving does not.
 export async function leave(token: string) {
@@ -106,8 +117,22 @@ export async function end(token: string) {
 }
 // One statement for every connected hacker, instead of one per socket.
 export const touch = (tokens: string[]) => tokens.length
-  ? run(`UPDATE queue_entries SET last_seen_at = ? WHERE client_token IN (${tokens.map(() => '?').join()}) AND ${OPEN} AND status ${ACTIVE}`, [Date.now(), ...tokens])
+  ? run(`UPDATE queue_entries SET last_seen_at = ?, bye_at = NULL WHERE client_token IN (${tokens.map(() => '?').join()}) AND ${OPEN} AND status ${ACTIVE}`, [Date.now(), ...tokens])
   : undefined
+
+// Tab closed (pagehide beacon). Not removed yet: a refresh or a new socket within BYE_GRACE_MS cancels it (back).
+export const bye = (token: string, now = Date.now()) =>
+  run(`UPDATE queue_entries SET bye_at = ? WHERE client_token = ? AND ${OPEN} AND status ${ACTIVE}`, [now, token])
+export const back = (...tokens: string[]) => tokens.length
+  ? run(`UPDATE queue_entries SET bye_at = NULL WHERE client_token IN (${tokens.map(() => '?').join()}) AND bye_at IS NOT NULL AND ${OPEN}`, tokens)
+  : undefined
+// Grace over: they really left. Called/live advance the line, waiting just drop out.
+export async function sweepByes(now = Date.now()) {
+  const cutoff = now - BYE_GRACE_MS
+  const n = await changes(`UPDATE queue_entries SET status = 'left' WHERE bye_at <= ? AND ${OPEN} AND status IN ('called','live')`, [cutoff])
+  await run(`UPDATE queue_entries SET status = 'left' WHERE bye_at <= ? AND ${OPEN} AND status = 'waiting'`, [cutoff])
+  if (n) await advanceOpen()
+}
 
 // Ready gate: called -> live, and the server fixes the deadline.
 export async function adminReady(entryId: string) {
@@ -158,16 +183,24 @@ export async function remove(id: string) {
   await run(`UPDATE queue_entries SET status = 'removed' WHERE id = ? AND status = 'waiting'`, [id])
 }
 
-// Move behind the next waiting person.
+// Move behind the next waiting person. A called (not yet live) entry goes back to waiting, then the next is called.
 export async function skip(id: string) {
   const s = await openSession()
   if (!s) return
   const w = await all(`SELECT id, sort_key FROM queue_entries WHERE session_id = ? AND status = 'waiting' ORDER BY sort_key`, [s.id])
+  const key = (next: number, after?: number) => (after === undefined ? next + 1 : (next + after) / 2)
   const i = w.findIndex((r) => r.id === id)
-  if (i < 0 || i === w.length - 1) return
-  const next = w[i + 1].sort_key as number
-  const after = w[i + 2]?.sort_key as number | undefined
-  await run(`UPDATE queue_entries SET sort_key = ? WHERE id = ?`, [after === undefined ? next + 1 : (next + after) / 2, id])
+  if (i < 0) {
+    if (!w.length) return // nobody to swap with
+    const n = await changes(
+      `UPDATE queue_entries SET status = 'waiting', called_at = NULL, sort_key = ? WHERE id = ? AND session_id = ? AND status = 'called'`,
+      [key(w[0].sort_key as number, w[1]?.sort_key as number | undefined), id, s.id],
+    )
+    if (n) await advance(s.id)
+    return
+  }
+  if (i === w.length - 1) return
+  await run(`UPDATE queue_entries SET sort_key = ? WHERE id = ?`, [key(w[i + 1].sort_key as number, w[i + 2]?.sort_key as number | undefined), id])
 }
 
 // US-5.5: swap places with the neighbouring waiting entry (dir -1 = up, 1 = down).
@@ -184,6 +217,8 @@ export async function move(id: string, dir: -1 | 1) {
 export async function expire(now = Date.now()) {
   const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE status = 'live' AND deadline <= ?`, [now])
   if (n) await advanceOpen()
+  await sweepByes(now)
+  await advanceOpen() // the invariant, last: covers every path above and slots finished elsewhere
 }
 
 // Two reads cover every client: broadcasts build each socket's view from one snapshot, so DB load

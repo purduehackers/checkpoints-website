@@ -7,13 +7,14 @@ beforeAll(() => q.startSession(120))
 
 const pos = async (t: string) => (await q.loadState('hacker', t)).me?.position
 
-test('join is idempotent per token and ordered', async () => {
+test('join is idempotent per token and ordered; the first joiner is called at once', async () => {
   await q.join('tok-aaaaaaaa', 'Ada', 'Engine')
   await q.join('tok-bbbbbbbb', 'Bob', 'Loom')
   await q.join('tok-cccccccc', 'Cy', 'Kite')
   await q.join('tok-aaaaaaaa', 'Ada', 'Engine')
-  expect((await q.loadState('host')).queue.map((e) => e.name)).toEqual(['Ada', 'Bob', 'Cy'])
-  expect(await pos('tok-cccccccc')).toBe(3)
+  expect((await q.loadState('host')).current).toMatchObject({ name: 'Ada', status: 'called' })
+  expect((await q.loadState('host')).queue.map((e) => e.name)).toEqual(['Bob', 'Cy'])
+  expect(await pos('tok-cccccccc')).toBe(2)
 })
 
 test('stream ids only reach admin and (own entry) hacker', async () => {
@@ -24,20 +25,19 @@ test('stream ids only reach admin and (own entry) hacker', async () => {
 
 test('skip moves behind the next person', async () => {
   await q.skip((await q.loadState('host')).queue[0].id)
-  expect((await q.loadState('host')).queue.map((e) => e.name)).toEqual(['Bob', 'Ada', 'Cy'])
+  expect((await q.loadState('host')).queue.map((e) => e.name)).toEqual(['Cy', 'Bob'])
 })
 
-test('call-next -> ready -> live sets a deadline; host sees stream only when live', async () => {
-  await q.callNext(null)
+test('called -> ready -> live sets a deadline; host sees stream only when live', async () => {
   let host = await q.loadState('host')
-  expect(host.current).toMatchObject({ name: 'Bob', status: 'called' })
+  expect(host.current).toMatchObject({ name: 'Ada', status: 'called' })
   expect(host.current?.streamId).toBeUndefined()
   // No share yet: the hacker's Ready is refused and the clock doesn't start.
-  await expect(q.hackerReady('tok-bbbbbbbb')).rejects.toThrow('Share your screen first')
+  await expect(q.hackerReady('tok-aaaaaaaa')).rejects.toThrow('Share your screen first')
   host = await q.loadState('host')
   expect(host.current).toMatchObject({ status: 'called', deadline: null })
-  await q.setShare('tok-bbbbbbbb', 'sharing')
-  await q.hackerReady('tok-bbbbbbbb')
+  await q.setShare('tok-aaaaaaaa', 'sharing')
+  await q.hackerReady('tok-aaaaaaaa')
   host = await q.loadState('host')
   expect(host.current?.status).toBe('live')
   expect(host.current?.deadline).toBe(host.current!.startedAt! + 120_000)
@@ -59,15 +59,15 @@ test('expire ends a live slot at its deadline, not before', async () => {
   await q.expire(deadline! - 1)
   expect((await q.loadState('host')).current).not.toBeNull()
   await q.expire(deadline!)
-  expect((await q.loadState('host')).current).toMatchObject({ name: 'Ada', status: 'called' }) // auto-advanced
-  expect((await q.loadState('hacker', 'tok-bbbbbbbb')).me?.status).toBe('done')
+  expect((await q.loadState('host')).current).toMatchObject({ name: 'Cy', status: 'called' }) // auto-advanced
+  expect((await q.loadState('hacker', 'tok-aaaaaaaa')).me?.status).toBe('done')
 })
 
 test('call-next replaces the current presenter; remove drops a waiting entry', async () => {
-  await q.callNext(null) // stale: Ada was already auto-called, so nothing happens
-  expect((await q.loadState('host')).current?.name).toBe('Ada')
-  await q.callNext((await q.loadState('host')).current!.entryId)
+  await q.callNext(null) // stale: Cy was already auto-called, so nothing happens
   expect((await q.loadState('host')).current?.name).toBe('Cy')
+  await q.callNext((await q.loadState('host')).current!.entryId)
+  expect((await q.loadState('host')).current?.name).toBe('Bob')
   await q.join('tok-zzzzzzzz', 'Zed', 'Z')
   await q.remove((await q.loadState('host')).queue[0].id)
   expect((await q.loadState('host')).queue).toEqual([])
@@ -86,6 +86,7 @@ const names = async () => (await host()).queue.map((e) => e.name)
 
 test('leave drops me from the line; rejoining sends me to the back', async () => {
   await q.startSession(120)
+  await q.join('tok-dummy000', 'Dum', 'X') // takes the stage, so Eve and Fay wait
   await q.join('tok-eeeeeeee', 'Eve', 'A')
   await q.join('tok-ffffffff', 'Fay', 'B')
   await q.leave('tok-eeeeeeee')
@@ -111,7 +112,7 @@ test('share state is recorded for the admin and the current slot', async () => {
   await q.setShare('tok-ffffffff', 'stopped')
   expect((await host()).queue[0].shareState).toBe('stopped')
   await q.setShare('tok-ffffffff', 'sharing')
-  await q.callNext(null)
+  await q.callNext((await host()).current!.entryId) // Dum off, Fay up
   expect((await host()).current).toMatchObject({ name: 'Fay', shareState: 'sharing' })
 })
 
@@ -140,14 +141,14 @@ test('time limit is validated and applies to the next slot', async () => {
 test('stop ends the current presenter; remove works on the current one too', async () => {
   await q.stop()
   expect((await host()).current).toBeNull()
-  await q.join('tok-hhhhhhhh', 'Hal', 'C')
-  await q.callNext(null)
+  await q.join('tok-hhhhhhhh', 'Hal', 'C') // empty stage: called at once
   await q.remove((await host()).current!.entryId)
   expect((await host()).current).toBeNull()
   expect((await q.loadState('hacker', 'tok-hhhhhhhh')).me?.status).toBe('removed')
 })
 
 test('an entry unseen for 3+ minutes shows as disconnected until it is touched', async () => {
+  await q.join('tok-dummy111', 'Dum', 'X') // on stage
   await q.join('tok-iiiiiiii', 'Ivy', 'D')
   expect((await host()).queue[0].connected).toBe(true)
   const realNow = Date.now
@@ -161,7 +162,8 @@ test('an entry unseen for 3+ minutes shows as disconnected until it is touched',
 
 // ---- US-5.5 reorder ----
 test('move shifts a waiting entry up or down one place; edges and non-waiting are no-ops', async () => {
-  await q.stop(); await q.leave('tok-iiiiiiii')
+  await q.stop(); await q.leave('tok-iiiiiiii') // stop calls Ivy, who then leaves
+  await q.join('tok-blocker1', 'Blk', 'X') // on stage, so the three below wait
   for (const [t, n] of [['tok-jjjjjjjj', 'Jo'], ['tok-kkkkkkkk', 'Ki'], ['tok-llllllll', 'Lu']]) await q.join(t, n, 'P')
   const id = async (n: string) => (await host()).queue.find((e) => e.name === n)!.id
   await q.move(await id('Lu'), -1)
@@ -186,7 +188,7 @@ test('names are cleaned: bidi overrides, zero-width and control chars dropped, c
 
 test('the waiting line is capped so a script cannot flood it', async () => {
   await q.endSession(); await q.startSession()
-  for (let i = 0; i < 200; i++) await q.join(`flood-${String(i).padStart(4, '0')}`, 'bot', 'spam')
+  for (let i = 0; i < 201; i++) await q.join(`flood-${String(i).padStart(4, '0')}`, 'bot', 'spam')
   await expect(q.join('tok-oooooooo', 'Real', 'Person')).rejects.toThrow('full')
   expect((await host()).queue).toHaveLength(200)
 })
@@ -197,7 +199,6 @@ test('ready gate: needs a running share (or noShare); the clock starts only on R
   // Not called yet: Ready (even with noShare) changes nothing.
   await q.hackerReady('gate-bbbbbbbb', true)
   expect((await q.loadState('hacker', 'gate-bbbbbbbb')).me?.status).toBe('waiting')
-  await q.callNext(null) // Gia
   // Called but not sharing, or share stopped: refused, still called, no deadline.
   await expect(q.hackerReady('gate-aaaaaaaa')).rejects.toThrow('Share your screen first')
   await q.setShare('gate-aaaaaaaa', 'stopped')
@@ -221,7 +222,7 @@ test('ready gate: needs a running share (or noShare); the clock starts only on R
 test('a double-submitted join is one spot, not an error', async () => {
   await q.endSession(); await q.startSession(90)
   await Promise.all([q.join('dbl-aaaaaaaa', 'Dee', 'Proj'), q.join('dbl-aaaaaaaa', 'Dee', 'Proj')])
-  expect((await host()).queue).toHaveLength(1)
+  expect((await q.snapshot()).rows).toHaveLength(1)
 })
 
 // ---- auto-advance ----
@@ -233,17 +234,51 @@ const fresh = async (...ns: string[]) => {
 }
 const calledOrLive = async () => (await q.snapshot()).rows.filter((r) => r.status === 'called' || r.status === 'live').length
 
-test('starting a session or joining an empty stage does not auto-call', async () => {
+test('joining an empty stage calls that person at once; the next joiner waits', async () => {
   await fresh()
   expect(await cur()).toBeNull()
   await q.join('aa-A-xxxx', 'A', 'P')
+  expect(await cur()).toMatchObject({ name: 'A', status: 'called' })
+  expect((await q.snapshot()).rows[0].called_at).toBeNumber()
+  await q.join('aa-B-xxxx', 'B', 'P')
+  expect(await cur()).toMatchObject({ name: 'A' })
+  expect(await names()).toEqual(['B'])
+})
+
+test('expire calls the first waiting person when the stage is empty (self-heal)', async () => {
+  await fresh('A', 'B', 'C')
+  const { db } = await import('./db')
+  await db.execute(`UPDATE queue_entries SET status = 'done' WHERE name = 'A'`) // e.g. older code finished it without advancing
   expect(await cur()).toBeNull()
-  expect(await names()).toEqual(['A'])
+  await q.expire()
+  expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
+  expect(await names()).toEqual(['C'])
+})
+
+test('skip on the called person goes behind the next and calls the next; alone it does nothing', async () => {
+  await fresh('A', 'B', 'C')
+  await q.skip((await cur())!.entryId)
+  expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
+  expect(await names()).toEqual(['A', 'C'])
+  expect((await q.snapshot()).rows.find((r) => r.name === 'A')!.called_at).toBeNull()
+  await fresh('A')
+  await q.skip((await cur())!.entryId)
+  expect(await cur()).toMatchObject({ name: 'A', status: 'called' })
+  await fresh('A', 'B')
+  await q.hackerReady('aa-A-xxxx', true)
+  await q.skip((await cur())!.entryId) // live: not skippable
+  expect(await cur()).toMatchObject({ name: 'A', status: 'live' })
+})
+
+test('concurrent joins and expire leave exactly one called/live', async () => {
+  await fresh()
+  await Promise.all([...'ABCDEFGH'].map((n) => q.join(`aa-${n}-xxxx`, n, 'P')).concat([q.expire(), q.expire()]))
+  expect(await calledOrLive()).toBe(1)
+  expect(await names()).toHaveLength(7)
 })
 
 test('expire, end, stop advance to the first waiting person', async () => {
   await fresh('A', 'B', 'C', 'D')
-  await q.callNext(null)
   await live('aa-A-xxxx')
   const { deadline } = (await cur())!
   await q.expire(deadline!)
@@ -259,26 +294,23 @@ test('expire, end, stop advance to the first waiting person', async () => {
 
 test('current leaving or being removed advances; a waiting person leaving or removed does not', async () => {
   await fresh('A', 'B', 'C', 'D')
-  await q.callNext(null)
   await q.leave('aa-A-xxxx')
   expect(await cur()).toMatchObject({ name: 'B' })
   await q.remove((await cur())!.entryId)
   expect(await cur()).toMatchObject({ name: 'C' })
   await q.stop(); await q.stop()
   expect(await cur()).toBeNull() // D was called by the first stop, finished by the second
-  await q.join('aa-E-xxxx', 'E', 'P'); await q.join('aa-F-xxxx', 'F', 'P')
-  await q.leave('aa-E-xxxx')
+  await q.join('aa-E-xxxx', 'E', 'P'); await q.join('aa-F-xxxx', 'F', 'P'); await q.join('aa-G-xxxx', 'G', 'P')
+  await q.leave('aa-F-xxxx')
   await q.remove((await host()).queue[0].id)
-  expect(await cur()).toBeNull()
+  expect(await cur()).toMatchObject({ name: 'E' })
 })
 
 test('finishing with an empty line leaves the stage empty; endSession does not advance', async () => {
   await fresh('A')
-  await q.callNext(null)
   await q.stop()
   expect(await cur()).toBeNull()
   await fresh('A', 'B')
-  await q.callNext(null)
   await q.endSession()
   const rows = (await q.snapshot()).rows
   expect(rows.map((r) => r.status).sort()).toEqual(['done', 'waiting'])
@@ -286,10 +318,82 @@ test('finishing with an empty line leaves the stage empty; endSession does not a
 
 test('concurrent finishes never leave two called/live entries', async () => {
   await fresh('A', 'B', 'C')
-  await q.callNext(null)
   await live('aa-A-xxxx')
   const { deadline } = (await cur())!
   await Promise.all([q.stop(), q.stop(), q.expire(deadline!), q.end('aa-A-xxxx')])
   expect(await calledOrLive()).toBe(1)
   expect((await cur())!.name).not.toBe('A')
+})
+
+// ---- closed tab (bye) ----
+const status = async (n: string) => (await q.loadState('hacker', `aa-${n}-xxxx`)).me?.status
+
+test('bye then grace -> left; before grace nothing happens; waiting leaving does not advance', async () => {
+  await fresh('A', 'B', 'C')
+  const t = Date.now()
+  await q.bye('aa-C-xxxx', t)
+  await q.sweepByes(t + 14_999)
+  expect(await status('C')).toBe('waiting')
+  await q.sweepByes(t + 15_000)
+  expect(await status('C')).toBe('left')
+  expect(await cur()).toMatchObject({ name: 'A', status: 'called' })
+  expect(await names()).toEqual(['B'])
+})
+
+test('back within the grace keeps the spot', async () => {
+  await fresh('A', 'B')
+  const t = Date.now()
+  await q.bye('aa-B-xxxx', t)
+  await q.back('aa-B-xxxx')
+  await q.sweepByes(t + 60_000)
+  expect(await status('B')).toBe('waiting')
+  await q.bye('aa-B-xxxx', t)
+  await q.touch(['aa-B-xxxx']) // any sign of life also cancels it
+  await q.sweepByes(t + 60_000)
+  expect(await status('B')).toBe('waiting')
+})
+
+test('a called or live presenter who closes the tab frees the stage for the next person', async () => {
+  await fresh('A', 'B', 'C')
+  const t = Date.now()
+  await q.bye('aa-A-xxxx', t)
+  await q.sweepByes(t + 15_000)
+  expect(await status('A')).toBe('left')
+  expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
+  await live('aa-B-xxxx')
+  await q.bye('aa-B-xxxx', t)
+  await q.expire(t + 15_000) // the tick path
+  expect(await status('B')).toBe('left')
+  expect(await cur()).toMatchObject({ name: 'C', status: 'called' })
+  expect(await calledOrLive()).toBe(1)
+})
+
+test('bye for an unknown token or a finished entry is a no-op, and bye_at is not exposed', async () => {
+  await fresh('A')
+  await q.bye('no-such-token')
+  await q.bye('aa-A-xxxx')
+  await q.sweepByes(Date.now() + 60_000)
+  expect(await status('A')).toBe('left')
+  await q.join('aa-A-xxxx', 'A', 'P') // rejoining clears the old bye (and, on an empty stage, calls them)
+  await q.sweepByes(Date.now() + 60_000)
+  expect(await status('A')).toBe('called')
+  expect(JSON.stringify(await q.loadState('hacker', 'aa-A-xxxx'))).not.toContain('bye')
+})
+
+test('after presenting you can join again at the back; removed stays out', async () => {
+  await q.endSession(); await q.startSession(90)
+  await q.join('again-aaaaaaa', 'Ann', 'P1')
+  await q.join('again-bbbbbbb', 'Ben', 'P2')
+  await q.hackerReady('again-aaaaaaa', true)
+  await q.end('again-aaaaaaa') // Ann done; Ben is up
+  expect((await q.loadState('hacker', 'again-aaaaaaa')).me?.status).toBe('done')
+  await q.join('again-aaaaaaa', 'Ann', 'P1 v2')
+  const ann = (await q.loadState('hacker', 'again-aaaaaaa')).me!
+  expect(ann).toMatchObject({ status: 'waiting', position: 1, project: 'P1 v2' })
+  expect((await host()).current).toMatchObject({ name: 'Ben', status: 'called', deadline: null })
+  const row = (await q.snapshot()).rows.find((r) => r.client_token === 'again-aaaaaaa')!
+  expect([row.started_at, row.deadline]).toEqual([null, null]) // the old slot's clock doesn't come back
+  await q.remove(ann.entryId)
+  await q.join('again-aaaaaaa', 'Ann', 'P1')
+  expect((await q.loadState('hacker', 'again-aaaaaaa')).me?.status).toBe('removed')
 })

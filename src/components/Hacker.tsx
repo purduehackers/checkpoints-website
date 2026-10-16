@@ -6,7 +6,22 @@ import type { ShareState } from '../../shared/types'
 
 const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`
 const span = (sec: number) => sec % 60 ? `${sec} seconds` : `${sec / 60} minute${sec === 60 ? '' : 's'}`
-const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia
+// Phones can't screen share from a browser (Android Chrome may still expose getDisplayMedia, so check the device too).
+// iPadOS reports itself as a Mac; touch points give it away.
+const phone = typeof navigator !== 'undefined' &&
+  (/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent) || (/macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1))
+const canShare = !phone && typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia
+
+// Phones get a joke instead of the line: they can't share a screen. /host and /admin still work for watching.
+function PhoneNote() {
+  return (
+    <div className="flex min-h-[70vh] flex-col items-center justify-center gap-6 text-center">
+      <h1 className="text-4xl">Phone is too small</h1>
+      <a href="https://www.amazon.com/s?k=computer+monitor" target="_blank" rel="noopener noreferrer"
+        className="rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-black">Buy a screen</a>
+    </div>
+  )
+}
 
 export default function Hacker() {
   const { state, online, apply, now } = useLive('hacker')
@@ -27,6 +42,12 @@ export default function Hacker() {
   const cur = state?.current?.entryId === me?.entryId ? state?.current : null
   const active = me && ['waiting', 'called', 'live'].includes(me.status)
   const open = state?.session?.status === 'open'
+  // "Thanks for presenting" only right after presenting on this page; a refresh (or Join again) goes back to the form.
+  const presentedHere = useRef(false)
+  if (active) presentedHere.current = true
+  const [thanked, setThanked] = useState(false)
+  // Returning hackers get their name and project back.
+  useEffect(() => { if (me && !form.name && !form.project) setForm({ name: me.name, project: me.project }) }, [me?.entryId])
 
   // Report the share state to the server, only when it changes.
   useEffect(() => {
@@ -40,6 +61,18 @@ export default function Hacker() {
     document.title = me?.status === 'called' ? "It's your turn! · Checkpoints" : me?.status === 'waiting' && me.position === 1 ? "You're up next! · Checkpoints" : 'Checkpoints'
   }, [key])
 
+  // Closing the tab takes you out of the line. beforeunload only asks (it also fires on refresh, which is fine);
+  // pagehide tells the server, which waits 15s so a refresh (new socket) or a Wi-Fi blip (no pagehide) keeps the spot.
+  useEffect(() => {
+    if (!active) return
+    const ask = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    const bye = () => navigator.sendBeacon?.('/api/bye', new Blob([JSON.stringify({ token })], { type: 'application/json' }))
+    addEventListener('beforeunload', ask)
+    addEventListener('pagehide', bye)
+    return () => { removeEventListener('beforeunload', ask); removeEventListener('pagehide', bye) }
+  }, [active, token])
+
+  if (phone) return <Shell><PhoneNote /></Shell>
   if (!state) return <Shell><Badge online={online} /><p>Loading…</p></Shell>
 
   const msTotal = cur?.deadline ? cur.deadline - now() : null
@@ -49,7 +82,14 @@ export default function Hacker() {
   if (!state.session) body = <p className="text-xl">No checkpoint is running.</p>
   else if (!open) body = <p className="text-xl">This checkpoint has ended.</p>
   else if (me?.status === 'removed') body = <p className="text-xl">You were removed from the queue.</p>
-  else if (me?.status === 'done') body = <p className="text-xl">Thanks for presenting!</p>
+  else if (me?.status === 'done' && presentedHere.current && !thanked) {
+    body = (
+      <div className="space-y-4">
+        <h1 className="text-3xl font-semibold">Thanks for presenting!</h1>
+        <button className="rounded bg-amber-500 px-4 py-2 font-semibold text-black" onClick={() => setThanked(true)}>Join again</button>
+      </div>
+    )
+  }
   else if (!active) {
     body = (
       <form className="space-y-3" onSubmit={(e) => {
@@ -76,10 +116,15 @@ export default function Hacker() {
             <p className={me.position === 1 ? '' : 'text-neutral-400'}>{me.position === 1 ? 'Get your screen ready.' : `${me.position - 1} ${me.position === 2 ? 'person' : 'people'} ahead of you`}</p>
           </div>
         )}
-        {me.status === 'called' && shareState !== 'sharing' && (
-          <div className="rounded-lg bg-green-500 p-4 text-black">
+        {/* Inline, not a full-page cover: the first in line is called automatically while still at their seat,
+            so Change window and Leave queue must stay reachable. Start presenting only once sharing (it starts the clock). */}
+        {me.status === 'called' && (
+          <div className="space-y-3 rounded-lg bg-green-500 p-4 text-black">
             <h1 className="text-3xl font-semibold">It's your turn!</h1>
-            <p>Share your screen below, then press Start presenting.</p>
+            {shareState === 'sharing' ? <>
+              <p>Walk to the podium, then press Start presenting.</p>
+              <button className="w-full rounded-lg bg-black px-6 py-4 text-2xl font-bold text-green-400" onClick={() => act('/ready')}>Start presenting</button>
+            </> : <p>Share your screen below, then press Start presenting.</p>}
           </div>
         )}
         {me.status === 'live' && (
@@ -91,7 +136,7 @@ export default function Hacker() {
         {canShare ? (
           <ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} />
         ) : (
-          <p className="rounded bg-neutral-800 p-3 text-sm">Use a laptop to share your screen. You can still wait here.</p>
+          <p className="rounded bg-neutral-800 p-3 text-sm">This browser can’t share a screen. Use Chrome or Edge on a laptop. You can still wait here.</p>
         )}
         {/* Take the stage with no share from this page: talk-only, a phone, or the backup share. */}
         {/* Shown while waiting too, so people find it early; Ready only works once called. */}
@@ -115,14 +160,6 @@ export default function Hacker() {
       {countdown && <div className="fixed left-3 top-3 z-40 rounded bg-red-600 px-3 py-1 text-2xl font-bold tabular-nums">{fmt(msTotal!)}</div>}
       {body}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
-      {/* Ready only once sharing: pressing it starts the clock, so it must not hide the Share button. */}
-      {me?.status === 'called' && shareState === 'sharing' && (
-        <div className="fixed inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black/95">
-          <p className="text-2xl">Walk to the podium</p>
-          <button className="rounded-lg bg-green-500 px-12 py-6 text-4xl font-bold text-black" onClick={() => act('/ready')}>Start presenting</button>
-          {error && <p className="text-sm text-red-400">{error}</p>}
-        </div>
-      )}
     </Shell>
   )
 }

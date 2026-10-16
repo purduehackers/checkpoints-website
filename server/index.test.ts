@@ -71,6 +71,13 @@ test('passcode guessing is locked out per IP, even for the right passcode', asyn
   expect((await post('/admin/login', { passcode: 'test-passcode-long-enough' })).status).toBe(429)
 })
 
+// sendBeacon posts a Blob with its own content-type; the reply is never read.
+test('/bye accepts a beacon-style JSON body and rejects a bad one', async () => {
+  const ok = await fetch(base + '/bye', { method: 'POST', headers: { 'content-type': 'application/json' }, body: new Blob([JSON.stringify({ token: 'bye-token-1234' })], { type: 'application/json' }) })
+  expect(ok.status).toBe(200)
+  expect((await post('/bye', { token: 1 })).status).toBe(400)
+})
+
 // Last: it uses up this IP's request budget.
 test('one IP is rate limited across all routes', async () => {
   const codes = await Promise.all(Array.from({ length: 700 }, () => fetch(base + '/health').then((r) => r.status)))

@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS queue_entries (
   started_at INTEGER,
   deadline INTEGER,
   last_seen_at INTEGER NOT NULL,
+  bye_at INTEGER,
   UNIQUE (session_id, client_token)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_entry ON queue_entries(session_id) WHERE status IN ('called','live');
@@ -42,6 +43,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_active_entry ON queue_entries(session_id) 
 const ADDED = [
   `ALTER TABLE sessions ADD COLUMN quality TEXT NOT NULL DEFAULT '1080p'`,
   `ALTER TABLE sessions ADD COLUMN audio INTEGER NOT NULL DEFAULT 1`,
+  `ALTER TABLE queue_entries ADD COLUMN bye_at INTEGER`, // nullable, so older code that never sets it keeps working
 ]
 export const ready = db.executeMultiple(SCHEMA).then(async () => {
   for (const sql of ADDED) await db.execute(sql).catch((e) => { if (!/duplicate column/i.test(String(e))) throw e })
