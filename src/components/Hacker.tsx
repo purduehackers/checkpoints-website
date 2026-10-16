@@ -12,12 +12,13 @@ const phone = typeof navigator !== 'undefined' &&
   (/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent) || (/macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1))
 const canShare = !phone && typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia
 
+// Phones get a joke instead of the line: they can't share a screen. /host and /admin still work for watching.
 function PhoneNote() {
   return (
-    <div className="space-y-3 rounded-lg bg-neutral-800 p-4 text-sm">
-      <p><b>Your phone is great. It’s just a very small projector.</b> Checkpoints works best on a laptop, where you can share your screen. You can still join the line here and present without sharing.</p>
+    <div className="flex min-h-[70vh] flex-col items-center justify-center gap-6 text-center">
+      <h1 className="text-4xl">Phone is too small</h1>
       <a href="https://www.amazon.com/s?k=computer+monitor" target="_blank" rel="noopener noreferrer"
-        className="inline-block rounded-lg bg-amber-500 px-4 py-2 font-semibold text-black">Buy a screen</a>
+        className="rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-black">Buy a screen</a>
     </div>
   )
 }
@@ -71,6 +72,7 @@ export default function Hacker() {
     return () => { removeEventListener('beforeunload', ask); removeEventListener('pagehide', bye) }
   }, [active, token])
 
+  if (phone) return <Shell><PhoneNote /></Shell>
   if (!state) return <Shell><Badge online={online} /><p>Loading…</p></Shell>
 
   const msTotal = cur?.deadline ? cur.deadline - now() : null
@@ -95,7 +97,6 @@ export default function Hacker() {
         act('/join', form)
       }}>
         <h1 className="text-2xl font-semibold">Join the checkpoint</h1>
-        {phone && <PhoneNote />}
         <ol className="list-decimal space-y-1 rounded bg-neutral-800 p-3 pl-8 text-sm text-neutral-300">
           <li>Join the line.</li>
           <li>Share your screen while you wait. Only the organizer sees it until you're live. (Your browser will ask which screen, window or tab; that's the only permission.)</li>
@@ -134,7 +135,7 @@ export default function Hacker() {
         )}
         {canShare ? (
           <ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} />
-        ) : phone ? <PhoneNote /> : (
+        ) : (
           <p className="rounded bg-neutral-800 p-3 text-sm">This browser can’t share a screen. Use Chrome or Edge on a laptop. You can still wait here.</p>
         )}
         {/* Take the stage with no share from this page: talk-only, a phone, or the backup share. */}

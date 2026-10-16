@@ -54,7 +54,7 @@ The row under each name shows whether that person is **sharing**, **not sharing*
 
 ## What to tell hackers
 
-- **Use Chrome or Edge on a laptop.** Phones can join the line but can't share a screen. Firefox and Safari can share a screen but not sound. Brave, Opera and Arc work like Chrome. The page needs a recent browser (Chrome/Edge 111+, Firefox 128+, Safari 16.4+).
+- **Use Chrome or Edge on a laptop.** Phones get a "Phone is too small" page and can't join the line (watching /host on a phone is fine). Firefox and Safari can share a screen but not sound. Brave, Opera and Arc work like Chrome. The page needs a recent browser (Chrome/Edge 111+, Firefox 128+, Safari 16.4+).
 - **For sound, share a Chrome tab and tick "Share audio".** Sound only plays on the projector while they're live.
 - **On Linux, if sharing a screen or window fails or goes black, share a browser tab instead.**
 - **Don't open the projector page on your own laptop.**
