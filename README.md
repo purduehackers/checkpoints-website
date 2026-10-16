@@ -1,6 +1,6 @@
 # Checkpoints
 
-Run Hack Night checkpoints from the browser. Hackers join a queue and share their screen from their seats. When it's their turn they walk up, press **Ready**, and their screen goes on the projector. It turns off on its own after two minutes. Nobody plugs in a cable.
+Run Hack Night checkpoints from the browser. Hackers join a queue and share their screen from their seats. When it's their turn they walk up, press **Start presenting**, and their screen goes on the projector. It turns off on its own after two minutes. Nobody plugs in a cable.
 
 This guide is for the organizer running a checkpoint night. Developers: see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
@@ -31,21 +31,21 @@ Hackers open the site, enter their name and project, and click **Join queue**. T
 For each presenter:
 
 1. **Check the Preview panel.** It automatically shows whoever is next, so you can catch the wrong window before the room sees it. Click **Preview** on any row to look at someone else. Click **follow next** to go back to following the line.
-2. **Click Call next.** The presenter's page tells them it's their turn.
-3. **They share their screen, then press Ready at the podium,** or you press **Ready** for them. Their page won't offer Ready until they're sharing, so the clock never starts on a blank screen. Their screen goes on the projector with their name and project.
+2. **Click Call next to start the night.** The presenter's page tells them it's their turn. After this, the next person is called automatically.
+3. **They share their screen, then press Start presenting at the podium,** or you press **Ready** for them. Their page won't offer Start presenting until they're sharing, so the clock never starts on a blank screen. Their screen goes on the projector with their name and project.
 4. **The last 15 seconds show a countdown,** and the slot ends by itself at the time limit. They can also click **End my checkpoint** when they finish early.
-5. **Click Call next** for the next person.
+5. **The next person is called automatically** as soon as a slot ends, whether by the time limit, End, Stop, or the presenter leaving or being removed. Use **Call next** only to start the night or to call someone early.
 
 ### Controls
 
 | Control | What it does |
 |---|---|
-| **Call next** | Ends the current slot, if any, and calls the next person |
+| **Call next** | Starts the night, or ends the current slot early and calls the next person. Slots that end on their own call the next person automatically |
 | **Ready** | (ALLOW THE HACKER TO DO THIS, use only if necessary) Puts the called person on screen, if they can't press it themselves |
-| **Stop** | Ends the current presenter now |
+| **Stop** | Ends the current presenter now and calls the next person |
 | **Skip** | Moves someone behind the next person, for when they aren't ready yet |
 | **▲ / ▼** | Moves someone up or down the line |
-| **Remove** | Takes someone out of the line |
+| **Remove** | Takes someone out of the line (if they are on stage, the next person is called) |
 | **Limit (s)** | Time per presenter in seconds (default 120). Applies to the next presenter |
 | **Quality** | Stream resolution: 720p, 1080p (default), 1440p or Source. Changes the live stream without restarting it |
 | **Projector sound** | Turns the presenter's sound on the projector on or off |
@@ -55,7 +55,7 @@ The row under each name shows whether that person is **sharing**, **not sharing*
 
 ## What to tell hackers
 
-- **Use Chrome or Edge on a laptop.** Phones can join the line but can't share a screen. Firefox and Safari can share a screen but not sound.
+- **Use Chrome or Edge on a laptop.** Phones can join the line but can't share a screen. Firefox and Safari can share a screen but not sound. Brave, Opera and Arc work like Chrome. The page needs a recent browser (Chrome/Edge 111+, Firefox 128+, Safari 16.4+).
 - **For sound, share a Chrome tab and tick "Share audio".** Sound only plays on the projector while they're live.
 - **On Linux, if sharing a screen or window fails or goes black, share a browser tab instead.**
 - **Don't open the projector page on your own laptop.**

@@ -21,7 +21,8 @@ function captureError(e: unknown): { msg: string; retry: boolean } {
   const name = String((e as Error)?.name ?? 'Error')
   const denied = name === 'NotAllowedError' && /system/i.test(String((e as Error)?.message))
   const tabHint = linux ? ' Try sharing a browser tab instead, which avoids the system picker.' : ''
-  if (name === 'NotAllowedError' && !denied) return { msg: 'Sharing was cancelled or blocked.', retry: false }
+  // On Linux a broken portal also surfaces as a plain NotAllowedError, so offer the fallbacks there.
+  if (name === 'NotAllowedError' && !denied) return { msg: `Sharing was cancelled or blocked.${tabHint} (${name})`, retry: linux }
   const msg = denied && mac ? 'Your Mac blocked screen sharing. Allow your browser in System Settings › Privacy & Security › Screen Recording, then restart it.'
     : denied || name === 'NotReadableError' || name === 'AbortError' ? "Your computer couldn't start the screen capture." + tabHint
     : 'Screen share failed.'
@@ -67,12 +68,13 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
       // Ask for as little as possible: every extra option is one more way a portal/PipeWire picker can
       // reject or re-prompt. The resolution cap is applied after capture instead (see below).
       // Chromium-only hints (systemAudio, surfaceSwitching, selfBrowserSurface, suppressLocalAudioPlayback)
-      // are skipped on Linux, where the xdg-desktop-portal picker has no use for them and they've been flaky.
-      s = await navigator.mediaDevices.getDisplayMedia(basic ? { video: true, audio: true } : {
+      // are skipped on Linux, where the xdg-desktop-portal picker has no use for them and they've been flaky,
+      // and audio is only asked of browsers that can share it (WebKit bug 259823: {video, audio} can reject outright).
+      s = await navigator.mediaDevices.getDisplayMedia(basic ? { video: true, audio: !noAudioBrowser } : {
         video: true,
         // Raw audio: Chrome's voice processing (echo cancel, denoise, auto gain) mangles music and demos.
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-        ...(!linux && {
+        audio: !noAudioBrowser && { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        ...(!linux && !noAudioBrowser && {
           systemAudio: 'include',
           suppressLocalAudioPlayback: true, // a shared tab goes quiet locally; the projector plays it
           selfBrowserSurface: 'exclude', // don't offer this tab
@@ -100,8 +102,8 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     // Fires when the hacker clicks the browser's "Stop sharing" or the window closes.
     s.getVideoTracks()[0].onended = () => { if (stream.current === s) { stop(); report('stopped') } }
     try {
-      // Cap resolution/fps after capture; a refused cap must never kill the share.
-      if (!basic) await track.applyConstraints(videoConstraints(quality)).catch(() => {})
+      // Cap resolution/fps after capture; a refused (or never-settling) cap must never kill the share.
+      if (!basic) await Promise.race([track.applyConstraints(videoConstraints(quality)).catch(() => {}), new Promise((r) => setTimeout(r, 2000))])
       if (!sdk.current) {
         // salt 'vdo.ninja' + default host/password: viewable at vdo.ninja/?view=<streamId>
         sdk.current = new VDONinjaSDK({ salt: 'vdo.ninja', label })
