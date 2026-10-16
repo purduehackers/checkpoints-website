@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/* Purdue Hackers brand fonts: PolySans Slim for text, PixelHackers for headings. */
+@font-face { font-family: "PolySans"; src: url("https://f3ibyzhjurhjiwis.public.blob.vercel-storage.com/PolySans-Slim.woff2") format("woff2"); font-style: normal; font-display: swap; }
+@font-face { font-family: "PolySans"; src: url("https://f3ibyzhjurhjiwis.public.blob.vercel-storage.com/PolySans-SlimItalic.woff2") format("woff2"); font-style: italic; font-display: swap; }
+@font-face { font-family: "PixelHackers"; src: url("https://f3ibyzhjurhjiwis.public.blob.vercel-storage.com/PixelHackers.woff2") format("woff2"); font-display: swap; }
+
+@theme {
+  --font-sans: "PolySans", ui-sans-serif, system-ui, sans-serif;
+  --font-pixel: "PixelHackers", "PolySans", ui-monospace, monospace;
+}
+/* A faux-bold pixel font smears, so headings never synthesize bold. */
+@layer base { h1 { font-family: var(--font-pixel); font-synthesis: none; } }
+
 button:not(:disabled), select:not(:disabled), [role="button"], summary { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
 
