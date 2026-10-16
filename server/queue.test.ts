@@ -189,3 +189,30 @@ test('the waiting line is capped so a script cannot flood it', async () => {
   await expect(q.join('tok-oooooooo', 'Real', 'Person')).rejects.toThrow('full')
   expect((await host()).queue).toHaveLength(200)
 })
+
+test('ready gate: needs a running share (or noShare); the clock starts only on Ready', async () => {
+  await q.endSession(); await q.startSession(90)
+  for (const [t, n] of [['gate-aaaaaaaa', 'Gia'], ['gate-bbbbbbbb', 'Gus'], ['gate-cccccccc', 'Gwen']]) await q.join(t, n, 'Proj')
+  // Not called yet: Ready (even with noShare) changes nothing.
+  await q.hackerReady('gate-bbbbbbbb', true)
+  expect((await q.loadState('hacker', 'gate-bbbbbbbb')).me?.status).toBe('waiting')
+  await q.callNext(null) // Gia
+  // Called but not sharing, or share stopped: refused, still called, no deadline.
+  await expect(q.hackerReady('gate-aaaaaaaa')).rejects.toThrow('Share your screen first')
+  await q.setShare('gate-aaaaaaaa', 'stopped')
+  await expect(q.hackerReady('gate-aaaaaaaa')).rejects.toThrow('Share your screen first')
+  expect((await host()).current).toMatchObject({ name: 'Gia', status: 'called', deadline: null, startedAt: null })
+  // Sharing: Ready goes live with deadline = now + limit.
+  await q.setShare('gate-aaaaaaaa', 'sharing')
+  const before = Date.now()
+  await q.hackerReady('gate-aaaaaaaa')
+  const c = (await host()).current!
+  expect(c.status).toBe('live')
+  expect(c.startedAt!).toBeGreaterThanOrEqual(before)
+  expect(c.deadline).toBe(c.startedAt! + 90_000)
+  // noShare works while called.
+  await q.callNext(c.entryId) // Gus
+  expect((await host()).current).toMatchObject({ name: 'Gus', status: 'called', deadline: null })
+  await q.hackerReady('gate-bbbbbbbb', true)
+  expect((await host()).current).toMatchObject({ name: 'Gus', status: 'live', shareState: 'not_shared' })
+})

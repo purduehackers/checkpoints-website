@@ -44,6 +44,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
   const [error, setError] = useState('')
   const [retry, setRetry] = useState(false)
   const [hasAudio, setHasAudio] = useState(false)
+  const [backup, setBackup] = useState(false) // backup tab owns the stream ID; don't publish it from here too
   const [history, setHistory] = useState<Sample[]>([])
   const report = (s: ShareState) => { setState(s); onState(s) }
   const liveRef = useRef(live)
@@ -63,21 +64,36 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     setRetry(false)
     let s: MediaStream
     try {
-      // systemAudio is a Chromium hint; other browsers ignore it and just give video.
+      // Ask for as little as possible: every extra option is one more way a portal/PipeWire picker can
+      // reject or re-prompt. The resolution cap is applied after capture instead (see below).
+      // Chromium-only hints (systemAudio, surfaceSwitching, selfBrowserSurface, suppressLocalAudioPlayback)
+      // are skipped on Linux, where the xdg-desktop-portal picker has no use for them and they've been flaky.
       s = await navigator.mediaDevices.getDisplayMedia(basic ? { video: true, audio: true } : {
-        video: videoConstraints(quality),
+        video: true,
         // Raw audio: Chrome's voice processing (echo cancel, denoise, auto gain) mangles music and demos.
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-        systemAudio: 'include',
-        suppressLocalAudioPlayback: true, // a shared tab goes quiet locally; the projector plays it
-        selfBrowserSurface: 'exclude', // don't offer this tab
-        surfaceSwitching: 'include',
+        ...(!linux && {
+          systemAudio: 'include',
+          suppressLocalAudioPlayback: true, // a shared tab goes quiet locally; the projector plays it
+          selfBrowserSurface: 'exclude', // don't offer this tab
+          surfaceSwitching: 'include',
+        }),
       } as DisplayMediaStreamOptions)
     } catch (e) {
       const { msg, retry } = captureError(e)
       setRetry(retry && !basic)
       return setError(msg)
     }
+    const track = s.getVideoTracks()[0]
+    // Wayland/PipeWire can hand back a dead track instead of an error. (Not `muted`: a static screen
+    // delivers no frames and reads as muted, so that would reject good shares; the admin preview shows black.)
+    if (!track || track.readyState === 'ended') {
+      s.getTracks().forEach((t) => t.stop())
+      setRetry(!basic)
+      return setError(`The screen capture produced no video.${linux ? ' Try sharing a browser tab instead, which avoids the system picker.' : ''} (EmptyCapture)`)
+    }
+    // Cap resolution/fps after capture; a refused cap must never kill the share.
+    if (!basic) await track.applyConstraints(videoConstraints(quality)).catch(() => {})
     stop() // "Change window": replace the previous share
     stream.current = s
     muteUnlessLive()
@@ -132,14 +148,15 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     <div>
       <div className="relative aspect-video w-full overflow-hidden rounded bg-neutral-900">
         <video ref={video} autoPlay muted playsInline className="h-full w-full object-contain" />
-        {state !== 'sharing' && (
+        {state !== 'sharing' && !backup && (
           <button onClick={() => share()} className="absolute inset-0 m-auto h-fit w-fit rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-black">
             {state === 'stopped' ? 'Share again' : 'Share your screen'}
           </button>
         )}
       </div>
-      {state === 'stopped' && <p className="mt-2 rounded bg-red-900 p-2 text-sm">Your share stopped. Click “Share again”.</p>}
-      {state === 'not_shared' && <p className="mt-2 text-sm text-neutral-400">Pick a screen, window or tab and tick “Share audio” to play sound on the projector. Only the organizer sees it until you go live.{linux && ' On Linux, a browser tab is the most reliable choice.'}</p>}
+      {backup && <p className="mt-2 rounded bg-neutral-800 p-2 text-sm">You’re using the backup share in another tab. Close it before sharing here. <button className="underline" onClick={() => setBackup(false)}>Share here instead</button></p>}
+      {state === 'stopped' && !backup && <p className="mt-2 rounded bg-red-900 p-2 text-sm">Your share stopped. Click “Share again”.</p>}
+      {state === 'not_shared' && !backup && <p className="mt-2 text-sm text-neutral-400">Pick a screen, window or tab and tick “Share audio” to play sound on the projector. Only the organizer sees it until you go live.{linux && ' On Linux, a browser tab is the most reliable choice.'}</p>}
       {state === 'sharing' && (
         <p className="mt-2 text-sm">
           {hasAudio ? <span className="text-green-400">Sharing with sound{live ? '' : ' (plays on the projector once you’re live)'}.</span>
@@ -152,14 +169,20 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
       {/* Fallback: vdo.ninja's own share page, publishing to the same stream the projector watches.
           Stop and disconnect ours first, so the stream ID is free and two publishers don't fight. The server sees "not sharing", so Ready goes through "Present without sharing". */}
       <a className="mt-3 block rounded-lg border border-neutral-600 px-4 py-3 text-center font-medium text-neutral-200 hover:bg-neutral-800" href={`https://vdo.ninja/?push=${streamId}&screenshare`} target="_blank" rel="noopener noreferrer"
-        onClick={() => { stop(); sdk.current?.disconnect().catch(() => {}); sdk.current = null; report('not_shared') }}>Having trouble? Use backup share, then press “Present without sharing”.</a>
+        onClick={() => { stop(); sdk.current?.disconnect().catch(() => {}); sdk.current = null; setBackup(true); setError(''); report('not_shared') }}>Having trouble? Use backup share, then press “Present without sharing”.</a>
       {stats && <StatsOverlay history={history} title="Your stream" onClose={onCloseStats} />}
     </div>
   )
 }
 
-// Silent unless `audio` is set (the projector only). &stereo asks for full-band stereo Opus in the
-// viewer's SDP answer, which the sender's encoder honours; bitrate/scale params would be ignored.
-export function ViewFrame({ streamId, className = '', audio = false }: { streamId: string; className?: string; audio?: boolean }) {
-  return <iframe allow="autoplay; fullscreen" className={`border-0 ${className}`} src={`https://vdo.ninja/?view=${streamId}&cleanoutput&autostart${audio ? '&stereo' : '&noaudio'}`} />
+// Silent (&noaudio) unless `muted` is given (the projector only). Then it loads with &stereo (full-band
+// stereo Opus in the viewer's SDP answer, which the sender's encoder honours; bitrate/scale params would
+// be ignored) and `muted` is applied via the IFRAME API's { mute } postMessage, so toggling sound never
+// reloads the live stream. src doesn't depend on `muted` for that reason.
+export function ViewFrame({ streamId, className = '', muted }: { streamId: string; className?: string; muted?: boolean }) {
+  const ref = useRef<HTMLIFrameElement>(null)
+  const send = () => { if (muted !== undefined) ref.current?.contentWindow?.postMessage({ mute: muted }, 'https://vdo.ninja') }
+  // Re-sent every 2s: a message that lands before vdo.ninja is listening is dropped, and { mute } is idempotent.
+  useEffect(() => { send(); const i = setInterval(send, 2000); return () => clearInterval(i) }, [muted])
+  return <iframe ref={ref} onLoad={send} allow="autoplay; fullscreen" className={`border-0 ${className}`} src={`https://vdo.ninja/?view=${streamId}&cleanoutput&autostart${muted === undefined ? '&noaudio' : '&stereo'}`} />
 }

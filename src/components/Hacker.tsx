@@ -5,6 +5,7 @@ import { StatsButton, useStatsToggle } from '../lib/stats'
 import type { ShareState } from '../../shared/types'
 
 const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`
+const span = (sec: number) => sec % 60 ? `${sec} seconds` : `${sec / 60} minute${sec === 60 ? '' : 's'}`
 const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia
 
 export default function Hacker() {
@@ -54,6 +55,11 @@ export default function Hacker() {
         act('/join', form)
       }}>
         <h1 className="text-2xl font-semibold">Join the checkpoint</h1>
+        <ol className="list-decimal space-y-1 rounded bg-neutral-800 p-3 pl-8 text-sm text-neutral-300">
+          <li>Join the line.</li>
+          <li>Share your screen while you wait. Only the organizer sees it until you're live. (Your browser will ask which screen, window or tab; that's the only permission.)</li>
+          <li>When it's your turn, walk up and press Ready. Your time ({span(state.session!.limitSec)}) starts then.</li>
+        </ol>
         <input required maxLength={60} placeholder="Your name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full rounded bg-neutral-800 p-3" />
         <input required maxLength={80} placeholder="Project name" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} className="w-full rounded bg-neutral-800 p-3" />
         <button className="w-full rounded bg-amber-500 p-3 font-semibold text-black">Join queue</button>
