@@ -22,7 +22,7 @@ There are three pages:
 
 1. **On the projector laptop, open `/host`.** Click **Fullscreen**. The click also lets the page play sound.
 2. **Open `/admin` and enter the passcode,** on your own laptop.
-3. **Click Start checkpoint.** The projector now shows the join address and the line.
+3. **Click Start checkpoint.** The projector now shows the join address and the line. The first person to join is up automatically.
 
 ## Running the queue
 
@@ -31,19 +31,18 @@ Hackers open the site, enter their name and project, and click **Join queue**. T
 For each presenter:
 
 1. **Check the Preview panel.** It automatically shows whoever is next, so you can catch the wrong window before the room sees it. Click **Preview** on any row to look at someone else. Click **follow next** to go back to following the line.
-2. **Click Call next to start the night.** The presenter's page tells them it's their turn. After this, the next person is called automatically.
+2. **The first person in line is up automatically.** Their page tells them it's their turn. The stage never sits empty while someone is waiting.
 3. **They share their screen, then press Start presenting at the podium,** or you press **Ready** for them. Their page won't offer Start presenting until they're sharing, so the clock never starts on a blank screen. Their screen goes on the projector with their name and project.
 4. **The last 15 seconds show a countdown,** and the slot ends by itself at the time limit. They can also click **End my checkpoint** when they finish early.
-5. **The next person is called automatically** as soon as a slot ends, whether by the time limit, End, Stop, or the presenter leaving or being removed. Use **Call next** only to start the night or to call someone early.
+5. **The next person is up automatically** as soon as a slot ends, whether by the time limit, End, Stop, or the presenter leaving or being removed. If the person who is up isn't ready, click **Skip** on the current card: they go back one place and the next person is up.
 
 ### Controls
 
 | Control | What it does |
 |---|---|
-| **Call next** | Starts the night, or ends the current slot early and calls the next person. Slots that end on their own call the next person automatically |
 | **Ready** | (ALLOW THE HACKER TO DO THIS, use only if necessary) Puts the called person on screen, if they can't press it themselves |
-| **Stop** | Ends the current presenter now and calls the next person |
-| **Skip** | Moves someone behind the next person, for when they aren't ready yet |
+| **Stop** | Ends the current presenter now and the next person is up |
+| **Skip** | In the line: moves someone behind the next person. On the current card (before they start): sends a not-ready person back one place and the next person is up |
 | **▲ / ▼** | Moves someone up or down the line |
 | **Remove** | Takes someone out of the line (if they are on stage, the next person is called) |
 | **Limit (s)** | Time per presenter in seconds (default 120). Applies to the next presenter |
@@ -67,7 +66,7 @@ The row under each name shows whether that person is **sharing**, **not sharing*
 |---|---|
 | No sound on the projector | Check that **Projector sound** is On. Click **Fullscreen** on the projector once. Then check that the presenter ticked "Share audio" |
 | Someone shared the wrong window | They click **Change window** on their page. They keep their spot |
-| A presenter isn't ready | Click **Skip** |
+| A presenter isn't ready | Click **Skip** on the current card. They keep a place just behind the next person |
 | The stream is choppy | Click **Stats for nerds**, or right-click anywhere on the page. If **limited by** says `bandwidth`, lower **Quality**. If it says `cpu`, have the presenter close other apps or lower **Quality** |
 | A "reconnecting…" badge stays on | Check the network connection. The page reconnects by itself |
 | The line is full of fake names | Click **End checkpoints**, then **Start checkpoint**. This starts a fresh, empty line |

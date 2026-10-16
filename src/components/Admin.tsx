@@ -67,7 +67,6 @@ function Panel({ onDenied }: { onDenied: () => void }) {
         <div className="flex flex-wrap items-center gap-2">
           {open ? <button className="rounded bg-red-700 px-3 py-2" onClick={() => confirm('End checkpoints?') && act('/session/end')}>End checkpoints</button>
                 : <button className="rounded bg-green-600 px-3 py-2" onClick={() => act('/session/start')}>Start checkpoint</button>}
-          {open && <button className="rounded bg-amber-500 px-3 py-2 font-semibold text-black" onClick={() => act('/call-next', { expect: c?.entryId ?? null })}>Call next</button>}
           {open && <label className="ml-auto text-sm">Limit (s) <input type="number" key={state.session!.limitSec} defaultValue={state.session!.limitSec} min={10} className="w-20 rounded bg-neutral-800 p-1" onBlur={(e) => Number(e.target.value) !== state.session!.limitSec && act('/limit', { seconds: Number(e.target.value) })} /></label>}
           {open && <label className="text-sm">Quality <select value={state.session!.quality} onChange={(e) => act('/quality', { quality: e.target.value as Quality })} className="rounded bg-neutral-800 p-1">
             {Object.keys(QUALITY).map((q) => <option key={q} value={q}>{q === 'source' ? 'Source' : q}</option>)}
@@ -86,6 +85,7 @@ function Panel({ onDenied }: { onDenied: () => void }) {
               <div className="grow"><b>{c.name}</b> · {c.project}<div className="text-sm text-neutral-400">{c.status === 'live' ? 'live' : 'getting ready'} · {SHARE_LABEL[c.shareState]}</div></div>
               {c.deadline && <span className="text-2xl tabular-nums">{fmt(c.deadline - now())}</span>}
               {c.status === 'called' && <button className="rounded bg-green-600 px-3 py-1" onClick={() => act('/ready', { id: c.entryId })}>Ready</button>}
+              {c.status === 'called' && <button className="rounded bg-neutral-700 px-3 py-1" onClick={() => act('/skip', { id: c.entryId })}>Skip</button>}
               <button className="rounded bg-red-700 px-3 py-1" onClick={() => act('/stop')}>Stop</button>
               {c.streamId && <button className="text-sm underline" onClick={() => { setPinned(true); setPreview(c.streamId!) }}>Preview</button>}
             </div>

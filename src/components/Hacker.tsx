@@ -41,6 +41,12 @@ export default function Hacker() {
   const cur = state?.current?.entryId === me?.entryId ? state?.current : null
   const active = me && ['waiting', 'called', 'live'].includes(me.status)
   const open = state?.session?.status === 'open'
+  // "Thanks for presenting" only right after presenting on this page; a refresh (or Join again) goes back to the form.
+  const presentedHere = useRef(false)
+  if (active) presentedHere.current = true
+  const [thanked, setThanked] = useState(false)
+  // Returning hackers get their name and project back.
+  useEffect(() => { if (me && !form.name && !form.project) setForm({ name: me.name, project: me.project }) }, [me?.entryId])
 
   // Report the share state to the server, only when it changes.
   useEffect(() => {
@@ -74,7 +80,14 @@ export default function Hacker() {
   if (!state.session) body = <p className="text-xl">No checkpoint is running.</p>
   else if (!open) body = <p className="text-xl">This checkpoint has ended.</p>
   else if (me?.status === 'removed') body = <p className="text-xl">You were removed from the queue.</p>
-  else if (me?.status === 'done') body = <p className="text-xl">Thanks for presenting!</p>
+  else if (me?.status === 'done' && presentedHere.current && !thanked) {
+    body = (
+      <div className="space-y-4">
+        <h1 className="text-3xl font-semibold">Thanks for presenting!</h1>
+        <button className="rounded bg-amber-500 px-4 py-2 font-semibold text-black" onClick={() => setThanked(true)}>Join again</button>
+      </div>
+    )
+  }
   else if (!active) {
     body = (
       <form className="space-y-3" onSubmit={(e) => {
@@ -102,10 +115,15 @@ export default function Hacker() {
             <p className={me.position === 1 ? '' : 'text-neutral-400'}>{me.position === 1 ? 'Get your screen ready.' : `${me.position - 1} ${me.position === 2 ? 'person' : 'people'} ahead of you`}</p>
           </div>
         )}
-        {me.status === 'called' && shareState !== 'sharing' && (
-          <div className="rounded-lg bg-green-500 p-4 text-black">
+        {/* Inline, not a full-page cover: the first in line is called automatically while still at their seat,
+            so Change window and Leave queue must stay reachable. Start presenting only once sharing (it starts the clock). */}
+        {me.status === 'called' && (
+          <div className="space-y-3 rounded-lg bg-green-500 p-4 text-black">
             <h1 className="text-3xl font-semibold">It's your turn!</h1>
-            <p>Share your screen below, then press Start presenting.</p>
+            {shareState === 'sharing' ? <>
+              <p>Walk to the podium, then press Start presenting.</p>
+              <button className="w-full rounded-lg bg-black px-6 py-4 text-2xl font-bold text-green-400" onClick={() => act('/ready')}>Start presenting</button>
+            </> : <p>Share your screen below, then press Start presenting.</p>}
           </div>
         )}
         {me.status === 'live' && (
@@ -141,14 +159,6 @@ export default function Hacker() {
       {countdown && <div className="fixed left-3 top-3 z-40 rounded bg-red-600 px-3 py-1 text-2xl font-bold tabular-nums">{fmt(msTotal!)}</div>}
       {body}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
-      {/* Ready only once sharing: pressing it starts the clock, so it must not hide the Share button. */}
-      {me?.status === 'called' && shareState === 'sharing' && (
-        <div className="fixed inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black/95">
-          <p className="text-2xl">Walk to the podium</p>
-          <button className="rounded-lg bg-green-500 px-12 py-6 text-4xl font-bold text-black" onClick={() => act('/ready')}>Start presenting</button>
-          {error && <p className="text-sm text-red-400">{error}</p>}
-        </div>
-      )}
     </Shell>
   )
 }
