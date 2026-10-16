@@ -62,7 +62,8 @@ export async function join(token: string, name: string, project: string) {
   if (!mine) {
     await run(
       `INSERT INTO queue_entries (id, session_id, client_token, name, project, stream_id, sort_key, joined_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ${NEXT_KEY}, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ${NEXT_KEY}, ?, ?)
+       ON CONFLICT (session_id, client_token) DO NOTHING`, // a double-submitted Join must not 500
       [crypto.randomUUID(), s.id, token, name, project, 'ck' + crypto.randomUUID().replaceAll('-', '').slice(0, 14), s.id, now, now],
     )
   } else if (mine.status === 'left') {

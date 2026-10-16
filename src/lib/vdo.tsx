@@ -5,7 +5,7 @@
 // The track stays disabled (silent) until the hacker is live, and only the projector plays it.
 // Quality: the SDK publisher ignores vdo.ninja viewer params like &bitrate/&scale, so the sender
 // sets resolution (capture constraints) and bitrate (encoder) from the organizer's preset.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import VDONinjaSDK from '@vdoninja/sdk'
 import { QUALITY, type Quality, type ShareState } from '../../shared/types'
 import { StatsOverlay, pushSample, statsCollector, type Sample } from './stats'
@@ -92,9 +92,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
       setRetry(!basic)
       return setError(`The screen capture produced no video.${linux ? ' Try sharing a browser tab instead, which avoids the system picker.' : ''} (EmptyCapture)`)
     }
-    // Cap resolution/fps after capture; a refused cap must never kill the share.
-    if (!basic) await track.applyConstraints(videoConstraints(quality)).catch(() => {})
-    stop() // "Change window": replace the previous share
+    stop() // "Change window": replace the previous share. Claimed before any await, so a newer share() or stop() makes this one bail below.
     stream.current = s
     muteUnlessLive()
     setHasAudio(s.getAudioTracks().length > 0)
@@ -102,6 +100,8 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     // Fires when the hacker clicks the browser's "Stop sharing" or the window closes.
     s.getVideoTracks()[0].onended = () => { if (stream.current === s) { stop(); report('stopped') } }
     try {
+      // Cap resolution/fps after capture; a refused cap must never kill the share.
+      if (!basic) await track.applyConstraints(videoConstraints(quality)).catch(() => {})
       if (!sdk.current) {
         // salt 'vdo.ninja' + default host/password: viewable at vdo.ninja/?view=<streamId>
         sdk.current = new VDONinjaSDK({ salt: 'vdo.ninja', label })
@@ -181,8 +181,9 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
 // reloads the live stream. src doesn't depend on `muted` for that reason.
 export function ViewFrame({ streamId, className = '', muted }: { streamId: string; className?: string; muted?: boolean }) {
   const ref = useRef<HTMLIFrameElement>(null)
+  const startMuted = useMemo(() => muted, [streamId]) // &mutespeaker closes the gap before the first postMessage lands; later toggles never touch src
   const send = () => { if (muted !== undefined) ref.current?.contentWindow?.postMessage({ mute: muted }, 'https://vdo.ninja') }
   // Re-sent every 2s: a message that lands before vdo.ninja is listening is dropped, and { mute } is idempotent.
   useEffect(() => { send(); const i = setInterval(send, 2000); return () => clearInterval(i) }, [muted])
-  return <iframe ref={ref} onLoad={send} allow="autoplay; fullscreen" className={`border-0 ${className}`} src={`https://vdo.ninja/?view=${streamId}&cleanoutput&autostart${muted === undefined ? '&noaudio' : '&stereo'}`} />
+  return <iframe ref={ref} onLoad={send} allow="autoplay; fullscreen" className={`border-0 ${className}`} src={`https://vdo.ninja/?view=${streamId}&cleanoutput&autostart${muted === undefined ? '&noaudio' : '&stereo'}${startMuted ? '&mutespeaker' : ''}`} />
 }

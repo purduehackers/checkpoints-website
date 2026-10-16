@@ -18,8 +18,10 @@ export default function Hacker() {
   useTick()
 
   const token = hackerToken()
+  // One request at a time, in click order: a late share-state must not land after Ready, nor an old reply overwrite a newer one.
+  const chain = useRef(Promise.resolve())
   const act = (path: string, body: object = {}) =>
-    api(path, { token, ...body }).then(apply).catch((e) => setError(e.message))
+    (chain.current = chain.current.then(() => api(path, { token, ...body }).then(apply).catch((e) => setError(e.message))))
 
   const me = state?.me
   const cur = state?.current?.entryId === me?.entryId ? state?.current : null

@@ -216,3 +216,9 @@ test('ready gate: needs a running share (or noShare); the clock starts only on R
   await q.hackerReady('gate-bbbbbbbb', true)
   expect((await host()).current).toMatchObject({ name: 'Gus', status: 'live', shareState: 'not_shared' })
 })
+
+test('a double-submitted join is one spot, not an error', async () => {
+  await q.endSession(); await q.startSession(90)
+  await Promise.all([q.join('dbl-aaaaaaaa', 'Dee', 'Proj'), q.join('dbl-aaaaaaaa', 'Dee', 'Proj')])
+  expect((await host()).queue).toHaveLength(1)
+})
