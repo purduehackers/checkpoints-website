@@ -13,7 +13,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   limit_sec INTEGER NOT NULL DEFAULT 120,
   created_at INTEGER NOT NULL,
   quality TEXT NOT NULL DEFAULT '1080p',
-  audio INTEGER NOT NULL DEFAULT 1
+  audio INTEGER NOT NULL DEFAULT 1,
+  admin_seen_at INTEGER,
+  active_at INTEGER
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_open_session ON sessions(status) WHERE status = 'open';
 
@@ -42,6 +44,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_active_entry ON queue_entries(session_id) 
 // Awaited by every query; creates the tables on first use (also fine against an existing Turso db).
 // Columns added after the first deploy. SQLite has no ADD COLUMN IF NOT EXISTS, so ignore "duplicate column".
 const ADDED = [
+  `ALTER TABLE sessions ADD COLUMN admin_seen_at INTEGER`, // nullable: a session from older code never auto-ends
+  `ALTER TABLE sessions ADD COLUMN active_at INTEGER`,
   `ALTER TABLE queue_entries ADD COLUMN paused_left INTEGER`,
   `ALTER TABLE sessions ADD COLUMN quality TEXT NOT NULL DEFAULT '1080p'`,
   `ALTER TABLE sessions ADD COLUMN audio INTEGER NOT NULL DEFAULT 1`,

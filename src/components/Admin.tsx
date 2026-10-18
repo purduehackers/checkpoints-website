@@ -76,6 +76,7 @@ function Panel({ onDenied }: { onDenied: () => void }) {
             Projector sound: {state.session!.audio ? 'On' : 'Off'}
           </button>}
         </div>
+        {open && <p className="text-xs text-neutral-500">Ends by itself after 10 minutes with nothing happening, or 5 minutes with no organizer page open.</p>}
         {!state.session && <p className="text-neutral-400">No session yet.</p>}
         {state.session && !open && <p className="text-neutral-400">Session ended.</p>}
         {error && <p className="text-red-400">{error}</p>}

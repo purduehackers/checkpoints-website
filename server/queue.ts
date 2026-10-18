@@ -4,6 +4,8 @@ import { QUALITY, type Current, type QueueItem, type Role, type ShareState, type
 
 const DISCONNECTED_MS = 3 * 60_000 // US-2.4 grace period
 const BYE_GRACE_MS = 5_000 // closed tab -> out of the line; long enough for a refresh to reconnect
+const ADMIN_GONE_MS = 5 * 60_000 // no organizer page open this long: the checkpoint ends
+const DORMANT_MS = 10 * 60_000 // no action and nobody live this long: the checkpoint ends
 // Join order is a counter, not a timestamp: two joins in the same millisecond still get distinct keys.
 const NEXT_KEY = `(SELECT COALESCE(MAX(sort_key), 0) + 1 FROM queue_entries WHERE session_id = ?)`
 type Row = Record<string, any>
@@ -45,8 +47,13 @@ const openSession = () => one(`SELECT * FROM sessions WHERE status = 'open'`)
 
 export async function startSession(limitSec = 120) {
   if (await openSession()) return
-  await run(`INSERT INTO sessions (id, status, limit_sec, created_at) VALUES (?, 'open', ?, ?)`, [crypto.randomUUID(), limitSec, Date.now()])
+  const now = Date.now()
+  await run(`INSERT INTO sessions (id, status, limit_sec, created_at, admin_seen_at, active_at) VALUES (?, 'open', ?, ?, ?, ?)`, [crypto.randomUUID(), limitSec, now, now, now])
 }
+// An organizer page is open (socket or request). Heartbeat for the no-admin auto-end.
+export const adminSeen = (now = Date.now()) => run(`UPDATE sessions SET admin_seen_at = ? WHERE status = 'open'`, [now])
+// Someone did something (any request but the tab-close beacon). Heartbeat for the dormant auto-end.
+export const activity = (now = Date.now()) => run(`UPDATE sessions SET active_at = ? WHERE status = 'open'`, [now])
 
 const finishCurrent = (sid: string) => changes(`UPDATE queue_entries SET status = 'done' WHERE session_id = ? AND status IN ('called','live')`, [sid])
 
@@ -207,6 +214,12 @@ export async function move(id: string, dir: -1 | 1) {
 
 // The server-owned cutoff. Called every tick, so it also catches deadlines passed while the server was down.
 export async function expire(now = Date.now()) {
+  // Auto-end, same as the organizer's End: nobody running the night, or nothing happening and nobody live.
+  const s = await one(`SELECT admin_seen_at, active_at, EXISTS (SELECT 1 FROM queue_entries e WHERE e.session_id = sessions.id AND e.status = 'live') AS live
+    FROM sessions WHERE status = 'open'`)
+  if (s && ((s.admin_seen_at != null && s.admin_seen_at <= now - ADMIN_GONE_MS) || (s.active_at != null && !s.live && s.active_at <= now - DORMANT_MS))) {
+    return endSession()
+  }
   const n = await changes(`UPDATE queue_entries SET status = 'done', paused_left = NULL WHERE status = 'live' AND deadline <= ?`, [now])
   if (n) await advanceOpen()
   await sweepByes(now)

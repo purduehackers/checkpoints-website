@@ -69,13 +69,18 @@ async function tick() {
   // Before the sweep: a hacker with another tab still open on any instance keeps their spot when one tab closes.
   await q.back(...tokens)
   await q.expire()
-  if (++ticks % TOUCH_EVERY === 0) await q.touch(tokens)
+  if (++ticks % TOUCH_EVERY === 0) {
+    await q.touch(tokens)
+    if ([...subs.values()].some((s) => s.role === 'admin')) await q.adminSeen()
+  }
   await pushAll()
 }
 
 // Mutations answer with the caller's fresh state, then nudge sockets on this instance.
 const reply = async (role: Role, token?: string): Promise<State> => {
-  await q.expire()
+  await q.expire() // first: a timed-out checkpoint stays ended, even if nobody had a page open to tick it
+  await q.activity()
+  if (role === 'admin') await q.adminSeen()
   pushAll().catch(console.error)
   return q.loadState(role, token)
 }
@@ -164,6 +169,7 @@ export const app = new Elysia({
       timer ??= setInterval(() => tick().catch(console.error), TICK_MS)
       if (sub.token) await q.back(sub.token) // a refresh or reconnect cancels a pending bye
       await q.expire() // first message must not show a slot whose deadline passed while nobody was connected
+      if (role === 'admin') await q.adminSeen() // after expire: an organizer arriving late doesn't revive a timed-out night
       push(sub, await q.snapshot(), true)
     },
     close(ws) {
