@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Badge, adminKey, adminToken, api, fmt, useLive, useTick } from '../lib/live'
+import { Badge, Spinner, adminKey, adminToken, api, fmt, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
 import { QUALITY, type Quality } from '../../shared/types'
@@ -54,7 +54,7 @@ function Panel({ onDenied }: { onDenied: () => void }) {
   const statsStream = preview ?? state?.current?.streamId ?? null // nobody previewed: show the presenter
   const history = useRemoteStats(statsStream, stats.on)
 
-  if (!state) return <main className="p-6"><Badge online={online} />Loading…</main>
+  if (!state) return <main className="flex items-center gap-3 p-6"><Badge online={online} /><Spinner className="size-5" />Loading…</main>
   const open = state.session?.status === 'open'
   const c = state.current
 
@@ -65,6 +65,7 @@ function Panel({ onDenied }: { onDenied: () => void }) {
       {stats.on && <StatsOverlay history={history} title={statsStream && statsStream === c?.streamId ? `On stage: ${c.name}` : 'Previewed stream'} onClose={stats.toggle} />}
       <fieldset disabled={busy} className="min-w-0 space-y-4">
         <div className="flex flex-wrap items-center gap-2">
+          {busy && <span className="late"><Spinner /></span>}
           {open ? <button className="rounded bg-red-700 px-3 py-2" onClick={() => confirm('End checkpoints?') && act('/session/end')}>End checkpoints</button>
                 : <button className="rounded bg-green-600 px-3 py-2" onClick={() => act('/session/start')}>Start checkpoint</button>}
           {open && <label className="ml-auto text-sm">Limit (s) <input type="number" key={state.session!.limitSec} defaultValue={state.session!.limitSec} min={10} className="w-20 rounded bg-neutral-800 p-1" onBlur={(e) => Number(e.target.value) !== state.session!.limitSec && act('/limit', { seconds: Number(e.target.value) })} /></label>}

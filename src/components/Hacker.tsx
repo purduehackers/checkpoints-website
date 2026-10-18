@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Badge, api, fmt, hackerToken, useLive, useTick } from '../lib/live'
+import { Badge, Spinner, api, fmt, hackerToken, useLive, useTick } from '../lib/live'
 import { ShareBox } from '../lib/vdo'
 import { StatsButton, useStatsToggle } from '../lib/stats'
 import type { ShareState } from '../../shared/types'
@@ -37,8 +37,11 @@ export default function Hacker() {
   const token = hackerToken()
   // One request at a time, in click order: a late share-state must not land after Ready, nor an old reply overwrite a newer one.
   const chain = useRef(Promise.resolve())
-  const act = (path: string, body: object = {}) =>
-    (chain.current = chain.current.then(() => api(path, { token, ...body }).then(apply).catch((e) => setError(e.message))))
+  const [pending, setPending] = useState(0) // requests in flight, for the spinner
+  const act = (path: string, body: object = {}) => {
+    setPending((n) => n + 1)
+    return (chain.current = chain.current.then(() => api(path, { token, ...body }).then(apply).catch((e) => setError(e.message)).finally(() => setPending((n) => n - 1))))
+  }
 
   const me = state?.me
   const cur = state?.current?.entryId === me?.entryId ? state?.current : null
@@ -81,7 +84,7 @@ export default function Hacker() {
   }, [active, token])
 
   if (phone) return <Shell><PhoneNote /></Shell>
-  if (!state) return <Shell><Badge online={online} /><p>Loading…</p></Shell>
+  if (!state) return <Shell><Badge online={online} /><p className="flex items-center gap-3"><Spinner className="size-5" />Loading…</p></Shell>
 
   const msTotal = cur?.pausedLeft ?? (cur?.deadline != null ? cur.deadline - now() : null)
 
@@ -111,7 +114,7 @@ export default function Hacker() {
         </ol>
         <input required maxLength={60} placeholder="Your name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full rounded bg-neutral-800 p-3" />
         <input required maxLength={80} placeholder="Project name" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} className="w-full rounded bg-neutral-800 p-3" />
-        <button className="w-full rounded bg-amber-500 p-3 font-semibold text-black">Join queue</button>
+        <button disabled={pending > 0} className="flex w-full items-center justify-center gap-2 rounded bg-amber-500 p-3 font-semibold text-black disabled:opacity-70">{pending > 0 && <Spinner />}Join queue</button>
       </form>
     )
   } else {
@@ -129,7 +132,7 @@ export default function Hacker() {
           <div className="space-y-3 rounded-lg bg-green-500 p-4 text-black">
             <h1 className="text-3xl font-semibold">It's your turn!</h1>
             <p>Walk to the podium, then press Start presenting. Your time starts then, not before.</p>
-            <button className="w-full rounded-lg bg-black px-6 py-4 text-2xl font-bold text-green-400" onClick={start}>Start presenting</button>
+            <button disabled={pending > 0} className="flex w-full items-center justify-center gap-3 rounded-lg bg-black px-6 py-4 text-2xl font-bold text-green-400 disabled:opacity-70" onClick={start}>{pending > 0 && <Spinner className="size-5" />}Start presenting</button>
           </div>
         )}
         {me.status === 'live' && (
@@ -164,6 +167,7 @@ export default function Hacker() {
       {active && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
       {me?.status === 'live' && msTotal !== null && <div className={`fixed left-3 top-3 z-40 rounded px-3 py-1 text-xl font-bold tabular-nums ${msTotal <= 30_000 ? 'bg-red-600' : 'bg-neutral-800'}`}>{fmt(msTotal)}</div>}
       {me?.status === 'waiting' && me.position === 1 && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-amber-400/25" />}
+      {pending > 0 && <div className="late fixed bottom-3 right-3 z-50 flex items-center gap-2 rounded bg-neutral-800 px-3 py-1 text-sm"><Spinner />Working…</div>}
       {body}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
     </Shell>

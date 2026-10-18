@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import VDONinjaSDK from '@vdoninja/sdk'
 import { QUALITY, type Quality, type ShareState } from '../../shared/types'
+import { Spinner } from './live'
 import { StatsOverlay, pushSample, statsCollector, type Sample } from './stats'
 
 const AUDIO_KBPS = 128
@@ -43,6 +44,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
   const [state, setState] = useState<ShareState>('not_shared')
   const [error, setError] = useState('')
   const [retry, setRetry] = useState(false)
+  const [connecting, setConnecting] = useState(false) // picked a screen, stream not up yet
   const [hasAudio, setHasAudio] = useState(false)
   const [backup, setBackup] = useState(false) // backup tab owns the stream ID; don't publish it from here too
   const [history, setHistory] = useState<Sample[]>([])
@@ -56,6 +58,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     stream.current = null
     if (video.current) video.current.srcObject = null
     try { sdk.current?.stopPublishing() } catch {}
+    setConnecting(false)
   }
 
   // basic: no extra options, for a browser that rejects ours. A button, not an auto-retry: each call needs a fresh click.
@@ -96,6 +99,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     }
     stop() // "Change window": replace the previous share. Claimed before any await, so a newer share() or stop() makes this one bail below.
     stream.current = s
+    setConnecting(true)
     muteUnlessLive()
     setHasAudio(s.getAudioTracks().length > 0)
     video.current!.srcObject = s
@@ -115,6 +119,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
       if (stream.current !== s) return // replaced or ended while we waited
       // Bitrate only: given a resolution or frameRate, the SDK calls applyConstraints, which wipes our capture caps.
       await sdk.current.publish(s, { streamID: streamId, media: { video: { maxBitrate: QUALITY[quality].kbps }, audio: { maxBitrate: AUDIO_KBPS } } })
+      setConnecting(false)
       report('sharing')
     } catch (e) {
       stop()
@@ -150,7 +155,8 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     <div>
       <div className="relative aspect-video w-full overflow-hidden rounded bg-neutral-900">
         <video ref={video} autoPlay muted playsInline className="h-full w-full object-contain" />
-        {state !== 'sharing' && !backup && !hideShare && (
+        {connecting && <div className="absolute inset-0 flex items-center justify-center gap-3 bg-neutral-900/80 text-lg"><Spinner className="size-6" />Connecting…</div>}
+        {state !== 'sharing' && !backup && !hideShare && !connecting && (
           <button onClick={() => share()} className="absolute inset-0 m-auto h-fit w-fit rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-black">
             {state === 'stopped' ? 'Share again' : 'Share your screen'}
           </button>
@@ -184,8 +190,15 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
 export function ViewFrame({ streamId, className = '', muted }: { streamId: string; className?: string; muted?: boolean }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const startMuted = useMemo(() => muted, [streamId]) // &mutespeaker closes the gap before the first postMessage lands; later toggles never touch src
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => setLoaded(false), [streamId])
   const send = () => { if (muted !== undefined) ref.current?.contentWindow?.postMessage({ mute: muted }, 'https://vdo.ninja') }
   // Re-sent every 2s: a message that lands before vdo.ninja is listening is dropped, and { mute } is idempotent.
   useEffect(() => { send(); const i = setInterval(send, 2000); return () => clearInterval(i) }, [muted])
-  return <iframe ref={ref} onLoad={send} allow="autoplay; fullscreen" className={`border-0 ${className}`} src={`https://vdo.ninja/?view=${streamId}&cleanoutput&autostart${muted === undefined ? '&noaudio' : '&stereo'}${startMuted ? '&mutespeaker' : ''}`} />
+  return (
+    <div className={`relative ${className}`}>
+      {!loaded && <div className="absolute inset-0 flex items-center justify-center text-neutral-400"><Spinner className="size-8" /></div>}
+      <iframe ref={ref} onLoad={() => { setLoaded(true); send() }} allow="autoplay; fullscreen" className="absolute inset-0 h-full w-full border-0" src={`https://vdo.ninja/?view=${streamId}&cleanoutput&autostart${muted === undefined ? '&noaudio' : '&stereo'}${startMuted ? '&mutespeaker' : ''}`} />
+    </div>
+  )
 }

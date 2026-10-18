@@ -67,6 +67,10 @@ export const fmt = (ms: number) => {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
 
+export function Spinner({ className = 'size-4' }: { className?: string }) {
+  return <span role="status" aria-label="Loading" className={`inline-block animate-spin rounded-full border-2 border-current border-t-transparent ${className}`} />
+}
+
 export function Badge({ online }: { online: boolean }) {
-  return online ? null : <div className="fixed right-2 top-2 z-50 rounded bg-amber-500 px-2 py-1 text-xs font-medium text-black">reconnecting…</div>
+  return online ? null : <div className="fixed right-2 top-2 z-50 flex items-center gap-2 rounded bg-amber-500 px-2 py-1 text-xs font-medium text-black"><Spinner className="size-3" />reconnecting…</div>
 }
