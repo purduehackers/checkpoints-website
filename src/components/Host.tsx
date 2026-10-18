@@ -38,7 +38,7 @@ export default function Host() {
           <div className="flex items-center gap-4 bg-neutral-900 px-6 py-3 text-2xl"><b>{c!.name}</b><span className="text-neutral-400">{c!.project}</span>
             {open && <span className="ml-auto text-xl">Join at <b className="text-amber-400">{joinHost}</b></span>}</div>
           <ViewFrame streamId={c!.streamId!} className="w-full grow bg-black" muted={!audio} />
-          {left !== null && left <= 15_000 && <div className="absolute left-4 top-20 rounded bg-red-600 px-4 py-2 text-5xl font-bold tabular-nums">{fmt(left)}</div>}
+          {left !== null && <div className={`absolute left-4 top-20 rounded px-3 py-1 text-3xl font-bold tabular-nums ${left <= 30_000 ? 'bg-red-600' : 'bg-neutral-900/80'}`}>{fmt(left)}</div>}
         </>
       ) : (
         <div className="flex grow flex-col items-center justify-center gap-6 p-8 text-center">

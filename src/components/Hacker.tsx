@@ -84,7 +84,6 @@ export default function Hacker() {
   if (!state) return <Shell><Badge online={online} /><p>Loading…</p></Shell>
 
   const msTotal = cur?.deadline ? cur.deadline - now() : null
-  const countdown = me?.status === 'live' && msTotal !== null && msTotal <= 15_000
 
   let body
   if (!state.session) body = <p className="text-xl">No checkpoint is running.</p>
@@ -163,7 +162,7 @@ export default function Hacker() {
       <Badge online={online} />
       {stats.menu}
       {active && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
-      {countdown && <div className="fixed left-3 top-3 z-40 rounded bg-red-600 px-3 py-1 text-2xl font-bold tabular-nums">{fmt(msTotal!)}</div>}
+      {me?.status === 'live' && msTotal !== null && <div className={`fixed left-3 top-3 z-40 rounded px-3 py-1 text-xl font-bold tabular-nums ${msTotal <= 30_000 ? 'bg-red-600' : 'bg-neutral-800'}`}>{fmt(msTotal)}</div>}
       {me?.status === 'waiting' && me.position === 1 && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-amber-400/25" />}
       {body}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
