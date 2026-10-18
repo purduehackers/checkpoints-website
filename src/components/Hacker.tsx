@@ -34,11 +34,7 @@ function chime() {
 }
 
 // First-time tour, one part per page state (the elements only exist then).
-const TOUR: Record<'join' | 'wait' | 'turn', Step[]> = {
-  join: [
-    { target: 'name', icon: ICONS.person, text: 'Your name + project. Shown on the big screen.' },
-    { target: 'join', icon: ICONS.plus, text: 'Join the line. Keep this tab open.' },
-  ],
+const TOUR: Record<'wait' | 'turn', Step[]> = {
   wait: [
     { target: 'status', icon: ICONS.hourglass, text: "Your spot. Flashes yellow when you're next, green when it's your turn." },
     { target: 'share', icon: ICONS.screen, text: 'Share early if you like. Only organizers see it.' },
@@ -149,7 +145,6 @@ export default function Hacker() {
     )
   }
   else if (!active) {
-    tour = 'join'
     body = (
       <form className="space-y-3" onSubmit={(e) => {
         e.preventDefault(); setError('')
@@ -157,11 +152,9 @@ export default function Hacker() {
       }}>
         <h1 className="text-2xl font-semibold">Join the checkpoint</h1>
         <p className="text-sm text-neutral-400">Join → wait for green → walk up → Start presenting. You get {span(state.session!.limitSec)}.</p>
-        <div data-tour="name" className="space-y-3">
         <input required maxLength={60} placeholder="Your name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full rounded bg-neutral-800 p-3" />
         <input required maxLength={80} placeholder="Project name" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} className="w-full rounded bg-neutral-800 p-3" />
-        </div>
-        <button data-tour="join" disabled={pending > 0} className="flex w-full items-center justify-center gap-2 rounded bg-amber-500 p-3 font-semibold text-black disabled:opacity-70">{pending > 0 && <Spinner />}Join queue</button>
+        <button disabled={pending > 0} className="flex w-full items-center justify-center gap-2 rounded bg-amber-500 p-3 font-semibold text-black disabled:opacity-70">{pending > 0 && <Spinner />}Join queue</button>
       </form>
     )
   } else {
