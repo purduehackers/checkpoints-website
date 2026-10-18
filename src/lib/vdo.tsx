@@ -71,12 +71,13 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
       // are skipped on Linux, where the xdg-desktop-portal picker has no use for them and they've been flaky,
       // and audio is only asked of browsers that can share it (WebKit bug 259823: {video, audio} can reject outright).
       s = await navigator.mediaDevices.getDisplayMedia(basic ? { video: true, audio: !noAudioBrowser } : {
-        video: true,
+        video: { displaySurface: 'monitor' }, // preselect "Entire screen" in the picker
         // Raw audio: Chrome's voice processing (echo cancel, denoise, auto gain) mangles music and demos.
         audio: !noAudioBrowser && { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
         ...(!linux && !noAudioBrowser && {
           systemAudio: 'include',
           suppressLocalAudioPlayback: true, // a shared tab goes quiet locally; the projector plays it
+          monitorTypeSurfaces: 'include',
           selfBrowserSurface: 'exclude', // don't offer this tab
           surfaceSwitching: 'include',
         }),
@@ -158,7 +159,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
       </div>
       {backup && <p className="mt-2 rounded bg-neutral-800 p-2 text-sm">You’re using the backup share in another tab. Close it before sharing here. <button className="underline" onClick={() => setBackup(false)}>Share here instead</button></p>}
       {state === 'stopped' && !backup && <p className="mt-2 rounded bg-red-900 p-2 text-sm">Your share stopped. Click “Share again”.</p>}
-      {state === 'not_shared' && !backup && <p className="mt-2 text-sm text-neutral-400">Pick a screen, window or tab and tick “Share audio” to play sound on the projector. Only the organizer sees it until you go live.{linux && ' On Linux, a browser tab is the most reliable choice.'}</p>}
+      {state === 'not_shared' && !backup && <p className="mt-2 text-sm text-neutral-400">Pick “Entire screen”. For sound on the projector, share a browser tab instead and tick “Share audio”. Only the organizer sees it until you go live.{linux && ' On Linux, a browser tab is the most reliable choice.'}</p>}
       {state === 'sharing' && (
         <p className="mt-2 text-sm">
           {hasAudio ? <span className="text-green-400">Sharing with sound{live ? '' : ' (plays on the projector once you’re live)'}.</span>
