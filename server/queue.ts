@@ -74,6 +74,7 @@ export async function setQuality(quality: string) {
   await run(`UPDATE sessions SET quality = ? WHERE status = 'open'`, [quality])
 }
 export const setAudio = (on: boolean) => run(`UPDATE sessions SET audio = ? WHERE status = 'open'`, [on ? 1 : 0])
+export const setReactions = (on: boolean) => run(`UPDATE sessions SET reactions = ? WHERE status = 'open'`, [on ? 1 : 0])
 
 const MAX_WAITING = 200 // a script can't bury the line; far above a real hack night. Reset = end + start a session.
 // Names go on the projector: drop control/format chars (bidi overrides, zero-width) and cap stacked combining marks.
@@ -259,7 +260,7 @@ export function view({ s, rows }: Snapshot, role: Role, token?: string): State {
     connected: serverNow - r.last_seen_at < DISCONNECTED_MS && r.bye_at == null,
     ...(admin && { streamId: r.stream_id }),
   }))
-  const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec, quality: s.quality, audio: !!s.audio }, current, queue }
+  const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec, quality: s.quality, audio: !!s.audio, reactions: !!s.reactions }, current, queue }
   const mine = role === 'hacker' && token ? rows.find((r) => r.client_token === token) : undefined
   if (mine) {
     state.me = { entryId: mine.id, name: mine.name, project: mine.project, status: mine.status, position: waiting.indexOf(mine) + 1, streamId: mine.stream_id }

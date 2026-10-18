@@ -1,6 +1,8 @@
 export type EntryStatus = 'waiting' | 'called' | 'live' | 'done' | 'left' | 'removed'
 export type ShareState = 'not_shared' | 'sharing' | 'stopped'
 export type Role = 'hacker' | 'admin' | 'host'
+export const REACTIONS = ['❤️', '👍', '😭', '🐴', '🤑'] as const
+export const REACT_COOLDOWN_MS = 200 // per socket, enforced by the server
 
 // Stream quality the organizer picks; the presenter's browser applies it as the encoder bitrate.
 export const QUALITY = {
@@ -36,7 +38,7 @@ export interface Current {
 
 export interface State {
   serverNow: number
-  session: { status: 'open' | 'closed'; limitSec: number; quality: Quality; audio: boolean } | null
+  session: { status: 'open' | 'closed'; limitSec: number; quality: Quality; audio: boolean; reactions: boolean } | null
   current: Current | null
   queue: QueueItem[]
   me?: {

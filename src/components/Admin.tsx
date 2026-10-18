@@ -77,6 +77,9 @@ function Panel({ onDenied }: { onDenied: () => void }) {
           {open && <button className={`rounded px-3 py-1 text-sm ${state.session!.audio ? 'bg-neutral-700' : 'bg-red-800'}`} onClick={() => act('/audio', { on: !state.session!.audio })}>
             Projector sound: {state.session!.audio ? 'On' : 'Off'}
           </button>}
+          {open && <button className={`rounded px-3 py-1 text-sm ${state.session!.reactions ? 'bg-neutral-700' : 'bg-red-800'}`} onClick={() => act('/reactions', { on: !state.session!.reactions })}>
+            Reactions: {state.session!.reactions ? 'On' : 'Off'}
+          </button>}
         </div>
         {open && <p className="text-xs text-neutral-500">Ends by itself after 10 minutes with nothing happening, or 5 minutes with no organizer page open.</p>}
         {!state.session && <p className="text-neutral-400">No session yet.</p>}

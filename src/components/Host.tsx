@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Badge, fmt, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
+import { FloatingReactions, spawn } from '../lib/reactions'
 import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
 
 // The projector may be opened on an old/preview URL, so the shown address can be pinned (build-time var).
@@ -8,7 +9,8 @@ const pinnedHost = import.meta.env.PUBLIC_JOIN_HOST
 
 export default function Host() {
   const joinHost = pinnedHost || location.host
-  const { state, online, now } = useLive('host')
+  const reactBox = useRef<HTMLDivElement>(null)
+  const { state, online, now } = useLive('host', (counts) => spawn(reactBox.current, counts))
   const [idle, setIdle] = useState(false)
   useTick()
 
@@ -33,6 +35,7 @@ export default function Host() {
       <Badge online={online} />
       {c?.away && <div className="absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-lg bg-amber-500 px-6 py-3 text-3xl font-bold text-black"><span className="dots">{c.name} disconnected</span></div>}
       {stats.menu}
+      <FloatingReactions box={reactBox} />
       {stats.on && <StatsOverlay history={history} title={live ? `Live: ${c!.name}` : 'Nobody live'} onClose={stats.toggle} />}
       {live ? (
         <>

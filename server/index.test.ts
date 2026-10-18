@@ -154,3 +154,43 @@ test('one IP is rate limited across all routes', async () => {
   expect(codes.filter((c) => c === 429).length).toBeGreaterThan(0)
   expect(codes.filter((c) => c === 200).length).toBeGreaterThan(100) // a busy NAT still gets through
 })
+
+test('reactions: queued hackers only, cooldown, allowlist, batched to hosts, admin toggle', async () => {
+  const url = base.replace('http', 'ws') + '/ws'
+  const open = async (hello: object) => {
+    const ws = new WebSocket(url, { headers: { 'x-real-ip': '10.9.9.9' } } as any), got: any[] = [] // own IP: earlier tests used up the shared request window
+    ws.onmessage = (e) => got.push(JSON.parse(String(e.data)))
+    await new Promise((r) => (ws.onopen = r))
+    ws.send(JSON.stringify(hello)); await Bun.sleep(150)
+    return { ws, got: () => got.filter((m) => m.reactions) }
+  }
+  await as('/session/end'); await as('/session/start')
+  await hacker('/join', 'react-queued-1', { name: 'Ann', project: 'P' })
+  const host = await open({ role: 'host' })
+  const queued = await open({ role: 'hacker', token: 'react-queued-1' })
+  const outsider = await open({ role: 'hacker', token: 'react-outsider' })
+  for (const e of ['❤️', '❤️', 'nope']) queued.ws.send(JSON.stringify({ react: e })) // 2nd is inside the cooldown, 3rd isn't an emoji we know
+  outsider.ws.send(JSON.stringify({ react: '👍' }))
+  await Bun.sleep(400)
+  expect(host.got()).toEqual([{ reactions: { '❤️': 1 } }])
+  await as('/reactions', { on: false }); await Bun.sleep(1200) // the next snapshot push carries the toggle to the sockets
+  queued.ws.send(JSON.stringify({ react: '🐴' })); await Bun.sleep(400)
+  expect(host.got().length).toBe(1)
+  await as('/reactions', { on: true })
+  ;[host, queued, outsider].forEach((s) => s.ws.close())
+}, 15000)
+
+test('reactions: spamming gets a warning, then slow mode', async () => {
+  await hacker('/join', 'react-spammer-1', { name: 'Bo', project: 'P' })
+  const ws = new WebSocket(base.replace('http', 'ws') + '/ws', { headers: { 'x-real-ip': '10.9.9.8' } } as any), got: any[] = []
+  ws.onmessage = (e) => got.push(JSON.parse(String(e.data)))
+  await new Promise((r) => (ws.onopen = r))
+  ws.send(JSON.stringify({ role: 'hacker', token: 'react-spammer-1' })); await Bun.sleep(150)
+  for (let i = 0; i < 20; i++) ws.send(JSON.stringify({ react: '❤️' })) // 1 lands, 19 are inside the cooldown
+  await Bun.sleep(300)
+  const notices = got.filter((m) => m.notice)
+  expect(notices.length).toBe(2)
+  expect(notices[0].slowMs).toBeUndefined() // first offense: warning only
+  expect(notices[1].slowMs).toBe(30_000) // second: slow mode
+  ws.close()
+}, 15000)

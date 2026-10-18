@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia'
 import { timingSafeEqual } from 'node:crypto'
 import * as q from './queue'
-import { QUALITY, type Role, type State } from '../shared/types'
+import { QUALITY, REACTIONS, REACT_COOLDOWN_MS, type Role, type State } from '../shared/types'
 
 // ?? Assumes Vercel Pro and ~1s latency. Each tick is a few Turso reads per socket-holding instance, however
 // ?? many sockets it holds; if 1s feels slow, move cross-instance sync to Redis pub/sub and tick only for expire().
@@ -43,7 +43,7 @@ const ipOf = (request: Request, server: { requestIP(r: Request): { address: stri
 const ipSockets = new Map<string, number>()
 
 // ---- live sockets held by THIS instance ----
-type Sub = { send: (s: string) => void; role: Role; token?: string; ip: string; last?: string }
+type Sub = { send: (s: string) => void; role: Role; token?: string; ip: string; last?: string; canReact?: boolean; lastReact?: number; strikes?: number; strikeAt?: number; offenses?: number; lastOffense?: number; slowUntil?: number }
 const subs = new Map<string, Sub>()
 let timer: ReturnType<typeof setInterval> | undefined
 let ticks = 0
@@ -51,9 +51,43 @@ let ticks = 0
 function push(sub: Sub, snap: q.Snapshot, force = false) {
   const state = q.view(snap, sub.role, sub.token)
   const { serverNow, ...rest } = state
+  // Refreshed with every snapshot (about 1s), so the admin toggle and leaving the queue take effect quickly.
+  sub.canReact = sub.role === 'hacker' && state.session?.status === 'open' && state.session.reactions && ['waiting', 'called', 'live'].includes(state.me?.status ?? '')
   const key = JSON.stringify(rest) // only send when something changed
   if (force || key !== sub.last) { sub.last = key; sub.send(JSON.stringify(state)) }
 }
+// Reactions are ephemeral: counted in memory and flushed to hosts as one {emoji: n} message per window,
+// so fan-out is one message per host per window however many people tap. Per instance, like the rest of the live state.
+const REACT_BATCH_MS = 250
+let tally: Record<string, number> = {}, flushing = false
+// Spam, Discord-style: STRIKES taps inside the cooldown within STRIKE_MS is an offense. The first gets a warning;
+// a repeat within OFFENSE_MS gets slow mode (one reaction per SLOW_MS for SLOW_FOR_MS). Taps are never queued.
+const STRIKES = 8, STRIKE_MS = 3000, OFFENSE_MS = 120_000, SLOW_MS = 2000, SLOW_FOR_MS = 30_000
+function spam(sub: Sub, now: number) {
+  if (now - (sub.strikeAt ?? 0) > STRIKE_MS) { sub.strikeAt = now; sub.strikes = 0 }
+  if (++sub.strikes! < STRIKES) return
+  sub.strikes = 0; sub.strikeAt = now
+  sub.offenses = now - (sub.lastOffense ?? 0) > OFFENSE_MS ? 1 : (sub.offenses ?? 0) + 1
+  sub.lastOffense = now
+  if (sub.offenses < 2) return sub.send(JSON.stringify({ notice: 'Easy on the reactions, please don’t spam.' }))
+  sub.slowUntil = now + SLOW_FOR_MS
+  sub.send(JSON.stringify({ notice: 'Slow mode: one reaction every 2 seconds for 30 seconds.', slowMs: SLOW_FOR_MS }))
+}
+function react(sub: Sub, emoji: unknown) {
+  const now = Date.now()
+  if (!sub.canReact || !(REACTIONS as readonly unknown[]).includes(emoji)) return
+  if (now - (sub.lastReact ?? 0) < ((sub.slowUntil ?? 0) > now ? SLOW_MS : REACT_COOLDOWN_MS)) return spam(sub, now)
+  sub.lastReact = now
+  tally[emoji as string] = (tally[emoji as string] ?? 0) + 1
+  if (flushing) return
+  flushing = true
+  setTimeout(() => {
+    const msg = JSON.stringify({ reactions: tally })
+    tally = {}; flushing = false
+    for (const s of subs.values()) if (s.role === 'host') s.send(msg)
+  }, REACT_BATCH_MS)
+}
+
 // At most one broadcast in flight plus one queued, so a burst of requests can't multiply DB reads.
 let pushing = false, again = false
 async function pushAll() {
@@ -150,14 +184,16 @@ export const app = new Elysia({
       .post('/limit', async ({ body }) => (await q.setLimit(body.seconds), reply('admin')), { body: t.Object({ seconds: t.Number() }) })
       .post('/quality', async ({ body }) => (await q.setQuality(body.quality), reply('admin')),
         { body: t.Object({ quality: t.Union(Object.keys(QUALITY).map((k) => t.Literal(k))) }) })
-      .post('/audio', async ({ body }) => (await q.setAudio(body.on), reply('admin')), { body: t.Object({ on: t.Boolean() }) }),
+      .post('/audio', async ({ body }) => (await q.setAudio(body.on), reply('admin')), { body: t.Object({ on: t.Boolean() }) })
+      .post('/reactions', async ({ body }) => (await q.setReactions(body.on), reply('admin')), { body: t.Object({ on: t.Boolean() }) }),
   )
 
   .ws('/ws', {
     // First message from the client: { role, token?, adminToken? }
     async message(ws, msg: any) {
       const id = String(ws.id)
-      if (subs.has(id)) return // one subscription per socket; repeats would only make the server re-query
+      const known = subs.get(id)
+      if (known) { if (msg?.react) react(known, msg.react); return } // one subscription per socket; repeats would only make the server re-query
       const role = msg?.role, token = msg?.token
       if (!['hacker', 'admin', 'host'].includes(role)) return
       if (role === 'hacker' && !(typeof token === 'string' && token.length >= 8 && token.length <= 64)) return

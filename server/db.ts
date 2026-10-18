@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at INTEGER NOT NULL,
   quality TEXT NOT NULL DEFAULT '1080p',
   audio INTEGER NOT NULL DEFAULT 1,
+  reactions INTEGER NOT NULL DEFAULT 1,
   admin_seen_at INTEGER,
   active_at INTEGER
 );
@@ -49,6 +50,7 @@ const ADDED = [
   `ALTER TABLE queue_entries ADD COLUMN paused_left INTEGER`,
   `ALTER TABLE sessions ADD COLUMN quality TEXT NOT NULL DEFAULT '1080p'`,
   `ALTER TABLE sessions ADD COLUMN audio INTEGER NOT NULL DEFAULT 1`,
+  `ALTER TABLE sessions ADD COLUMN reactions INTEGER NOT NULL DEFAULT 1`,
   `ALTER TABLE queue_entries ADD COLUMN bye_at INTEGER`, // nullable, so older code that never sets it keeps working
 ]
 export const ready = db.executeMultiple(SCHEMA).then(async () => {

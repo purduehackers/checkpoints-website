@@ -3,6 +3,7 @@ import { Badge, Spinner, aboutMin, api, fmt, hackerToken, useLive, useTick, wait
 import { ShareBox } from '../lib/vdo'
 import { StatsButton, useStatsToggle } from '../lib/stats'
 import { ICONS, Tour, seen, type Step } from '../lib/tour'
+import { ReactionPanel } from '../lib/reactions'
 import type { ShareState } from '../../shared/types'
 
 const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`
@@ -54,7 +55,7 @@ function PhoneNote() {
 }
 
 export default function Hacker() {
-  const { state, online, apply, now } = useLive('hacker')
+  const { state, online, apply, now, react, notice } = useLive('hacker')
   const [error, setError] = useState('')
   const [form, setForm] = useState({ name: '', project: '' })
   const [shareState, setShareState] = useState<ShareState>('not_shared')
@@ -182,6 +183,7 @@ export default function Hacker() {
             {msTotal !== null && <p className="text-neutral-400">{fmt(msTotal)} left</p>}
           </div>
         )}
+        {state.session!.reactions && <ReactionPanel react={react} notice={notice} />}
         {canShare ? (
           <div data-tour="share"><ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} shareRef={shareFn} hideShare={me.status === 'called'} /></div>
         ) : (
