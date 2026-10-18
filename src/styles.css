@@ -23,3 +23,7 @@ button:disabled { cursor: not-allowed; }
 /* Loading cues stay invisible for the first 400ms, so quick requests never flash a spinner. */
 .late { animation: late-in 0.2s 0.4s backwards; }
 @keyframes late-in { from { opacity: 0; } }
+
+/* "Disconnected..." with dots that count up. */
+.dots::after { content: ''; animation: dots 1.2s steps(1) infinite; }
+@keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }

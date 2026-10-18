@@ -83,7 +83,7 @@ function Panel({ onDenied }: { onDenied: () => void }) {
         {c && (
           <div className="rounded border border-amber-500 p-3">
             <div className="flex items-center gap-3">
-              <div className="grow"><b>{c.name}</b> · {c.project}<div className="text-sm text-neutral-400">{c.status === 'live' ? 'live' : 'getting ready'} · {SHARE_LABEL[c.shareState]}</div></div>
+              <div className="grow"><b>{c.name}</b> · {c.project}<div className="text-sm text-neutral-400">{c.away ? <span className="dots font-medium text-amber-400">disconnected</span> : <>{c.status === 'live' ? 'live' : 'getting ready'} · {SHARE_LABEL[c.shareState]}</>}</div></div>
               {(c.pausedLeft != null || c.deadline != null) && <span className={`text-2xl tabular-nums ${c.pausedLeft != null ? 'text-neutral-500' : ''}`}>{c.pausedLeft != null && '⏸ '}{fmt(c.pausedLeft ?? c.deadline! - now())}</span>}
               {c.pausedLeft != null && <span className="text-sm text-neutral-400">Paused</span>}
               {c.status === 'called' && <button className="rounded bg-green-600 px-3 py-1" onClick={() => act('/ready', { id: c.entryId })}>Start timer</button>}
@@ -104,7 +104,7 @@ function Panel({ onDenied }: { onDenied: () => void }) {
             <li key={e.id} className="flex items-center gap-3 rounded bg-neutral-900 p-3">
               <span className="w-6 text-neutral-500">{i + 1}</span>
               <div className="grow"><b>{e.name}</b> · {e.project}
-                <div className="text-sm text-neutral-400">{e.connected ? SHARE_LABEL[e.shareState] : 'disconnected'}</div></div>
+                <div className="text-sm text-neutral-400">{e.connected ? SHARE_LABEL[e.shareState] : <span className="dots text-amber-400">disconnected</span>}</div></div>
               <button className="text-sm underline" onClick={() => { setPinned(true); setPreview(e.streamId!) }}>Preview</button>
               <button className="text-sm disabled:opacity-30" disabled={i === 0} aria-label="Move up" onClick={() => act('/move', { id: e.id, dir: -1 })}>▲</button>
               <button className="text-sm disabled:opacity-30" disabled={i === state.queue.length - 1} aria-label="Move down" onClick={() => act('/move', { id: e.id, dir: 1 })}>▼</button>

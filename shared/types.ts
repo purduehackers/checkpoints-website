@@ -29,6 +29,7 @@ export interface Current {
   startedAt: number | null
   deadline: number | null
   pausedLeft: number | null
+  away?: boolean // admin/host: tab closed, about to be dropped unless they come back
   shareState: ShareState
   streamId?: string // admin always; host only while live
 }

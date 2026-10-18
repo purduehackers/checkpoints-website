@@ -108,7 +108,7 @@ export const app = new Elysia({
   // hacker
   .post('/join', async ({ body }) => (await q.join(body.token, body.name, body.project), reply('hacker', body.token)),
     { body: t.Object({ token: tok, name: t.String({ maxLength: 200 }), project: t.String({ maxLength: 200 }) }) })
-  // sendBeacon from pagehide; the answer is never read. The 15s grace in expire() does the actual removal.
+  // sendBeacon from pagehide; the answer is never read. The 5s grace in expire() does the actual removal.
   .post('/bye', async ({ body }) => (await q.bye(body.token), { ok: true }), { body: hackerBody })
   .post('/leave', async ({ body }) => (await q.leave(body.token), reply('hacker', body.token)), { body: hackerBody })
   .post('/ready', async ({ body }) => (await q.hackerReady(body.token, body.noShare), reply('hacker', body.token)), { body: t.Object({ token: tok, noShare: t.Optional(t.Boolean()) }) })

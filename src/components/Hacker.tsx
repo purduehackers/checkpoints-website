@@ -78,7 +78,7 @@ export default function Hacker() {
   }, [key])
 
   // Closing the tab takes you out of the line. beforeunload only asks (it also fires on refresh, which is fine);
-  // pagehide tells the server, which waits 15s so a refresh (new socket) or a Wi-Fi blip (no pagehide) keeps the spot.
+  // pagehide tells the server, which waits 5s so a refresh (new socket) or a Wi-Fi blip (no pagehide) keeps the spot.
   useEffect(() => {
     if (!active) return
     const ask = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }

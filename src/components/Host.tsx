@@ -31,6 +31,7 @@ export default function Host() {
   return (
     <main className={`relative flex h-screen flex-col ${idle ? 'cursor-none' : ''}`}>
       <Badge online={online} />
+      {c?.away && <div className="absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-lg bg-amber-500 px-6 py-3 text-3xl font-bold text-black"><span className="dots">{c.name} disconnected</span></div>}
       {stats.menu}
       {stats.on && <StatsOverlay history={history} title={live ? `Live: ${c!.name}` : 'Nobody live'} onClose={stats.toggle} />}
       {live ? (

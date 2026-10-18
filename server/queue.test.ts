@@ -316,7 +316,7 @@ test('pause, resume and adjust on non-live or unknown entries are no-ops', async
 test('finishing a paused entry clears its remaining time', async () => {
   for (const finish of [q.stop, q.remove, () => q.end('aa-A-xxxx'), () => q.leave('aa-A-xxxx'), async () => {
     await q.bye('aa-A-xxxx')
-    await q.sweepByes(Date.now() + 15_000)
+    await q.sweepByes(Date.now() + 5_000)
   }]) {
     await fresh('A', 'B')
     await live('aa-A-xxxx')
@@ -429,9 +429,9 @@ test('bye then grace -> left; before grace nothing happens; waiting leaving does
   await fresh('A', 'B', 'C')
   const t = Date.now()
   await q.bye('aa-C-xxxx', t)
-  await q.sweepByes(t + 14_999)
+  await q.sweepByes(t + 4_999)
   expect(await status('C')).toBe('waiting')
-  await q.sweepByes(t + 15_000)
+  await q.sweepByes(t + 5_000)
   expect(await status('C')).toBe('left')
   expect(await cur()).toMatchObject({ name: 'A', status: 'called' })
   expect(await names()).toEqual(['B'])
@@ -454,12 +454,12 @@ test('a called or live presenter who closes the tab frees the stage for the next
   await fresh('A', 'B', 'C')
   const t = Date.now()
   await q.bye('aa-A-xxxx', t)
-  await q.sweepByes(t + 15_000)
+  await q.sweepByes(t + 5_000)
   expect(await status('A')).toBe('left')
   expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
   await live('aa-B-xxxx')
   await q.bye('aa-B-xxxx', t)
-  await q.expire(t + 15_000) // the tick path
+  await q.expire(t + 5_000) // the tick path
   expect(await status('B')).toBe('left')
   expect(await cur()).toMatchObject({ name: 'C', status: 'called' })
   expect(await calledOrLive()).toBe(1)

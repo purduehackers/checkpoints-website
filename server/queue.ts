@@ -3,7 +3,7 @@ import { db, ready } from './db'
 import { QUALITY, type Current, type QueueItem, type Role, type ShareState, type State } from '../shared/types'
 
 const DISCONNECTED_MS = 3 * 60_000 // US-2.4 grace period
-const BYE_GRACE_MS = 15_000 // closed tab -> out of the line; long enough for a refresh to reconnect
+const BYE_GRACE_MS = 5_000 // closed tab -> out of the line; long enough for a refresh to reconnect
 // Join order is a counter, not a timestamp: two joins in the same millisecond still get distinct keys.
 const NEXT_KEY = `(SELECT COALESCE(MAX(sort_key), 0) + 1 FROM queue_entries WHERE session_id = ?)`
 type Row = Record<string, any>
@@ -232,11 +232,12 @@ export function view({ s, rows }: Snapshot, role: Role, token?: string): State {
   const current: Current | null = !cur ? null : {
     entryId: cur.id, name: cur.name, project: cur.project, status: cur.status,
     startedAt: cur.started_at, deadline: cur.deadline, pausedLeft: cur.paused_left, shareState: cur.share_state,
+    ...(role !== 'hacker' && { away: cur.bye_at != null }),
     ...((admin || (role === 'host' && cur.status === 'live')) && { streamId: cur.stream_id }),
   }
   const queue: QueueItem[] = waiting.map((r) => ({
     id: r.id, name: r.name, project: r.project, shareState: r.share_state, joinedAt: r.joined_at,
-    connected: serverNow - r.last_seen_at < DISCONNECTED_MS,
+    connected: serverNow - r.last_seen_at < DISCONNECTED_MS && r.bye_at == null,
     ...(admin && { streamId: r.stream_id }),
   }))
   const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec, quality: s.quality, audio: !!s.audio }, current, queue }
