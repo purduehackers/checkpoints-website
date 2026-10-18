@@ -29,7 +29,7 @@ export default function Hacker() {
   const [form, setForm] = useState({ name: '', project: '' })
   const [shareState, setShareState] = useState<ShareState>('not_shared')
   const reported = useRef<ShareState>('not_shared')
-  const shareFn = useRef<(() => void) | null>(null) // ShareBox's share(), so Start presenting can open the picker
+  const shareFn = useRef<(() => boolean) | null>(null) // ShareBox's share(), so Start presenting can open the picker
   const startOnShare = useRef(false) // Start presenting was pressed before sharing: go live as soon as the share connects
   const stats = useStatsToggle()
   useTick()
@@ -64,7 +64,12 @@ export default function Hacker() {
     if (me?.status !== 'called') startOnShare.current = false
     else if (shareState === 'sharing' && startOnShare.current) { startOnShare.current = false; act('/ready') }
   }, [shareState, me?.status])
-  const start = () => shareState === 'sharing' ? act('/ready') : !canShare ? act('/ready', { noShare: true }) : (startOnShare.current = true, shareFn.current?.())
+  const start = () => {
+    if (shareState === 'sharing') return act('/ready')
+    startOnShare.current = true
+    // No share possible here (unsupported browser, or the backup tab is publishing): start without one.
+    if (!canShare || shareFn.current?.() === false) { startOnShare.current = false; act('/ready', { noShare: true }) }
+  }
 
   // US-4.1 / 4.2 alerts: tab title + the "up next" banner. No browser notifications: the prompt confused people at join.
   const key = me ? `${me.status}:${me.position}` : ''

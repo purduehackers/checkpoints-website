@@ -36,7 +36,7 @@ const videoConstraints = (): MediaTrackConstraints => ({ frameRate: { ideal: 30,
 // Hacker's share with its own preview. Unmounting it ends the share.
 export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState, shareRef, hideShare }: {
   streamId: string; label: string; live: boolean; quality: Quality; stats: boolean; onCloseStats: () => void; onState: (s: ShareState) => void
-  shareRef?: { current: (() => void) | null }; hideShare?: boolean // the parent's own button starts the share (one click instead of two)
+  shareRef?: { current: (() => boolean) | null }; hideShare?: boolean // the parent's own button starts the share (one click instead of two)
 }) {
   const video = useRef<HTMLVideoElement>(null)
   const sdk = useRef<VDONinjaSDK | null>(null)
@@ -128,7 +128,8 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     }
   }
 
-  if (shareRef) shareRef.current = () => { share() }
+  // false = the backup tab owns the stream, so the parent must not start a share here
+  if (shareRef) shareRef.current = () => { if (backup) return false; share(); return true }
 
   useEffect(() => () => { stop(); sdk.current?.disconnect().catch(() => {}) }, [])
   useEffect(muteUnlessLive, [live])
