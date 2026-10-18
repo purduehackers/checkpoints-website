@@ -4,7 +4,7 @@
 // Audio: the picker's "share audio" box adds an audio track that the SDK publishes with the video.
 // The track stays disabled (silent) until the hacker is live, and only the projector plays it.
 // Quality: the SDK publisher ignores vdo.ninja viewer params like &bitrate/&scale, so the sender
-// sets resolution (capture constraints) and bitrate (encoder) from the organizer's preset.
+// sets the encoder bitrate from the organizer's preset. The capture is never resized.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import VDONinjaSDK from '@vdoninja/sdk'
 import { QUALITY, type Quality, type ShareState } from '../../shared/types'
@@ -28,11 +28,9 @@ function captureError(e: unknown): { msg: string; retry: boolean } {
     : 'Screen share failed.'
   return { msg: `${msg} (${name})`, retry: true }
 }
-const videoConstraints = (q: Quality): MediaTrackConstraints => {
-  const { width, height } = QUALITY[q]
-  // crop-and-scale: without it Chrome won't downscale a capture to meet a max width/height
-  return { frameRate: { ideal: 30, max: 30 }, resizeMode: 'crop-and-scale', ...(width && { width: { max: width }, height: { max: height } }) } as MediaTrackConstraints
-}
+// Frame rate only. A width/height cap with crop-and-scale re-renders the captured screen at the cap size,
+// which left the presenter's own display zoomed in. The organizer's quality is the encoder bitrate alone.
+const videoConstraints = (): MediaTrackConstraints => ({ frameRate: { ideal: 30, max: 30 } })
 
 // Hacker's share with its own preview. Unmounting it ends the share.
 export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState }: {
@@ -66,7 +64,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     let s: MediaStream
     try {
       // Ask for as little as possible: every extra option is one more way a portal/PipeWire picker can
-      // reject or re-prompt. The resolution cap is applied after capture instead (see below).
+      // reject or re-prompt.
       // Chromium-only hints (systemAudio, surfaceSwitching, selfBrowserSurface, suppressLocalAudioPlayback)
       // are skipped on Linux, where the xdg-desktop-portal picker has no use for them and they've been flaky,
       // and audio is only asked of browsers that can share it (WebKit bug 259823: {video, audio} can reject outright).
@@ -103,8 +101,8 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     // Fires when the hacker clicks the browser's "Stop sharing" or the window closes.
     s.getVideoTracks()[0].onended = () => { if (stream.current === s) { stop(); report('stopped') } }
     try {
-      // Cap resolution/fps after capture; a refused (or never-settling) cap must never kill the share.
-      if (!basic) await Promise.race([track.applyConstraints(videoConstraints(quality)).catch(() => {}), new Promise((r) => setTimeout(r, 2000))])
+      // Cap fps after capture; a refused (or never-settling) cap must never kill the share.
+      if (!basic) await Promise.race([track.applyConstraints(videoConstraints()).catch(() => {}), new Promise((r) => setTimeout(r, 2000))])
       if (!sdk.current) {
         // salt 'vdo.ninja' + default host/password: viewable at vdo.ninja/?view=<streamId>
         sdk.current = new VDONinjaSDK({ salt: 'vdo.ninja', label })
@@ -127,11 +125,9 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
   useEffect(() => () => { stop(); sdk.current?.disconnect().catch(() => {}) }, [])
   useEffect(muteUnlessLive, [live])
 
-  // Organizer changed the quality: re-cap the capture and the encoder without restarting the share.
+  // Organizer changed the quality: re-set the encoder bitrate without restarting the share.
   useEffect(() => {
-    const track = stream.current?.getVideoTracks()[0]
-    if (!track) return
-    track.applyConstraints(videoConstraints(quality)).catch(() => {})
+    if (!stream.current) return
     sdk.current?.updatePublisherMedia({ media: { video: { maxBitrate: QUALITY[quality].kbps } } }).catch(() => {})
   }, [quality])
 
