@@ -170,7 +170,7 @@ export default function Hacker() {
       <Badge online={online} />
       {stats.menu}
       {active && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
-      {me?.status === 'live' && msTotal !== null && <div className={`fixed left-3 top-3 z-40 rounded px-3 py-1 text-xl font-bold tabular-nums ${msTotal <= 30_000 ? 'bg-red-600' : 'bg-neutral-800'}`}>{fmt(msTotal)}</div>}
+      {me?.status === 'live' && msTotal !== null && <div className={`fixed left-3 top-3 z-40 rounded px-3 py-1 text-xl font-bold tabular-nums ${cur?.pausedLeft != null ? 'bg-neutral-800 text-neutral-500' : msTotal <= 30_000 ? 'bg-red-600' : 'bg-neutral-800'}`}>{cur?.pausedLeft != null && '⏸ '}{fmt(msTotal)}</div>}
       {me?.status === 'waiting' && me.position === 1 && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-amber-400/25" />}
       {pending > 0 && <div className="late fixed bottom-3 right-3 z-50 flex items-center gap-2 rounded bg-neutral-800 px-3 py-1 text-sm"><Spinner />Working…</div>}
       {body}
