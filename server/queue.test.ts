@@ -3,7 +3,8 @@ import { beforeAll, expect, test } from 'bun:test'
 process.env.TURSO_DATABASE_URL = ':memory:'
 const q = await import('./queue')
 
-beforeAll(() => q.startSession(120))
+// Other test files share this in-memory DB: always start from a fresh checkpoint.
+beforeAll(async () => { await q.endSession(); await q.startSession(120) })
 
 const stopCur = async () => q.stop((await q.loadState('host')).current!.entryId)
 const pos = async (t: string) => (await q.loadState('hacker', t)).me?.position
@@ -232,6 +233,7 @@ const fresh = async (...ns: string[]) => {
   await q.endSession(); await q.startSession(90)
   for (const n of ns) await q.join(`aa-${n}-xxxx`, n, 'P')
 }
+const status = async (n: string) => (await q.loadState('hacker', `aa-${n}-xxxx`)).me?.status
 const calledOrLive = async () => (await q.snapshot()).rows.filter((r) => r.status === 'called' || r.status === 'live').length
 
 test('pause freezes time past the old deadline; resume restores the remaining time', async () => {
@@ -313,19 +315,52 @@ test('pause, resume and adjust on non-live or unknown entries are no-ops', async
   expect(await q.snapshot()).toEqual(before)
 })
 
-test('finishing a paused entry clears its remaining time', async () => {
-  for (const finish of [q.stop, q.remove, () => q.end('aa-A-xxxx'), () => q.leave('aa-A-xxxx'), async () => {
-    await q.bye('aa-A-xxxx')
-    await q.sweepByes(Date.now() + 5_000)
-  }]) {
+test('a paused presenter who finishes any way frees the stage, and their next turn gets a full running clock', async () => {
+  const ways: [string, (id: string) => Promise<unknown>][] = [
+    ['stop', q.stop], ['remove', q.remove], ['end', () => q.end('aa-A-xxxx')], ['leave', () => q.leave('aa-A-xxxx')],
+    ['closed tab', async () => { await q.bye('aa-A-xxxx'); await q.sweepByes(Date.now() + 5_000) }],
+  ]
+  for (const [way, finish] of ways) {
     await fresh('A', 'B')
     await live('aa-A-xxxx')
     const { entryId } = (await cur())!
     await q.pause(entryId)
     await finish(entryId)
-    expect((await q.snapshot()).rows.find((r) => r.id === entryId)!.paused_left).toBeNull()
-    expect(await cur()).toMatchObject({ name: 'B', pausedLeft: null })
+    expect(await cur(), way).toMatchObject({ name: 'B', status: 'called', pausedLeft: null })
+    if (way === 'remove') continue // removed people can't come back
+    await q.join('aa-A-xxxx', 'A', 'P') // back of the line
+    await q.stop((await cur())!.entryId) // B done, A up again
+    await live('aa-A-xxxx')
+    const again = (await cur())!
+    expect(again, way).toMatchObject({ name: 'A', status: 'live', pausedLeft: null })
+    expect(again.deadline! - again.startedAt!, way).toBe(90_000) // not the old frozen time
   }
+})
+
+test('stop on someone waiting, or on a closed checkpoint, does nothing', async () => {
+  await fresh('A', 'B', 'C')
+  await q.stop((await host()).queue[0].id) // B is waiting, not on stage
+  expect(await cur()).toMatchObject({ name: 'A', status: 'called' })
+  expect(await names()).toEqual(['B', 'C'])
+  await q.stop('no-such-id')
+  expect(await cur()).toMatchObject({ name: 'A', status: 'called' })
+  const a = (await cur())!.entryId
+  await q.endSession(); await q.startSession(90)
+  await q.join('aa-X-xxxx', 'X', 'P')
+  await q.stop(a) // A's old checkpoint is over; the new stage is untouched
+  expect(await cur()).toMatchObject({ name: 'X', status: 'called' })
+})
+
+test('pausing one presenter never pauses the next one', async () => {
+  await fresh('A', 'B')
+  await live('aa-A-xxxx')
+  const a = (await cur())!.entryId
+  await q.pause(a)
+  await q.stop(a)
+  await live('aa-B-xxxx')
+  const { deadline } = (await cur())!
+  await q.expire(deadline!) // B's clock runs and ends on time
+  expect(await status('B')).toBe('done')
 })
 
 test('joining an empty stage calls that person at once; the next joiner waits', async () => {
@@ -423,8 +458,6 @@ test('concurrent finishes never leave two called/live entries', async () => {
 })
 
 // ---- closed tab (bye) ----
-const status = async (n: string) => (await q.loadState('hacker', `aa-${n}-xxxx`)).me?.status
-
 test('bye then grace -> left; before grace nothing happens; waiting leaving does not advance', async () => {
   await fresh('A', 'B', 'C')
   const t = Date.now()
@@ -465,6 +498,26 @@ test('a called or live presenter who closes the tab frees the stage for the next
   expect(await calledOrLive()).toBe(1)
 })
 
+test('a live presenter who refreshes within the grace keeps their slot and their clock', async () => {
+  await fresh('A', 'B')
+  await live('aa-A-xxxx')
+  const before = (await cur())!
+  const t = Date.now()
+  await q.bye('aa-A-xxxx', t) // refresh fires pagehide...
+  await q.back('aa-A-xxxx') // ...and the new page's socket comes back
+  await q.expire(t + 5_000)
+  expect(await cur()).toMatchObject({ entryId: before.entryId, status: 'live', deadline: before.deadline, away: false })
+})
+
+test('when a closed tab runs out its grace, the next person is up and not shown as away', async () => {
+  await fresh('A', 'B')
+  const t = Date.now()
+  await q.bye('aa-A-xxxx', t)
+  expect(await cur()).toMatchObject({ name: 'A', away: true })
+  await q.expire(t + 5_000)
+  expect(await cur()).toMatchObject({ name: 'B', status: 'called', away: false })
+})
+
 test('bye for an unknown token or a finished entry is a no-op, and bye_at is not exposed', async () => {
   await fresh('A')
   await q.bye('no-such-token')
@@ -489,8 +542,119 @@ test('after presenting you can join again at the back; removed stays out', async
   expect(ann).toMatchObject({ status: 'waiting', position: 1, project: 'P1 v2' })
   expect((await host()).current).toMatchObject({ name: 'Ben', status: 'called', deadline: null })
   const row = (await q.snapshot()).rows.find((r) => r.client_token === 'again-aaaaaaa')!
-  expect([row.started_at, row.deadline, row.paused_left]).toEqual([null, null, null]) // the old slot's clock doesn't come back
+  expect([row.started_at, row.deadline]).toEqual([null, null]) // the old slot's clock doesn't come back
   await q.remove(ann.entryId)
   await q.join('again-aaaaaaa', 'Ann', 'P1')
   expect((await q.loadState('hacker', 'again-aaaaaaa')).me?.status).toBe('removed')
+})
+
+// ---- auto-end ----
+const sessionStatus = async () => (await host()).session?.status
+
+test('no organizer page for 5 minutes ends the checkpoint like End does', async () => {
+  await fresh('A', 'B')
+  const t = Date.now()
+  await q.activity(t + 4 * 60_000)
+  await q.expire(t + 4 * 60_000)
+  expect(await sessionStatus()).toBe('open')
+  await q.activity(t + 5 * 60_000)
+  await q.expire(t + 5 * 60_000)
+  expect(await sessionStatus()).toBe('closed')
+  expect(await status('A')).toBe('done')
+  expect((await host()).queue).toEqual([])
+})
+
+test('10 minutes with no action and nobody live ends the checkpoint; a live slot or any action keeps it open', async () => {
+  await fresh('A')
+  const t = Date.now()
+  await q.adminSeen(t + 9 * 60_000); await q.activity(t + 9 * 60_000) // an action at 9 min resets the clock
+  await q.adminSeen(t + 11 * 60_000)
+  await q.expire(t + 11 * 60_000)
+  expect(await sessionStatus()).toBe('open')
+
+  await fresh('A')
+  await q.setLimit(3600)
+  await live('aa-A-xxxx')
+  await q.adminSeen(t + 11 * 60_000)
+  await q.expire(t + 11 * 60_000) // nothing clicked for 11 min, but A is presenting
+  expect(await sessionStatus()).toBe('open')
+
+  await fresh('A')
+  await q.adminSeen(t + 11 * 60_000)
+  await q.expire(t + 11 * 60_000) // A was called but never started
+  expect(await sessionStatus()).toBe('closed')
+})
+
+test('a closed tab shows as away to admin and host until it comes back', async () => {
+  await fresh('A', 'B')
+  await q.bye('aa-A-xxxx')
+  await q.bye('aa-B-xxxx')
+  expect((await host()).current?.away).toBe(true)
+  expect((await q.loadState('admin')).queue[0].connected).toBe(false)
+  expect(JSON.stringify(await q.loadState('hacker', 'aa-A-xxxx'))).not.toContain('away')
+  await q.back('aa-A-xxxx', 'aa-B-xxxx')
+  expect((await host()).current?.away).toBe(false)
+  expect((await q.loadState('admin')).queue[0].connected).toBe(true)
+})
+
+test('auto-end thresholds: just under stays open, just over ends', async () => {
+  await fresh('A')
+  const t = Date.now()
+  await q.activity(t + 5 * 60_000 - 1000)
+  await q.expire(t + 5 * 60_000 - 1000) // organizer gone 4:59
+  expect(await sessionStatus()).toBe('open')
+  await q.expire(t + 5 * 60_000 + 1000) // 5:01
+  expect(await sessionStatus()).toBe('closed')
+
+  await fresh('A')
+  await q.adminSeen(t + 10 * 60_000 + 1000)
+  await q.expire(t + 10 * 60_000 - 1000) // idle 9:59
+  expect(await sessionStatus()).toBe('open')
+  await q.expire(t + 10 * 60_000 + 1000) // idle 10:01
+  expect(await sessionStatus()).toBe('closed')
+})
+
+test('with no organizer, the checkpoint ends even mid-presentation or while paused', async () => {
+  for (const paused of [false, true]) {
+    await fresh('A', 'B')
+    await q.setLimit(3600)
+    await live('aa-A-xxxx')
+    if (paused) await q.pause((await cur())!.entryId)
+    const t = Date.now()
+    await q.activity(t + 6 * 60_000)
+    await q.expire(t + 6 * 60_000)
+    expect(await sessionStatus()).toBe('closed')
+    expect(await status('A')).toBe('done')
+    expect(await cur()).toBeNull() // nobody gets called into a closed checkpoint
+  }
+})
+
+test('a paused presenter counts as presenting, so an idle organizer does not end the night', async () => {
+  await fresh('A')
+  await live('aa-A-xxxx')
+  await q.pause((await cur())!.entryId)
+  const t = Date.now()
+  await q.adminSeen(t + 30 * 60_000)
+  await q.expire(t + 30 * 60_000)
+  expect(await sessionStatus()).toBe('open')
+  expect(await cur()).toMatchObject({ name: 'A', status: 'live' })
+})
+
+test('heartbeats after a checkpoint ended do not touch it or the next one', async () => {
+  await fresh('A')
+  const t = Date.now()
+  await q.expire(t + 11 * 60_000) // ends
+  await q.adminSeen(t + 11 * 60_000); await q.activity(t + 11 * 60_000) // late page, nothing open to update
+  expect(await sessionStatus()).toBe('closed')
+  await q.startSession(90) // a fresh night starts with fresh clocks
+  await q.expire()
+  expect(await sessionStatus()).toBe('open')
+})
+
+test('a checkpoint opened before auto-end existed never ends by itself', async () => {
+  await fresh('A')
+  const { db } = await import('./db')
+  await db.execute(`UPDATE sessions SET admin_seen_at = NULL, active_at = NULL WHERE status = 'open'`)
+  await q.expire(Date.now() + 24 * 60 * 60_000)
+  expect(await sessionStatus()).toBe('open')
 })
