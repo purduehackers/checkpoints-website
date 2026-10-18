@@ -84,7 +84,7 @@ function Panel({ onDenied }: { onDenied: () => void }) {
             <div className="flex items-center gap-3">
               <div className="grow"><b>{c.name}</b> · {c.project}<div className="text-sm text-neutral-400">{c.status === 'live' ? 'live' : 'getting ready'} · {SHARE_LABEL[c.shareState]}</div></div>
               {c.deadline && <span className="text-2xl tabular-nums">{fmt(c.deadline - now())}</span>}
-              {c.status === 'called' && <button className="rounded bg-green-600 px-3 py-1" onClick={() => act('/ready', { id: c.entryId })}>Ready</button>}
+              {c.status === 'called' && <button className="rounded bg-green-600 px-3 py-1" onClick={() => act('/ready', { id: c.entryId })}>Start timer</button>}
               {c.status === 'called' && <button className="rounded bg-neutral-700 px-3 py-1" onClick={() => act('/skip', { id: c.entryId })}>Skip</button>}
               <button className="rounded bg-red-700 px-3 py-1" onClick={() => act('/stop', { id: c.entryId })}>Stop</button>
               {c.streamId && <button className="text-sm underline" onClick={() => { setPinned(true); setPreview(c.streamId!) }}>Preview</button>}

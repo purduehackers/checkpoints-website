@@ -46,7 +46,8 @@ export default function Host() {
           {state && !state.session && <p className="text-2xl text-neutral-400">Waiting for an organizer to start</p>}
           {state?.session && !open && <p className="text-3xl">Checkpoints have ended. Thanks for coming!</p>}
           {open && <p className="text-4xl">Join at <b className="text-amber-400">{joinHost}</b></p>}
-          {c && <p className="text-3xl">Up now: <b>{c.name}</b> · {c.project} <span className="text-neutral-400">({c.status === 'live' ? 'live' : 'getting ready'})</span></p>}
+          {c?.status === 'called' && <p className="max-w-4xl text-5xl leading-tight"><b className="text-green-400">{c.name}</b>, you're up!<br />Walk to the front and press <b>Start presenting</b> on your laptop.</p>}
+          {c?.status === 'live' && <p className="text-3xl">Up now: <b>{c.name}</b> · {c.project}</p>}
           {open && !c && state!.queue[0] && <p className="text-2xl">Up next: <b>{state!.queue[0].name}</b></p>}
           {open && (
             <ol className="space-y-1 text-xl text-neutral-300">

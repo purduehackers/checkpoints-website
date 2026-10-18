@@ -33,8 +33,9 @@ function captureError(e: unknown): { msg: string; retry: boolean } {
 const videoConstraints = (): MediaTrackConstraints => ({ frameRate: { ideal: 30, max: 30 } })
 
 // Hacker's share with its own preview. Unmounting it ends the share.
-export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState }: {
+export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState, shareRef, hideShare }: {
   streamId: string; label: string; live: boolean; quality: Quality; stats: boolean; onCloseStats: () => void; onState: (s: ShareState) => void
+  shareRef?: { current: (() => void) | null }; hideShare?: boolean // the parent's own button starts the share (one click instead of two)
 }) {
   const video = useRef<HTMLVideoElement>(null)
   const sdk = useRef<VDONinjaSDK | null>(null)
@@ -122,6 +123,8 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     }
   }
 
+  if (shareRef) shareRef.current = () => { share() }
+
   useEffect(() => () => { stop(); sdk.current?.disconnect().catch(() => {}) }, [])
   useEffect(muteUnlessLive, [live])
 
@@ -147,7 +150,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     <div>
       <div className="relative aspect-video w-full overflow-hidden rounded bg-neutral-900">
         <video ref={video} autoPlay muted playsInline className="h-full w-full object-contain" />
-        {state !== 'sharing' && !backup && (
+        {state !== 'sharing' && !backup && !hideShare && (
           <button onClick={() => share()} className="absolute inset-0 m-auto h-fit w-fit rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-black">
             {state === 'stopped' ? 'Share again' : 'Share your screen'}
           </button>

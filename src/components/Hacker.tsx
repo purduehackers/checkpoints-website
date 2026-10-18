@@ -29,6 +29,8 @@ export default function Hacker() {
   const [form, setForm] = useState({ name: '', project: '' })
   const [shareState, setShareState] = useState<ShareState>('not_shared')
   const reported = useRef<ShareState>('not_shared')
+  const shareFn = useRef<(() => void) | null>(null) // ShareBox's share(), so Start presenting can open the picker
+  const startOnShare = useRef(false) // Start presenting was pressed before sharing: go live as soon as the share connects
   const stats = useStatsToggle()
   useTick()
 
@@ -54,6 +56,12 @@ export default function Hacker() {
     if (active && shareState !== reported.current) { reported.current = shareState; act('/share-state', { state: shareState }) }
   }, [shareState, active])
   useEffect(() => { if (!active) { reported.current = 'not_shared'; setShareState('not_shared') } }, [active])
+  // After the share-state report above (requests run in click order), so the server has seen 'sharing' before Ready.
+  useEffect(() => {
+    if (me?.status !== 'called') startOnShare.current = false
+    else if (shareState === 'sharing' && startOnShare.current) { startOnShare.current = false; act('/ready') }
+  }, [shareState, me?.status])
+  const start = () => shareState === 'sharing' ? act('/ready') : !canShare ? act('/ready', { noShare: true }) : (startOnShare.current = true, shareFn.current?.())
 
   // US-4.1 / 4.2 alerts: tab title + the "up next" banner. No browser notifications: the prompt confused people at join.
   const key = me ? `${me.status}:${me.position}` : ''
@@ -121,10 +129,8 @@ export default function Hacker() {
         {me.status === 'called' && (
           <div className="space-y-3 rounded-lg bg-green-500 p-4 text-black">
             <h1 className="text-3xl font-semibold">It's your turn!</h1>
-            {shareState === 'sharing' ? <>
-              <p>Walk to the podium, then press Start presenting.</p>
-              <button className="w-full rounded-lg bg-black px-6 py-4 text-2xl font-bold text-green-400" onClick={() => act('/ready')}>Start presenting</button>
-            </> : <p>Share your screen below, then press Start presenting.</p>}
+            <p>Walk to the podium, then press Start presenting. Your time starts then, not before.</p>
+            <button className="w-full rounded-lg bg-black px-6 py-4 text-2xl font-bold text-green-400" onClick={start}>Start presenting</button>
           </div>
         )}
         {me.status === 'live' && (
@@ -134,7 +140,7 @@ export default function Hacker() {
           </div>
         )}
         {canShare ? (
-          <ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} />
+          <ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} shareRef={shareFn} hideShare={me.status === 'called'} />
         ) : (
           <p className="rounded bg-neutral-800 p-3 text-sm">This browser can’t share a screen. Use Chrome or Edge on a laptop. You can still wait here.</p>
         )}
