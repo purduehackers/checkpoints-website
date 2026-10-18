@@ -39,7 +39,8 @@ const advanceOpen = async () => {
   if (s) await advance(s.id)
 }
 
-const latestSession = () => one(`SELECT * FROM sessions ORDER BY created_at DESC, rowid DESC LIMIT 1`)
+// Insertion order, not created_at: server instances' clocks can disagree.
+const latestSession = () => one(`SELECT * FROM sessions ORDER BY rowid DESC LIMIT 1`)
 const openSession = () => one(`SELECT * FROM sessions WHERE status = 'open'`)
 
 export async function startSession(limitSec = 120) {
