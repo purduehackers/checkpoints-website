@@ -1,6 +1,6 @@
 # Checkpoints
 
-Run Hack Night checkpoints from the browser. Hackers join a queue and share their screen from their seats. When it's their turn they walk up, press **Start presenting**, and their screen goes on the projector. It turns off on its own after two minutes. Nobody plugs in a cable.
+Run Hack Night checkpoints from the browser. Hackers join a queue from their seats. When it's their turn they walk up and press **Start presenting**, and their screen goes on the projector. It turns off on its own after two minutes. Nobody plugs in a cable.
 
 This guide is for the organizer running a checkpoint night. Developers: see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
@@ -26,39 +26,43 @@ There are three pages:
 
 ## Running the queue
 
-Hackers open the site, enter their name and project, and click **Join queue**. They can share their screen while they wait. You see everyone in the list on `/admin`.
+Hackers open the site, enter their name and project, and click **Join queue**. They can share their screen while they wait, but they don't have to. You see everyone in the list on `/admin`.
 
 For each presenter:
 
 1. **Check the Preview panel.** It automatically shows whoever is next, so you can catch the wrong window before the room sees it. Click **Preview** on any row to look at someone else. Click **follow next** to go back to following the line.
-2. **The first person in line is up automatically.** Their page tells them it's their turn. The stage never sits empty while someone is waiting.
-3. **They share their screen, then press Start presenting at the podium,** or you press **Ready** for them. Their page won't offer Start presenting until they're sharing, so the clock never starts on a blank screen. Their screen goes on the projector with their name and project.
-4. **The last 15 seconds show a countdown,** and the slot ends by itself at the time limit. They can also click **End my checkpoint** when they finish early.
-5. **The next person is up automatically** as soon as a slot ends, whether by the time limit, End, Stop, or the presenter leaving or being removed. If the person who is up isn't ready, click **Skip** on the current card: they go back one place and the next person is up.
+2. **The first person in line is up automatically.** Their page turns green and the projector tells them to walk up. The person after them sees their page flash yellow.
+3. **They press Start presenting at the podium.** If they aren't sharing yet, that one button opens the share picker and starts as soon as they pick a screen. The clock only starts then, never while they're walking up.
+4. **A small timer stays on screen** and turns red for the last 30 seconds. The slot ends by itself at the time limit. They can also click **End my checkpoint** when they finish early.
+5. **The next person is up automatically** as soon as a slot ends. If the person who is up isn't ready, click **Skip** on the current card: they go back one place and the next person is up.
 
 ### Controls
 
 | Control | What it does |
 |---|---|
-| **Ready** | (ALLOW THE HACKER TO DO THIS, use only if necessary) Puts the called person on screen, if they can't press it themselves |
-| **Stop** | Ends the current presenter now and the next person is up |
+| **Start timer** | Starts the called person's time for them. Only use it if they can't press Start presenting themselves |
+| **Stop** | Ends the current presenter now and the next person is up. Clicking it twice never ends the next person too |
+| **Pause / Resume** | Freezes the presenter's timer. The projector shows a grey ⏸ timer |
+| **−30s / +30s** | Takes away or adds 30 seconds for the current presenter |
 | **Skip** | In the line: moves someone behind the next person. On the current card (before they start): sends a not-ready person back one place and the next person is up |
 | **▲ / ▼** | Moves someone up or down the line |
 | **Remove** | Takes someone out of the line (if they are on stage, the next person is called) |
 | **Limit (s)** | Time per presenter in seconds (default 120). Applies to the next presenter |
-| **Quality** | Stream resolution: 720p, 1080p (default), 1440p or Source. Changes the live stream without restarting it |
+| **Quality** | Stream bitrate: 720p, 1080p (default), 1440p or Source. Lower it if the stream is choppy. Changes the live stream without restarting it |
 | **Projector sound** | Turns the presenter's sound on the projector on or off |
 | **End checkpoints** | Closes the line for the night |
 
-The row under each name shows whether that person is **sharing**, **not sharing**, **stopped** or **disconnected**.
+The row under each name shows whether that person is **sharing**, **not sharing**, **stopped** or **disconnected…**.
+
+**The checkpoint ends by itself** (just like End checkpoints) if nobody has `/admin` open for 5 minutes, or if nothing happens for 10 minutes while nobody is presenting.
 
 ## What to tell hackers
 
 - **Use Chrome or Edge on a laptop.** Phones get a "Phone is too small" page and can't join the line (watching /host on a phone is fine). Firefox and Safari can share a screen but not sound. Brave, Opera and Arc work like Chrome. The page needs a recent browser (Chrome/Edge 111+, Firefox 128+, Safari 16.4+).
-- **For sound, share a Chrome tab and tick "Share audio".** Sound only plays on the projector while they're live.
+- **The share picker starts on Entire screen.** For sound, share a Chrome tab instead and tick "Share audio" (on a Mac, an entire screen can't share sound). Sound only plays on the projector while they're live.
 - **On Linux, if sharing a screen or window fails or goes black, share a browser tab instead.**
 - **Don't open the projector page on your own laptop.**
-- **Keep the page open.** Refreshing is fine. Closing the tab takes you out of the line (the browser asks first).
+- **Keep the page open.** Refreshing is fine. Closing the tab takes you out of the line after 5 seconds (the browser asks first). While those 5 seconds run, the projector shows "disconnected…".
 
 ## When something goes wrong
 
@@ -71,7 +75,7 @@ The row under each name shows whether that person is **sharing**, **not sharing*
 | A "reconnecting…" badge stays on | Check the network connection. The page reconnects by itself |
 | The line is full of fake names | Click **End checkpoints**, then **Start checkpoint**. This starts a fresh, empty line |
 | A hacker's share fails with an error name in brackets, like `(NotReadableError)` | Have them click **Try basic share**. If that fails too, share a browser tab. Screenshot the error and send it to the devs |
-| A share still won't work | Have them click **Use backup share** at the bottom of their page. It opens vdo.ninja's own screen share. Then press **Ready** for them. Last resort: plug their laptop into the projector over HDMI |
+| A share still won't work | Have them click **Use backup share** at the bottom of their page. It opens vdo.ninja's own screen share. Then they press **Present without sharing**, or you press **Start timer** for them. Last resort: plug their laptop into the projector over HDMI |
 | "Too many attempts" when logging in | Wait 15 minutes. Check the passcode with whoever deployed the site |
 
 ## Keeping it safe
