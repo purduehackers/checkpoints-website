@@ -151,28 +151,6 @@ export async function hackerReady(token: string, noShare = false) {
   await adminReady(e.id as string)
 }
 
-// `expect` is the entry the caller saw on stage (or null). If the stage changed since, do nothing:
-// a double-click or two organizers clicking at once must not skip people.
-export async function callNext(expect: string | null) {
-  const s = await openSession()
-  if (!s) throw new Error('No checkpoint is running')
-  await ready
-  const tx = await db.transaction('write')
-  try {
-    const cur = (await tx.execute({ sql: `SELECT id FROM queue_entries WHERE session_id = ? AND status IN ('called','live')`, args: [s.id] })).rows[0]
-    if (((cur?.id as string) ?? null) !== expect) return
-    await tx.execute({ sql: `UPDATE queue_entries SET status = 'done' WHERE session_id = ? AND status IN ('called','live')`, args: [s.id] })
-    await tx.execute({
-      sql: `UPDATE queue_entries SET status = 'called', called_at = ? WHERE id = (
-              SELECT id FROM queue_entries WHERE session_id = ? AND status = 'waiting' ORDER BY sort_key LIMIT 1)`,
-      args: [Date.now(), s.id],
-    })
-    await tx.commit()
-  } finally {
-    tx.close()
-  }
-}
-
 // Ends exactly the entry the organizer clicked. If it already finished (deadline, double-click), the next
 // person who was just called is NOT touched.
 export async function stop(id: string) {

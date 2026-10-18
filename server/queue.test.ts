@@ -64,10 +64,9 @@ test('expire ends a live slot at its deadline, not before', async () => {
   expect((await q.loadState('hacker', 'tok-aaaaaaaa')).me?.status).toBe('done')
 })
 
-test('call-next replaces the current presenter; remove drops a waiting entry', async () => {
-  await q.callNext(null) // stale: Cy was already auto-called, so nothing happens
+test('stop replaces the current presenter; remove drops a waiting entry', async () => {
   expect((await q.loadState('host')).current?.name).toBe('Cy')
-  await q.callNext((await q.loadState('host')).current!.entryId)
+  await stopCur()
   expect((await q.loadState('host')).current?.name).toBe('Bob')
   await q.join('tok-zzzzzzzz', 'Zed', 'Z')
   await q.remove((await q.loadState('host')).queue[0].id)
@@ -113,7 +112,7 @@ test('share state is recorded for the admin and the current slot', async () => {
   await q.setShare('tok-ffffffff', 'stopped')
   expect((await host()).queue[0].shareState).toBe('stopped')
   await q.setShare('tok-ffffffff', 'sharing')
-  await q.callNext((await host()).current!.entryId) // Dum off, Fay up
+  await q.stop((await host()).current!.entryId) // Dum off, Fay up
   expect((await host()).current).toMatchObject({ name: 'Fay', shareState: 'sharing' })
 })
 
@@ -214,7 +213,7 @@ test('ready gate: needs a running share (or noShare); the clock starts only on R
   expect(c.startedAt!).toBeGreaterThanOrEqual(before)
   expect(c.deadline).toBe(c.startedAt! + 90_000)
   // noShare works while called.
-  await q.callNext(c.entryId) // Gus
+  await q.stop(c.entryId) // Gus
   expect((await host()).current).toMatchObject({ name: 'Gus', status: 'called', deadline: null })
   await q.hackerReady('gate-bbbbbbbb', true)
   expect((await host()).current).toMatchObject({ name: 'Gus', status: 'live', shareState: 'not_shared' })

@@ -146,7 +146,7 @@ Identity for the MVP: a hacker is a random token stored in their browser (one qu
 
 ### ✅ US-5.4 Run the queue (MVP, M)
 *As an organizer, I can call the next person, skip, remove, or stop the current presenter.*
-- **Call next** ends the current slot (if any) and calls #1 (Ready screen, US-4.2).
+- The first person in line is called automatically; **Stop** ends the slot and the next is called (Ready screen, US-4.2).
 - **Skip** moves a person behind the next one, for when they are not ready.
 - **Remove** takes them out of the queue, after a confirm.
 - **Stop** ends the current presenter now.

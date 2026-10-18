@@ -133,7 +133,6 @@ export const app = new Elysia({
       })
       .post('/session/start', async () => (await q.startSession(), reply('admin')))
       .post('/session/end', async () => (await q.endSession(), reply('admin')))
-      .post('/call-next', async ({ body }) => (await q.callNext(body.expect), reply('admin')), { body: t.Object({ expect: t.Nullable(t.String()) }) })
       .post('/stop', async ({ body }) => (await q.stop(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
       .post('/skip', async ({ body }) => (await q.skip(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
       .post('/move', async ({ body }) => (await q.move(body.id, body.dir), reply('admin')), { body: t.Object({ id: t.String(), dir: t.Union([t.Literal(-1), t.Literal(1)]) }) })
