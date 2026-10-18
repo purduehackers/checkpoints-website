@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Badge, Spinner, api, fmt, hackerToken, useLive, useTick } from '../lib/live'
+import { Badge, Spinner, aboutMin, api, fmt, hackerToken, useLive, useTick, waitMs } from '../lib/live'
 import { ShareBox } from '../lib/vdo'
 import { StatsButton, useStatsToggle } from '../lib/stats'
 import type { ShareState } from '../../shared/types'
@@ -11,6 +11,26 @@ const span = (sec: number) => sec % 60 ? `${sec} seconds` : `${sec / 60} minute$
 const phone = typeof navigator !== 'undefined' &&
   (/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent) || (/macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1))
 const canShare = !phone && typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia
+
+// "It's your turn": a short, quiet 8-bit arpeggio made in the browser (no audio file). Browsers only let it play
+// after the page has been clicked once, which joining already did.
+function chime() {
+  try {
+    const ctx = new AudioContext()
+    ;[659.25, 830.61, 987.77, 1318.51].forEach((hz, i) => { // E major, up an octave
+      const osc = ctx.createOscillator(), gain = ctx.createGain()
+      const t = ctx.currentTime + i * 0.09, len = i === 3 ? 0.35 : 0.1
+      osc.type = 'square'
+      osc.frequency.value = hz
+      gain.gain.setValueAtTime(0.04, t)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + len)
+      osc.connect(gain).connect(ctx.destination)
+      osc.start(t)
+      osc.stop(t + len)
+    })
+    setTimeout(() => ctx.close(), 1500)
+  } catch {}
+}
 
 // Phones get a joke instead of the line: they can't share a screen. /host and /admin still work for watching.
 function PhoneNote() {
@@ -71,6 +91,14 @@ export default function Hacker() {
     if (!canShare || shareFn.current?.() === false) { startOnShare.current = false; act('/ready', { noShare: true }) }
   }
 
+  // Chime once when it becomes your turn. Not on a refresh that lands already called (prev is null until the first state).
+  const prevStatus = useRef<string | null>(null)
+  useEffect(() => {
+    if (!state) return
+    if (me?.status === 'called' && prevStatus.current !== null && prevStatus.current !== 'called') chime()
+    prevStatus.current = me?.status ?? ''
+  }, [!!state, me?.status])
+
   // US-4.1 / 4.2 alerts: tab title + the "up next" banner. No browser notifications: the prompt confused people at join.
   const key = me ? `${me.status}:${me.position}` : ''
   useEffect(() => {
@@ -128,7 +156,7 @@ export default function Hacker() {
         {me.status === 'waiting' && (
           <div className={me.position === 1 ? 'rounded-lg bg-amber-400 p-4 text-black' : ''}>
             <h1 className="text-3xl font-semibold">{me.position === 1 ? "You're up next!" : `You're ${ordinal(me.position)} in line`}</h1>
-            <p className={me.position === 1 ? '' : 'text-neutral-400'}>{me.position === 1 ? 'Get your screen ready.' : `${me.position - 1} ${me.position === 2 ? 'person' : 'people'} ahead of you`}</p>
+            <p className={me.position === 1 ? '' : 'text-neutral-400'}>{me.position === 1 ? 'Get your screen ready.' : `${me.position - 1} ${me.position === 2 ? 'person' : 'people'} ahead of you`} · up in {aboutMin(waitMs(state, me.position - 1, now()))}</p>
           </div>
         )}
         {/* Inline, not a full-page cover: the first in line is called automatically while still at their seat,
@@ -172,6 +200,7 @@ export default function Hacker() {
       {active && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
       {me?.status === 'live' && msTotal !== null && <div className={`fixed left-3 top-3 z-40 rounded px-3 py-1 text-xl font-bold tabular-nums ${cur?.pausedLeft != null ? 'bg-neutral-800 text-neutral-500' : msTotal <= 30_000 ? 'bg-red-600' : 'bg-neutral-800'}`}>{cur?.pausedLeft != null && '⏸ '}{fmt(msTotal)}</div>}
       {me?.status === 'waiting' && me.position === 1 && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-amber-400/25" />}
+      {me?.status === 'called' && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-green-400/25" />}
       {pending > 0 && <div className="late fixed bottom-3 right-3 z-50 flex items-center gap-2 rounded bg-neutral-800 px-3 py-1 text-sm"><Spinner />Working…</div>}
       {body}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}

@@ -67,6 +67,14 @@ export const fmt = (ms: number) => {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
 
+// Rough wait until `ahead` more people finish: each counts as the full limit, the current slot as what it has left.
+export function waitMs(s: State, ahead: number, now: number) {
+  const limit = (s.session?.limitSec ?? 0) * 1000, c = s.current
+  const cur = !c ? 0 : c.status === 'live' ? Math.max(0, c.pausedLeft ?? (c.deadline ?? now) - now) : limit
+  return cur + ahead * limit
+}
+export const aboutMin = (ms: number) => ms < 60_000 ? 'under a minute' : `about ${Math.ceil(ms / 60_000)} min`
+
 export function Spinner({ className = 'size-4' }: { className?: string }) {
   return <span role="status" aria-label="Loading" className={`inline-block animate-spin rounded-full border-2 border-current border-t-transparent ${className}`} />
 }

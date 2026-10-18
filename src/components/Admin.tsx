@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Badge, Spinner, adminKey, adminToken, api, fmt, useLive, useTick } from '../lib/live'
+import { Badge, Spinner, aboutMin, adminKey, adminToken, api, fmt, useLive, useTick, waitMs } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
 import { QUALITY, type Quality } from '../../shared/types'
@@ -37,6 +37,8 @@ function Panel({ onDenied }: { onDenied: () => void }) {
   const [preview, setPreview] = useState<string | null>(null)
   const [pinned, setPinned] = useState(false) // true once the organizer picks a preview by hand
   const [busy, setBusy] = useState(false) // disables every control while a request is in flight (no double-clicks)
+  const [undo, setUndo] = useState<{ id: string; name: string } | null>(null) // last Remove, undoable for 10s
+  useEffect(() => { if (!undo) return; const t = setTimeout(() => setUndo(null), 10_000); return () => clearTimeout(t) }, [undo])
   useTick(1000)
 
   const act = (path: string, body?: object) => {
@@ -100,6 +102,7 @@ function Panel({ onDenied }: { onDenied: () => void }) {
           </div>
         )}
 
+        {open && state.queue.length > 0 && <p className="text-sm text-neutral-400">{state.queue.length} waiting · through the line in {aboutMin(waitMs(state, state.queue.length, now()))}</p>}
         <ol className="space-y-2">
           {state.queue.map((e, i) => (
             <li key={e.id} className="flex items-center gap-3 rounded bg-neutral-900 p-3">
@@ -110,12 +113,18 @@ function Panel({ onDenied }: { onDenied: () => void }) {
               <button className="text-sm disabled:opacity-30" disabled={i === 0} aria-label="Move up" onClick={() => act('/move', { id: e.id, dir: -1 })}>▲</button>
               <button className="text-sm disabled:opacity-30" disabled={i === state.queue.length - 1} aria-label="Move down" onClick={() => act('/move', { id: e.id, dir: 1 })}>▼</button>
               <button className="text-sm underline" onClick={() => act('/skip', { id: e.id })}>Skip</button>
-              <button className="text-sm text-red-400 underline" onClick={() => confirm(`Remove ${e.name}?`) && act('/remove', { id: e.id })}>Remove</button>
+              <button className="text-sm text-red-400 underline" onClick={() => act('/remove', { id: e.id }).then(() => setUndo({ id: e.id, name: e.name }))}>Remove</button>
             </li>
           ))}
           {!state.queue.length && <li className="text-neutral-500">Queue is empty.</li>}
         </ol>
       </fieldset>
+      {undo && (
+        <div className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg bg-neutral-800 px-4 py-2 shadow-lg">
+          Removed {undo.name}.
+          <button className="font-semibold text-amber-400 underline" onClick={() => { act('/unremove', { id: undo.id }); setUndo(null) }}>Undo</button>
+        </div>
+      )}
       <aside>
         <h2 className="mb-2 text-sm text-neutral-400">Preview{pinned && <button className="ml-2 underline" onClick={() => setPinned(false)}>follow next</button>}</h2>
         <StatsButton onClick={stats.toggle} className="mb-2" />
