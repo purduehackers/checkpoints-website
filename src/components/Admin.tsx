@@ -97,7 +97,7 @@ function Panel({ onDenied }: { onDenied: () => void }) {
             <li key={e.id} className="flex items-center gap-3 rounded bg-neutral-900 p-3">
               <span className="w-6 text-neutral-500">{i + 1}</span>
               <div className="grow"><b>{e.name}</b> · {e.project}
-                <div className="text-sm text-neutral-400">{e.connected ? SHARE_LABEL[e.shareState] : 'disconnected'} · waiting {fmt(now() - e.joinedAt)}</div></div>
+                <div className="text-sm text-neutral-400">{e.connected ? SHARE_LABEL[e.shareState] : 'disconnected'}</div></div>
               <button className="text-sm underline" onClick={() => { setPinned(true); setPreview(e.streamId!) }}>Preview</button>
               <button className="text-sm disabled:opacity-30" disabled={i === 0} aria-label="Move up" onClick={() => act('/move', { id: e.id, dir: -1 })}>▲</button>
               <button className="text-sm disabled:opacity-30" disabled={i === state.queue.length - 1} aria-label="Move down" onClick={() => act('/move', { id: e.id, dir: 1 })}>▼</button>
