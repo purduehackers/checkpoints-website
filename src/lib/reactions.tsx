@@ -27,14 +27,15 @@ export function spawn(box: HTMLDivElement | null, counts: Record<string, number>
       if (box.childElementCount >= MAX_LIVE) return
       const el = document.createElement('span')
       el.textContent = emoji
-      const x = Math.random() * 60, sway = (Math.random() - 0.5) * 60
-      el.style.cssText = `position:absolute;bottom:0;right:${x}px;font-size:${32 + Math.random() * 24}px`
+      el.style.cssText = `position:absolute;bottom:0;right:${Math.random() * 60}px;font-size:${32 + Math.random() * 24}px`
       box.append(el)
-      el.animate([
-        { transform: 'translate(0,0)', opacity: 0 },
-        { transform: `translate(${sway / 2}px,-15vh)`, opacity: 1, offset: 0.1 },
-        { transform: `translate(${sway}px,-${60 + Math.random() * 25}vh)`, opacity: 0 },
-      ], { duration: 2500 + Math.random() * 1500, easing: 'ease-out' }).onfinish = () => el.remove()
+      // Rise while swaying side to side on a sine, like a feather: random amplitude, phase and number of swings.
+      const rise = 60 + Math.random() * 25, amp = 10 + Math.random() * 14, phase = Math.random() * 6.28, swings = 1.5 + Math.random()
+      const frames = Array.from({ length: 13 }, (_, i) => {
+        const t = i / 12
+        return { transform: `translate(${amp * Math.sin(phase + t * swings * 6.28)}px,-${t * rise}vh)`, opacity: t < 0.1 ? t * 10 : 1 - Math.max(0, t - 0.6) / 0.4 }
+      })
+      el.animate(frames, { duration: 2500 + Math.random() * 1500, easing: 'ease-out' }).onfinish = () => el.remove()
     }, Math.random() * 250)
   }
 }
