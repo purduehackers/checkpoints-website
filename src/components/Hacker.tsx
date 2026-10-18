@@ -83,7 +83,7 @@ export default function Hacker() {
   if (phone) return <Shell><PhoneNote /></Shell>
   if (!state) return <Shell><Badge online={online} /><p>Loading…</p></Shell>
 
-  const msTotal = cur?.deadline ? cur.deadline - now() : null
+  const msTotal = cur?.pausedLeft ?? (cur?.deadline != null ? cur.deadline - now() : null)
 
   let body
   if (!state.session) body = <p className="text-xl">No checkpoint is running.</p>

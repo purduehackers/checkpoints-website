@@ -28,6 +28,7 @@ export interface Current {
   status: 'called' | 'live'
   startedAt: number | null
   deadline: number | null
+  pausedLeft: number | null
   shareState: ShareState
   streamId?: string // admin always; host only while live
 }

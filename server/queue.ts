@@ -94,7 +94,7 @@ export async function join(token: string, name: string, project: string) {
       [crypto.randomUUID(), s.id, token, name, project, 'ck' + crypto.randomUUID().replaceAll('-', '').slice(0, 14), s.id, now, now],
     )
   } else if (again) {
-    await run(`UPDATE queue_entries SET status = 'waiting', bye_at = NULL, name = ?, project = ?, share_state = 'not_shared', started_at = NULL, deadline = NULL, called_at = NULL, sort_key = ${NEXT_KEY}, joined_at = ?, last_seen_at = ? WHERE id = ? AND status IN ('left','done')`, [name, project, s.id, now, now, mine.id])
+    await run(`UPDATE queue_entries SET status = 'waiting', bye_at = NULL, name = ?, project = ?, share_state = 'not_shared', started_at = NULL, deadline = NULL, paused_left = NULL, called_at = NULL, sort_key = ${NEXT_KEY}, joined_at = ?, last_seen_at = ? WHERE id = ? AND status IN ('left','done')`, [name, project, s.id, now, now, mine.id])
   } // else: already has a spot (or was removed): joining again returns it unchanged
   await advance(s.id) // empty stage: the joiner is up right away
 }
@@ -106,13 +106,13 @@ const mutate = (set: string, status: string, token: string, args: any[] = []) =>
 
 // Finishing the called/live entry advances the line; a waiting entry leaving does not.
 export async function leave(token: string) {
-  const n = await changes(`UPDATE queue_entries SET status = 'left' WHERE client_token = ? AND ${OPEN} AND status IN ('called','live')`, [token])
+  const n = await changes(`UPDATE queue_entries SET status = 'left', paused_left = NULL WHERE client_token = ? AND ${OPEN} AND status IN ('called','live')`, [token])
   if (n) return advanceOpen()
-  await mutate(`status = 'left'`, `= 'waiting'`, token)
+  await mutate(`status = 'left', paused_left = NULL`, `= 'waiting'`, token)
 }
 export const setShare = (token: string, state: ShareState) => mutate(`share_state = ?`, ACTIVE, token, [state])
 export async function end(token: string) {
-  const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE client_token = ? AND ${OPEN} AND status = 'live'`, [token])
+  const n = await changes(`UPDATE queue_entries SET status = 'done', paused_left = NULL WHERE client_token = ? AND ${OPEN} AND status = 'live'`, [token])
   if (n) await advanceOpen()
 }
 // One statement for every connected hacker, instead of one per socket.
@@ -129,8 +129,8 @@ export const back = (...tokens: string[]) => tokens.length
 // Grace over: they really left. Called/live advance the line, waiting just drop out.
 export async function sweepByes(now = Date.now()) {
   const cutoff = now - BYE_GRACE_MS
-  const n = await changes(`UPDATE queue_entries SET status = 'left' WHERE bye_at <= ? AND ${OPEN} AND status IN ('called','live')`, [cutoff])
-  await run(`UPDATE queue_entries SET status = 'left' WHERE bye_at <= ? AND ${OPEN} AND status = 'waiting'`, [cutoff])
+  const n = await changes(`UPDATE queue_entries SET status = 'left', paused_left = NULL WHERE bye_at <= ? AND ${OPEN} AND status IN ('called','live')`, [cutoff])
+  await run(`UPDATE queue_entries SET status = 'left', paused_left = NULL WHERE bye_at <= ? AND ${OPEN} AND status = 'waiting'`, [cutoff])
   if (n) await advanceOpen()
 }
 
@@ -139,8 +139,19 @@ export async function adminReady(entryId: string) {
   const s = await openSession()
   if (!s) return
   const now = Date.now()
-  await run(`UPDATE queue_entries SET status = 'live', started_at = ?, deadline = ? WHERE session_id = ? AND status = 'called' AND id = ?`, [now, now + s.limit_sec * 1000, s.id, entryId])
+  await run(`UPDATE queue_entries SET status = 'live', started_at = ?, deadline = ?, paused_left = NULL WHERE session_id = ? AND status = 'called' AND id = ?`, [now, now + s.limit_sec * 1000, s.id, entryId])
 }
+
+export const pause = (id: string) =>
+  run(`UPDATE queue_entries SET paused_left = MAX(0, deadline - ?), deadline = NULL WHERE id = ? AND status = 'live' AND deadline IS NOT NULL`, [Date.now(), id])
+export const resume = (id: string) =>
+  run(`UPDATE queue_entries SET deadline = ? + paused_left, paused_left = NULL WHERE id = ? AND status = 'live' AND paused_left IS NOT NULL`, [Date.now(), id])
+export const adjust = (id: string, deltaSec: number) =>
+  run(`UPDATE queue_entries SET
+    deadline = CASE WHEN deadline IS NOT NULL THEN MAX(?, deadline + ?) END,
+    paused_left = CASE WHEN paused_left IS NOT NULL THEN MAX(0, paused_left + ?) END
+    WHERE id = ? AND status = 'live'`, [Date.now(), deltaSec * 1000, deltaSec * 1000, id])
+
 // The hacker's own Ready needs a running share, so the clock never starts on a blank screen.
 // adminReady stays unconditional: the organizer's override (e.g. someone on the backup share).
 // noShare: the hacker chose to present without a screen (talk only, phone, backup share).
@@ -154,13 +165,13 @@ export async function hackerReady(token: string, noShare = false) {
 // Ends exactly the entry the organizer clicked. If it already finished (deadline, double-click), the next
 // person who was just called is NOT touched.
 export async function stop(id: string) {
-  const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE id = ? AND ${OPEN} AND status IN ('called','live')`, [id])
+  const n = await changes(`UPDATE queue_entries SET status = 'done', paused_left = NULL WHERE id = ? AND ${OPEN} AND status IN ('called','live')`, [id])
   if (n) await advanceOpen()
 }
 export async function remove(id: string) {
-  const n = await changes(`UPDATE queue_entries SET status = 'removed' WHERE id = ? AND status IN ('called','live')`, [id])
+  const n = await changes(`UPDATE queue_entries SET status = 'removed', paused_left = NULL WHERE id = ? AND status IN ('called','live')`, [id])
   if (n) return advanceOpen()
-  await run(`UPDATE queue_entries SET status = 'removed' WHERE id = ? AND status = 'waiting'`, [id])
+  await run(`UPDATE queue_entries SET status = 'removed', paused_left = NULL WHERE id = ? AND status = 'waiting'`, [id])
 }
 
 // Move behind the next waiting person. A called (not yet live) entry goes back to waiting, then the next is called.
@@ -173,7 +184,7 @@ export async function skip(id: string) {
   if (i < 0) {
     if (!w.length) return // nobody to swap with
     const n = await changes(
-      `UPDATE queue_entries SET status = 'waiting', called_at = NULL, sort_key = ? WHERE id = ? AND session_id = ? AND status = 'called'`,
+      `UPDATE queue_entries SET status = 'waiting', called_at = NULL, paused_left = NULL, sort_key = ? WHERE id = ? AND session_id = ? AND status = 'called'`,
       [key(w[0].sort_key as number, w[1]?.sort_key as number | undefined), id, s.id],
     )
     if (n) await advance(s.id)
@@ -195,7 +206,7 @@ export async function move(id: string, dir: -1 | 1) {
 
 // The server-owned cutoff. Called every tick, so it also catches deadlines passed while the server was down.
 export async function expire(now = Date.now()) {
-  const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE status = 'live' AND deadline <= ?`, [now])
+  const n = await changes(`UPDATE queue_entries SET status = 'done', paused_left = NULL WHERE status = 'live' AND deadline <= ?`, [now])
   if (n) await advanceOpen()
   await sweepByes(now)
   await advanceOpen() // the invariant, last: covers every path above and slots finished elsewhere
@@ -219,7 +230,7 @@ export function view({ s, rows }: Snapshot, role: Role, token?: string): State {
   const waiting = s.status === 'open' ? rows.filter((r) => r.status === 'waiting') : [] // a closed session has no line
   const current: Current | null = !cur ? null : {
     entryId: cur.id, name: cur.name, project: cur.project, status: cur.status,
-    startedAt: cur.started_at, deadline: cur.deadline, shareState: cur.share_state,
+    startedAt: cur.started_at, deadline: cur.deadline, pausedLeft: cur.paused_left, shareState: cur.share_state,
     ...((admin || (role === 'host' && cur.status === 'live')) && { streamId: cur.stream_id }),
   }
   const queue: QueueItem[] = waiting.map((r) => ({

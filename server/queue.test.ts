@@ -234,6 +234,100 @@ const fresh = async (...ns: string[]) => {
 }
 const calledOrLive = async () => (await q.snapshot()).rows.filter((r) => r.status === 'called' || r.status === 'live').length
 
+test('pause freezes time past the old deadline; resume restores the remaining time', async () => {
+  await fresh('A', 'B')
+  await live('aa-A-xxxx')
+  const { entryId, deadline } = (await cur())!
+  const realNow = Date.now
+  let now = deadline! - 45_000
+  Date.now = () => now
+  try {
+    await q.pause(entryId)
+    expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: null, pausedLeft: 45_000 })
+    now = deadline! + 60_000
+    await q.expire(now)
+    await q.pause(entryId) // repeated pause keeps the frozen time
+    expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: null, pausedLeft: 45_000 })
+    await q.resume(entryId)
+    expect(await cur()).toMatchObject({ deadline: now + 45_000, pausedLeft: null })
+    now += 1000
+    await q.resume(entryId) // repeated resume does not extend the clock
+    expect((await cur())!.deadline).toBe(now + 44_000)
+  } finally { Date.now = realNow }
+})
+
+test('adjust adds and subtracts running time, clamped at zero until expire', async () => {
+  await fresh('A', 'B')
+  await live('aa-A-xxxx')
+  const { entryId, deadline } = (await cur())!
+  const realNow = Date.now
+  const now = deadline! - 20_000
+  Date.now = () => now
+  try {
+    await q.adjust(entryId, 30)
+    expect(await cur()).toMatchObject({ deadline: deadline! + 30_000, pausedLeft: null })
+    await q.adjust(entryId, -30)
+    expect((await cur())!.deadline).toBe(deadline)
+    await q.adjust(entryId, -30)
+    expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: now, pausedLeft: null })
+    await q.expire(now)
+    expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
+  } finally { Date.now = realNow }
+})
+
+test('adjust adds and subtracts paused time, clamped at zero without expiring', async () => {
+  await fresh('A')
+  await live('aa-A-xxxx')
+  const { entryId, deadline } = (await cur())!
+  const realNow = Date.now
+  let now = deadline! - 20_000
+  Date.now = () => now
+  try {
+    await q.pause(entryId)
+    await q.adjust(entryId, 30)
+    expect(await cur()).toMatchObject({ deadline: null, pausedLeft: 50_000 })
+    await q.adjust(entryId, -30)
+    expect((await cur())!.pausedLeft).toBe(20_000)
+    await q.adjust(entryId, -30)
+    now = deadline! + 60_000
+    await q.expire(now)
+    expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: null, pausedLeft: 0 })
+    await q.resume(entryId)
+    expect(await cur()).toMatchObject({ deadline: now, pausedLeft: null })
+    now += 1000
+    await q.pause(entryId)
+    expect((await cur())!.pausedLeft).toBe(0)
+  } finally { Date.now = realNow }
+})
+
+test('pause, resume and adjust on non-live or unknown entries are no-ops', async () => {
+  await fresh('A', 'B', 'C')
+  await q.stop((await cur())!.entryId)
+  const before = await q.snapshot()
+  for (const id of [...before.rows.map((r) => r.id), 'no-such-id']) {
+    await q.pause(id)
+    await q.resume(id)
+    await q.adjust(id, 30)
+    await q.adjust(id, -30)
+  }
+  expect(await q.snapshot()).toEqual(before)
+})
+
+test('finishing a paused entry clears its remaining time', async () => {
+  for (const finish of [q.stop, q.remove, () => q.end('aa-A-xxxx'), () => q.leave('aa-A-xxxx'), async () => {
+    await q.bye('aa-A-xxxx')
+    await q.sweepByes(Date.now() + 15_000)
+  }]) {
+    await fresh('A', 'B')
+    await live('aa-A-xxxx')
+    const { entryId } = (await cur())!
+    await q.pause(entryId)
+    await finish(entryId)
+    expect((await q.snapshot()).rows.find((r) => r.id === entryId)!.paused_left).toBeNull()
+    expect(await cur()).toMatchObject({ name: 'B', pausedLeft: null })
+  }
+})
+
 test('joining an empty stage calls that person at once; the next joiner waits', async () => {
   await fresh()
   expect(await cur()).toBeNull()
@@ -395,7 +489,7 @@ test('after presenting you can join again at the back; removed stays out', async
   expect(ann).toMatchObject({ status: 'waiting', position: 1, project: 'P1 v2' })
   expect((await host()).current).toMatchObject({ name: 'Ben', status: 'called', deadline: null })
   const row = (await q.snapshot()).rows.find((r) => r.client_token === 'again-aaaaaaa')!
-  expect([row.started_at, row.deadline]).toEqual([null, null]) // the old slot's clock doesn't come back
+  expect([row.started_at, row.deadline, row.paused_left]).toEqual([null, null, null]) // the old slot's clock doesn't come back
   await q.remove(ann.entryId)
   await q.join('again-aaaaaaa', 'Ann', 'P1')
   expect((await q.loadState('hacker', 'again-aaaaaaa')).me?.status).toBe('removed')

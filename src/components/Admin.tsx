@@ -83,12 +83,18 @@ function Panel({ onDenied }: { onDenied: () => void }) {
           <div className="rounded border border-amber-500 p-3">
             <div className="flex items-center gap-3">
               <div className="grow"><b>{c.name}</b> · {c.project}<div className="text-sm text-neutral-400">{c.status === 'live' ? 'live' : 'getting ready'} · {SHARE_LABEL[c.shareState]}</div></div>
-              {c.deadline && <span className="text-2xl tabular-nums">{fmt(c.deadline - now())}</span>}
+              {(c.pausedLeft != null || c.deadline != null) && <span className="text-2xl tabular-nums">{fmt(c.pausedLeft ?? c.deadline! - now())}</span>}
+              {c.pausedLeft != null && <span className="text-sm text-neutral-400">Paused</span>}
               {c.status === 'called' && <button className="rounded bg-green-600 px-3 py-1" onClick={() => act('/ready', { id: c.entryId })}>Start timer</button>}
               {c.status === 'called' && <button className="rounded bg-neutral-700 px-3 py-1" onClick={() => act('/skip', { id: c.entryId })}>Skip</button>}
               <button className="rounded bg-red-700 px-3 py-1" onClick={() => act('/stop', { id: c.entryId })}>Stop</button>
               {c.streamId && <button className="text-sm underline" onClick={() => { setPinned(true); setPreview(c.streamId!) }}>Preview</button>}
             </div>
+            {c.status === 'live' && <div className="mt-3 flex gap-2">
+              <button className="rounded bg-neutral-700 px-3 py-1" onClick={() => act(c.pausedLeft != null ? '/resume' : '/pause', { id: c.entryId })}>{c.pausedLeft != null ? 'Resume' : 'Pause'}</button>
+              <button className="rounded bg-neutral-700 px-3 py-1" onClick={() => act('/adjust', { id: c.entryId, delta: -30 })}>-30s</button>
+              <button className="rounded bg-neutral-700 px-3 py-1" onClick={() => act('/adjust', { id: c.entryId, delta: 30 })}>+30s</button>
+            </div>}
           </div>
         )}
 

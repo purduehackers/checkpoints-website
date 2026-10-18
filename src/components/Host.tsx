@@ -22,7 +22,7 @@ export default function Host() {
 
   const c = state?.current
   const live = c?.status === 'live' && c.streamId
-  const left = c?.deadline ? c.deadline - now() : null
+  const left = c?.pausedLeft ?? (c?.deadline != null ? c.deadline - now() : null)
   const open = state?.session?.status === 'open'
   const audio = state?.session?.audio ?? true
   const stats = useStatsToggle()
