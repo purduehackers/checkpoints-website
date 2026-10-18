@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Badge, Spinner, aboutMin, api, fmt, hackerToken, useLive, useTick, waitMs } from '../lib/live'
 import { ShareBox } from '../lib/vdo'
 import { StatsButton, useStatsToggle } from '../lib/stats'
+import { ICONS, Tour, seen, type Step } from '../lib/tour'
 import type { ShareState } from '../../shared/types'
 
 const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`
@@ -32,6 +33,19 @@ function chime() {
   } catch {}
 }
 
+// First-time tour, one part per page state (the elements only exist then).
+const TOUR: Record<'join' | 'wait' | 'turn', Step[]> = {
+  join: [
+    { target: 'name', icon: ICONS.person, text: 'Your name + project. Shown on the big screen.' },
+    { target: 'join', icon: ICONS.plus, text: 'Join the line. Keep this tab open.' },
+  ],
+  wait: [
+    { target: 'status', icon: ICONS.hourglass, text: "Your spot. Flashes yellow when you're next, green when it's your turn." },
+    { target: 'share', icon: ICONS.screen, text: 'Share early if you like. Only organizers see it.' },
+  ],
+  turn: [{ target: 'start', icon: ICONS.play, text: 'Walk up, then press this. Your time starts now.' }],
+}
+
 // Phones get a joke instead of the line: they can't share a screen. /host and /admin still work for watching.
 function PhoneNote() {
   return (
@@ -52,6 +66,7 @@ export default function Hacker() {
   const shareFn = useRef<(() => boolean) | null>(null) // ShareBox's share(), so Start presenting can open the picker
   const startOnShare = useRef(false) // Start presenting was pressed before sharing: go live as soon as the share connects
   const stats = useStatsToggle()
+  const [replay, setReplay] = useState(0) // "How it works" remounts the tour
   useTick()
 
   const token = hackerToken()
@@ -121,7 +136,7 @@ export default function Hacker() {
 
   const msTotal = cur?.pausedLeft ?? (cur?.deadline != null ? cur.deadline - now() : null)
 
-  let body
+  let body, tour: keyof typeof TOUR | null = null
   if (!state.session) body = <p className="text-xl">No checkpoint is running.</p>
   else if (!open) body = <p className="text-xl">This checkpoint has ended.</p>
   else if (me?.status === 'removed') body = <p className="text-xl">You were removed from the queue.</p>
@@ -134,27 +149,27 @@ export default function Hacker() {
     )
   }
   else if (!active) {
+    tour = 'join'
     body = (
       <form className="space-y-3" onSubmit={(e) => {
         e.preventDefault(); setError('')
         act('/join', form)
       }}>
         <h1 className="text-2xl font-semibold">Join the checkpoint</h1>
-        <ol className="list-decimal space-y-1 rounded bg-neutral-800 p-3 pl-8 text-sm text-neutral-300">
-          <li>Join the line.</li>
-          <li>Share your screen while you wait. Only the organizer sees it until you're live. (Your browser will ask which screen, window or tab; that's the only permission.)</li>
-          <li>When it's your turn, walk up and press Start presenting. Your time ({span(state.session!.limitSec)}) starts then.</li>
-        </ol>
+        <p className="text-sm text-neutral-400">Join → wait for green → walk up → Start presenting. You get {span(state.session!.limitSec)}.</p>
+        <div data-tour="name" className="space-y-3">
         <input required maxLength={60} placeholder="Your name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full rounded bg-neutral-800 p-3" />
         <input required maxLength={80} placeholder="Project name" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} className="w-full rounded bg-neutral-800 p-3" />
-        <button disabled={pending > 0} className="flex w-full items-center justify-center gap-2 rounded bg-amber-500 p-3 font-semibold text-black disabled:opacity-70">{pending > 0 && <Spinner />}Join queue</button>
+        </div>
+        <button data-tour="join" disabled={pending > 0} className="flex w-full items-center justify-center gap-2 rounded bg-amber-500 p-3 font-semibold text-black disabled:opacity-70">{pending > 0 && <Spinner />}Join queue</button>
       </form>
     )
   } else {
+    tour = me.status === 'waiting' ? 'wait' : me.status === 'called' ? 'turn' : null
     body = (
       <div className="space-y-4">
         {me.status === 'waiting' && (
-          <div className={me.position === 1 ? 'rounded-lg bg-amber-400 p-4 text-black' : ''}>
+          <div data-tour="status" className={me.position === 1 ? 'rounded-lg bg-amber-400 p-4 text-black' : ''}>
             <h1 className="text-3xl font-semibold">{me.position === 1 ? "You're up next!" : `You're ${ordinal(me.position)} in line`}</h1>
             <p className={me.position === 1 ? '' : 'text-neutral-400'}>{me.position === 1 ? 'Get your screen ready.' : `${me.position - 1} ${me.position === 2 ? 'person' : 'people'} ahead of you`} · up in {aboutMin(waitMs(state, me.position - 1, now()))}</p>
           </div>
@@ -165,7 +180,7 @@ export default function Hacker() {
           <div className="space-y-3 rounded-lg bg-green-500 p-4 text-black">
             <h1 className="text-3xl font-semibold">It's your turn!</h1>
             <p>Walk to the podium, then press Start presenting. Your time starts then, not before.</p>
-            <button disabled={pending > 0} className="flex w-full items-center justify-center gap-3 rounded-lg bg-black px-6 py-4 text-2xl font-bold text-green-400 disabled:opacity-70" onClick={start}>{pending > 0 && <Spinner className="size-5" />}Start presenting</button>
+            <button data-tour="start" disabled={pending > 0} className="flex w-full items-center justify-center gap-3 rounded-lg bg-black px-6 py-4 text-2xl font-bold text-green-400 disabled:opacity-70" onClick={start}>{pending > 0 && <Spinner className="size-5" />}Start presenting</button>
           </div>
         )}
         {me.status === 'live' && (
@@ -175,7 +190,7 @@ export default function Hacker() {
           </div>
         )}
         {canShare ? (
-          <ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} shareRef={shareFn} hideShare={me.status === 'called'} />
+          <div data-tour="share"><ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} shareRef={shareFn} hideShare={me.status === 'called'} /></div>
         ) : (
           <p className="rounded bg-neutral-800 p-3 text-sm">This browser can’t share a screen. Use Chrome or Edge on a laptop. You can still wait here.</p>
         )}
@@ -204,6 +219,8 @@ export default function Hacker() {
       {pending > 0 && <div className="late fixed bottom-3 right-3 z-50 flex items-center gap-2 rounded bg-neutral-800 px-3 py-1 text-sm"><Spinner />Working…</div>}
       {body}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+      {tour && <Tour key={tour + replay} part={tour} steps={TOUR[tour]} />}
+      {tour && <button className="mt-6 text-xs text-neutral-500 underline" onClick={() => { seen.clear(); setReplay((n) => n + 1) }}>How it works</button>}
     </Shell>
   )
 }
