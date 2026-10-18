@@ -2,12 +2,12 @@ export type EntryStatus = 'waiting' | 'called' | 'live' | 'done' | 'left' | 'rem
 export type ShareState = 'not_shared' | 'sharing' | 'stopped'
 export type Role = 'hacker' | 'admin' | 'host'
 
-// Stream quality the organizer picks; the presenter's browser applies it (capture cap + encoder bitrate).
+// Stream quality the organizer picks; the presenter's browser applies it as the encoder bitrate.
 export const QUALITY = {
-  '720p': { width: 1280, height: 720, kbps: 2500 },
-  '1080p': { width: 1920, height: 1080, kbps: 4000 },
-  '1440p': { width: 2560, height: 1440, kbps: 6000 },
-  source: { width: 0, height: 0, kbps: 8000 }, // 0 = no cap
+  '720p': { kbps: 2500 },
+  '1080p': { kbps: 4000 },
+  '1440p': { kbps: 6000 },
+  source: { kbps: 8000 },
 } as const
 export type Quality = keyof typeof QUALITY
 

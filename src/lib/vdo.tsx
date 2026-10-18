@@ -31,7 +31,7 @@ function captureError(e: unknown): { msg: string; retry: boolean } {
 }
 // Frame rate only. A width/height cap with crop-and-scale re-renders the captured screen at the cap size,
 // which left the presenter's own display zoomed in. The organizer's quality is the encoder bitrate alone.
-const videoConstraints = (): MediaTrackConstraints => ({ frameRate: { ideal: 30, max: 30 } })
+const FPS_CAP: MediaTrackConstraints = { frameRate: { ideal: 30, max: 30 } }
 
 // Hacker's share with its own preview. Unmounting it ends the share.
 export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState, shareRef, hideShare }: {
@@ -107,7 +107,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     s.getVideoTracks()[0].onended = () => { if (stream.current === s) { stop(); report('stopped') } }
     try {
       // Cap fps after capture; a refused (or never-settling) cap must never kill the share.
-      if (!basic) await Promise.race([track.applyConstraints(videoConstraints()).catch(() => {}), new Promise((r) => setTimeout(r, 2000))])
+      if (!basic) await Promise.race([track.applyConstraints(FPS_CAP).catch(() => {}), new Promise((r) => setTimeout(r, 2000))])
       if (!sdk.current) {
         // salt 'vdo.ninja' + default host/password: viewable at vdo.ninja/?view=<streamId>
         sdk.current = new VDONinjaSDK({ salt: 'vdo.ninja', label })

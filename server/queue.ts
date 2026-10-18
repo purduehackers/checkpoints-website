@@ -114,13 +114,13 @@ const mutate = (set: string, status: string, token: string, args: any[] = []) =>
 
 // Finishing the called/live entry advances the line; a waiting entry leaving does not.
 export async function leave(token: string) {
-  const n = await changes(`UPDATE queue_entries SET status = 'left', paused_left = NULL WHERE client_token = ? AND ${OPEN} AND status IN ('called','live')`, [token])
+  const n = await changes(`UPDATE queue_entries SET status = 'left' WHERE client_token = ? AND ${OPEN} AND status IN ('called','live')`, [token])
   if (n) return advanceOpen()
-  await mutate(`status = 'left', paused_left = NULL`, `= 'waiting'`, token)
+  await mutate(`status = 'left'`, `= 'waiting'`, token)
 }
 export const setShare = (token: string, state: ShareState) => mutate(`share_state = ?`, ACTIVE, token, [state])
 export async function end(token: string) {
-  const n = await changes(`UPDATE queue_entries SET status = 'done', paused_left = NULL WHERE client_token = ? AND ${OPEN} AND status = 'live'`, [token])
+  const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE client_token = ? AND ${OPEN} AND status = 'live'`, [token])
   if (n) await advanceOpen()
 }
 // One statement for every connected hacker, instead of one per socket.
@@ -137,8 +137,8 @@ export const back = (...tokens: string[]) => tokens.length
 // Grace over: they really left. Called/live advance the line, waiting just drop out.
 export async function sweepByes(now = Date.now()) {
   const cutoff = now - BYE_GRACE_MS
-  const n = await changes(`UPDATE queue_entries SET status = 'left', paused_left = NULL WHERE bye_at <= ? AND ${OPEN} AND status IN ('called','live')`, [cutoff])
-  await run(`UPDATE queue_entries SET status = 'left', paused_left = NULL WHERE bye_at <= ? AND ${OPEN} AND status = 'waiting'`, [cutoff])
+  const n = await changes(`UPDATE queue_entries SET status = 'left' WHERE bye_at <= ? AND ${OPEN} AND status IN ('called','live')`, [cutoff])
+  await run(`UPDATE queue_entries SET status = 'left' WHERE bye_at <= ? AND ${OPEN} AND status = 'waiting'`, [cutoff])
   if (n) await advanceOpen()
 }
 
@@ -173,13 +173,13 @@ export async function hackerReady(token: string, noShare = false) {
 // Ends exactly the entry the organizer clicked. If it already finished (deadline, double-click), the next
 // person who was just called is NOT touched.
 export async function stop(id: string) {
-  const n = await changes(`UPDATE queue_entries SET status = 'done', paused_left = NULL WHERE id = ? AND ${OPEN} AND status IN ('called','live')`, [id])
+  const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE id = ? AND ${OPEN} AND status IN ('called','live')`, [id])
   if (n) await advanceOpen()
 }
 export async function remove(id: string) {
-  const n = await changes(`UPDATE queue_entries SET status = 'removed', paused_left = NULL WHERE id = ? AND status IN ('called','live')`, [id])
+  const n = await changes(`UPDATE queue_entries SET status = 'removed' WHERE id = ? AND status IN ('called','live')`, [id])
   if (n) return advanceOpen()
-  await run(`UPDATE queue_entries SET status = 'removed', paused_left = NULL WHERE id = ? AND status = 'waiting'`, [id])
+  await run(`UPDATE queue_entries SET status = 'removed' WHERE id = ? AND status = 'waiting'`, [id])
 }
 
 // Move behind the next waiting person. A called (not yet live) entry goes back to waiting, then the next is called.
@@ -192,7 +192,7 @@ export async function skip(id: string) {
   if (i < 0) {
     if (!w.length) return // nobody to swap with
     const n = await changes(
-      `UPDATE queue_entries SET status = 'waiting', called_at = NULL, paused_left = NULL, sort_key = ? WHERE id = ? AND session_id = ? AND status = 'called'`,
+      `UPDATE queue_entries SET status = 'waiting', called_at = NULL, sort_key = ? WHERE id = ? AND session_id = ? AND status = 'called'`,
       [key(w[0].sort_key as number, w[1]?.sort_key as number | undefined), id, s.id],
     )
     if (n) await advance(s.id)
@@ -220,7 +220,7 @@ export async function expire(now = Date.now()) {
   if (s && ((s.admin_seen_at != null && s.admin_seen_at <= now - ADMIN_GONE_MS) || (s.active_at != null && !s.live && s.active_at <= now - DORMANT_MS))) {
     return endSession()
   }
-  const n = await changes(`UPDATE queue_entries SET status = 'done', paused_left = NULL WHERE status = 'live' AND deadline <= ?`, [now])
+  const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE status = 'live' AND deadline <= ?`, [now])
   if (n) await advanceOpen()
   await sweepByes(now)
   await advanceOpen() // the invariant, last: covers every path above and slots finished elsewhere
