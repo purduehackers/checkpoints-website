@@ -182,6 +182,12 @@ export async function remove(id: string) {
   await run(`UPDATE queue_entries SET status = 'removed' WHERE id = ? AND status = 'waiting'`, [id])
 }
 
+// Undo a Remove: back to waiting in the same spot (the place in line never changed). Not for people who left.
+export async function unremove(id: string) {
+  const n = await changes(`UPDATE queue_entries SET status = 'waiting', bye_at = NULL WHERE id = ? AND ${OPEN} AND status = 'removed'`, [id])
+  if (n) await advanceOpen() // the stage may have emptied meanwhile
+}
+
 // Move behind the next waiting person. A called (not yet live) entry goes back to waiting, then the next is called.
 export async function skip(id: string) {
   const s = await openSession()

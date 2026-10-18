@@ -142,6 +142,7 @@ export const app = new Elysia({
       .post('/skip', async ({ body }) => (await q.skip(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
       .post('/move', async ({ body }) => (await q.move(body.id, body.dir), reply('admin')), { body: t.Object({ id: t.String(), dir: t.Union([t.Literal(-1), t.Literal(1)]) }) })
       .post('/remove', async ({ body }) => (await q.remove(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
+      .post('/unremove', async ({ body }) => (await q.unremove(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
       .post('/ready', async ({ body }) => (await q.adminReady(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
       .post('/pause', async ({ body }) => (await q.pause(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })
       .post('/resume', async ({ body }) => (await q.resume(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })

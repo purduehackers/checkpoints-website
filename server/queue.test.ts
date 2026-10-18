@@ -658,3 +658,43 @@ test('a checkpoint opened before auto-end existed never ends by itself', async (
   await q.expire(Date.now() + 24 * 60 * 60_000)
   expect(await sessionStatus()).toBe('open')
 })
+
+// ---- undo remove ----
+test('undoing a Remove puts the person back in the same spot, and they see it', async () => {
+  await fresh('A', 'B', 'C', 'D') // A on stage; B, C, D wait
+  const c = (await host()).queue.find((e) => e.name === 'C')!.id
+  await q.remove(c)
+  expect(await names()).toEqual(['B', 'D'])
+  expect(await status('C')).toBe('removed')
+  await q.join('aa-E-xxxx', 'E', 'P') // the line moves on meanwhile
+  await q.unremove(c)
+  expect(await names()).toEqual(['B', 'C', 'D', 'E'])
+  expect((await q.loadState('hacker', 'aa-C-xxxx')).me).toMatchObject({ status: 'waiting', position: 2 })
+})
+
+test('undo only brings back removed people, only in the checkpoint they were removed from', async () => {
+  await fresh('A', 'B', 'C')
+  await q.leave('aa-B-xxxx') // left on their own: undo must not pull them back
+  await q.unremove((await q.snapshot()).rows.find((r) => r.name === 'B')!.id)
+  expect(await status('B')).toBe('left')
+  const cId = (await host()).queue[0].id
+  await q.unremove(cId) // C is waiting, not removed: nothing to undo
+  await q.unremove('no-such-id')
+  expect(await names()).toEqual(['C'])
+  await q.remove(cId)
+  await q.endSession(); await q.startSession(90)
+  await q.unremove(cId) // that checkpoint is over: C doesn't reappear in the new one
+  expect(await names()).toEqual([])
+  expect(await cur()).toBeNull()
+})
+
+test('if the stage emptied before the undo, the restored person is called', async () => {
+  await fresh('A', 'B')
+  const b = (await host()).queue[0].id
+  await q.remove(b)
+  await q.stop((await cur())!.entryId) // A done, nobody left
+  expect(await cur()).toBeNull()
+  await q.unremove(b)
+  expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
+  expect(await calledOrLive()).toBe(1)
+})

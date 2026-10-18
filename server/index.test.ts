@@ -88,7 +88,7 @@ test('organizer routes: login, a fresh checkpoint, and bad input is refused', as
   expect((await as('/stop', {})).status).toBe(400) // must say who to stop
   for (const delta of [45, 0, '30', -3000]) expect((await as('/adjust', { id, delta })).status).toBe(400)
   expect((await as('/call-next', { expect: null })).status).toBe(404) // removed
-  for (const path of ['/pause', '/resume', '/adjust', '/stop']) {
+  for (const path of ['/pause', '/resume', '/adjust', '/stop', '/unremove']) {
     expect((await post('/admin' + path, { id, delta: 30 }, { ...ip, 'x-admin-token': 'nope'.repeat(16) })).status).toBe(401)
   }
 })
