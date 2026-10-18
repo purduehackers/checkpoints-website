@@ -17,10 +17,8 @@ export default function Admin() {
         <input type="password" placeholder="Passcode" value={pass} onChange={(e) => setPass(e.target.value)} className="w-full rounded bg-neutral-800 p-3" />
         <button className="w-full rounded bg-amber-500 p-3 font-semibold text-black" onClick={async () => {
           try {
-            const r = await fetch('/api/admin/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ passcode: pass }) })
-            const j = await r.json()
-            if (!r.ok) throw new Error(j.error)
-            localStorage.setItem(adminKey, j.token); setAuthed(true)
+            const { token } = await api<{ token: string }>('/admin/login', { passcode: pass })
+            localStorage.setItem(adminKey, token); setAuthed(true)
           } catch (e: any) { setError(e.message) }
         }}>Enter</button>
         {error && <p className="text-red-400">{error}</p>}
@@ -63,7 +61,6 @@ function Panel({ onDenied }: { onDenied: () => void }) {
   return (
     <main className="mx-auto grid max-w-5xl gap-6 p-6 md:grid-cols-[1fr_320px]">
       <Badge online={online} />
-      {stats.menu}
       {stats.on && <StatsOverlay history={history} title={statsStream && statsStream === c?.streamId ? `On stage: ${c.name}` : 'Previewed stream'} onClose={stats.toggle} />}
       <fieldset disabled={busy} className="min-w-0 space-y-4">
         <div className="flex flex-wrap items-center gap-2">

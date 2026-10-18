@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia'
 import { timingSafeEqual } from 'node:crypto'
 import * as q from './queue'
-import { QUALITY, REACTIONS, REACT_COOLDOWN_MS, type Role, type State } from '../shared/types'
+import { QUALITY, REACTIONS, type Role, type State } from '../shared/types'
 
 // ?? Assumes Vercel Pro and ~1s latency. Each tick is a few Turso reads per socket-holding instance, however
 // ?? many sockets it holds; if 1s feels slow, move cross-instance sync to Redis pub/sub and tick only for expire().
@@ -58,7 +58,7 @@ function push(sub: Sub, snap: q.Snapshot, force = false) {
 }
 // Reactions are ephemeral: counted in memory and flushed to hosts as one {emoji: n} message per window,
 // so fan-out is one message per host per window however many people tap. Per instance, like the rest of the live state.
-const REACT_BATCH_MS = 250
+const REACT_BATCH_MS = 250, REACT_COOLDOWN_MS = 200 // cooldown is per socket
 let tally: Record<string, number> = {}, flushing = false
 // Spam, Discord-style: STRIKES taps inside the cooldown within STRIKE_MS is an offense. The first gets a warning;
 // a repeat within OFFENSE_MS gets slow mode (one reaction per SLOW_MS for SLOW_FOR_MS). Taps are never queued.
@@ -168,7 +168,7 @@ export const app = new Elysia({
     g
       // transform runs before body validation, so unauthenticated callers learn nothing about the schema
       .onTransform(({ headers }) => {
-        if (!isAdmin(headers['x-admin-token'])) throw Object.assign(new Error('Not authorized'), { status: 401 })
+        if (!isAdmin(headers['x-admin-token'])) throw fail('Not authorized', 401)
       })
       .post('/session/start', async () => (await q.startSession(), reply('admin')))
       .post('/session/end', async () => (await q.endSession(), reply('admin')))

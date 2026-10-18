@@ -27,10 +27,10 @@ const changes = async (sql: string, args: any[] = []) => {
 const advance = async (sid: string) => {
   try {
     await run(
-      `UPDATE queue_entries SET status = 'called', called_at = ? WHERE id = (
+      `UPDATE queue_entries SET status = 'called' WHERE id = (
          SELECT id FROM queue_entries WHERE session_id = ? AND status = 'waiting' ORDER BY sort_key LIMIT 1)
        AND NOT EXISTS (SELECT 1 FROM queue_entries WHERE session_id = ? AND status IN ('called','live'))`,
-      [Date.now(), sid, sid],
+      [sid, sid],
     )
   } catch (e: any) {
     if (!/UNIQUE|constraint/i.test(String(e?.message))) throw e // one_active_entry: another writer won the race
@@ -45,10 +45,10 @@ const advanceOpen = async () => {
 const latestSession = () => one(`SELECT * FROM sessions ORDER BY rowid DESC LIMIT 1`)
 const openSession = () => one(`SELECT * FROM sessions WHERE status = 'open'`)
 
-export async function startSession(limitSec = 120) {
+export async function startSession() {
   if (await openSession()) return
   const now = Date.now()
-  await run(`INSERT INTO sessions (id, status, limit_sec, created_at, admin_seen_at, active_at) VALUES (?, 'open', ?, ?, ?, ?)`, [crypto.randomUUID(), limitSec, now, now, now])
+  await run(`INSERT INTO sessions (id, status, created_at, admin_seen_at, active_at) VALUES (?, 'open', ?, ?, ?)`, [crypto.randomUUID(), now, now, now])
 }
 // An organizer page is open (socket or request). Heartbeat for the no-admin auto-end.
 export const adminSeen = (now = Date.now()) => run(`UPDATE sessions SET admin_seen_at = ? WHERE status = 'open'`, [now])
@@ -103,7 +103,7 @@ export async function join(token: string, name: string, project: string) {
       [crypto.randomUUID(), s.id, token, name, project, 'ck' + crypto.randomUUID().replaceAll('-', '').slice(0, 14), s.id, now, now],
     )
   } else if (again) {
-    await run(`UPDATE queue_entries SET status = 'waiting', bye_at = NULL, name = ?, project = ?, share_state = 'not_shared', started_at = NULL, deadline = NULL, paused_left = NULL, called_at = NULL, sort_key = ${NEXT_KEY}, joined_at = ?, last_seen_at = ? WHERE id = ? AND status IN ('left','done')`, [name, project, s.id, now, now, mine.id])
+    await run(`UPDATE queue_entries SET status = 'waiting', bye_at = NULL, name = ?, project = ?, share_state = 'not_shared', deadline = NULL, paused_left = NULL, sort_key = ${NEXT_KEY}, joined_at = ?, last_seen_at = ? WHERE id = ? AND status IN ('left','done')`, [name, project, s.id, now, now, mine.id])
   } // else: already has a spot (or was removed): joining again returns it unchanged
   await advance(s.id) // empty stage: the joiner is up right away
 }
@@ -148,7 +148,7 @@ export async function adminReady(entryId: string) {
   const s = await openSession()
   if (!s) return
   const now = Date.now()
-  await run(`UPDATE queue_entries SET status = 'live', started_at = ?, deadline = ?, paused_left = NULL WHERE session_id = ? AND status = 'called' AND id = ?`, [now, now + s.limit_sec * 1000, s.id, entryId])
+  await run(`UPDATE queue_entries SET status = 'live', deadline = ?, paused_left = NULL WHERE session_id = ? AND status = 'called' AND id = ?`, [now + s.limit_sec * 1000, s.id, entryId])
 }
 
 export const pause = (id: string) =>
@@ -199,7 +199,7 @@ export async function skip(id: string) {
   if (i < 0) {
     if (!w.length) return // nobody to swap with
     const n = await changes(
-      `UPDATE queue_entries SET status = 'waiting', called_at = NULL, sort_key = ? WHERE id = ? AND session_id = ? AND status = 'called'`,
+      `UPDATE queue_entries SET status = 'waiting', sort_key = ? WHERE id = ? AND session_id = ? AND status = 'called'`,
       [key(w[0].sort_key as number, w[1]?.sort_key as number | undefined), id, s.id],
     )
     if (n) await advance(s.id)
@@ -251,12 +251,12 @@ export function view({ s, rows }: Snapshot, role: Role, token?: string): State {
   const waiting = s.status === 'open' ? rows.filter((r) => r.status === 'waiting') : [] // a closed session has no line
   const current: Current | null = !cur ? null : {
     entryId: cur.id, name: cur.name, project: cur.project, status: cur.status,
-    startedAt: cur.started_at, deadline: cur.deadline, pausedLeft: cur.paused_left, shareState: cur.share_state,
+    deadline: cur.deadline, pausedLeft: cur.paused_left, shareState: cur.share_state,
     ...(role !== 'hacker' && { away: cur.bye_at != null }),
     ...((admin || (role === 'host' && cur.status === 'live')) && { streamId: cur.stream_id }),
   }
   const queue: QueueItem[] = waiting.map((r) => ({
-    id: r.id, name: r.name, project: r.project, shareState: r.share_state, joinedAt: r.joined_at,
+    id: r.id, name: r.name, project: r.project, shareState: r.share_state,
     connected: serverNow - r.last_seen_at < DISCONNECTED_MS && r.bye_at == null,
     ...(admin && { streamId: r.stream_id }),
   }))

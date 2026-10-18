@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Badge, Spinner, aboutMin, api, fmt, hackerToken, useLive, useTick, waitMs } from '../lib/live'
+import { Badge, Spinner, aboutMin, api, fmt, hackerToken, ordinal, span, useLive, useTick, waitMs } from '../lib/live'
 import { ShareBox } from '../lib/vdo'
 import { StatsButton, useStatsToggle } from '../lib/stats'
 import { ICONS, Tour, seen, type Step } from '../lib/tour'
 import { ReactionPanel } from '../lib/reactions'
 import type { ShareState } from '../../shared/types'
 
-const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`
-const span = (sec: number) => sec % 60 ? `${sec} seconds` : `${sec / 60} minute${sec === 60 ? '' : 's'}`
 // Phones can't screen share from a browser (Android Chrome may still expose getDisplayMedia, so check the device too).
 // iPadOS reports itself as a Mac; touch points give it away.
 const phone = typeof navigator !== 'undefined' &&
@@ -206,7 +204,6 @@ export default function Hacker() {
   return (
     <Shell>
       <Badge online={online} />
-      {stats.menu}
       {active && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
       {me?.status === 'live' && msTotal !== null && <div className={`fixed left-3 top-3 z-40 rounded px-3 py-1 text-xl font-bold tabular-nums ${cur?.pausedLeft != null ? 'bg-neutral-800 text-neutral-500' : msTotal <= 30_000 ? 'bg-red-600' : 'bg-neutral-800'}`}>{cur?.pausedLeft != null && '⏸ '}{fmt(msTotal)}</div>}
       {me?.status === 'waiting' && me.position === 1 && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-amber-400/25" />}

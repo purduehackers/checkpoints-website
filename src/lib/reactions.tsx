@@ -15,14 +15,10 @@ export function ReactionPanel({ react, notice }: { react: (emoji: string) => voi
 
 const MAX_LIVE = 80 // DOM nodes in flight; the rest of a spike is dropped
 // Host side: plain DOM + Web Animations, so a spike never goes through React renders. Each emoji drifts up the
-// right edge and fades. Counts arrive as one batch per window; spread them across it so it reads as a stream.
-export function FloatingReactions({ box }: { box: React.RefObject<HTMLDivElement | null> }) {
-  return <div ref={box} className="pointer-events-none absolute bottom-0 right-0 top-0 z-20 w-40 overflow-hidden" />
-}
+// right edge and fades. Counts arrive as one batch per window (allowlisted by the server); spread them across it so it reads as a stream.
 export function spawn(box: HTMLDivElement | null, counts: Record<string, number>) {
   if (!box) return
   for (const [emoji, n] of Object.entries(counts)) {
-    if (!(REACTIONS as readonly string[]).includes(emoji)) continue // never render what the server wouldn't send
     for (let i = 0; i < Math.min(n, 20); i++) setTimeout(() => {
       if (box.childElementCount >= MAX_LIVE) return
       const el = document.createElement('span')

@@ -1,28 +1,34 @@
 // HTTP and WebSocket abuse: the server must stay up and cheap under hostile clients.
-import { afterAll, expect, test } from 'bun:test'
+import { afterAll, expect, setSystemTime, test } from 'bun:test'
 
 process.env.TURSO_DATABASE_URL = ':memory:'
 process.env.ADMIN_PASSCODE = 'test-passcode-long-enough'
 const { app } = await import('./index')
 app.listen(0)
 const base = `http://localhost:${app.server!.port}/api`
+const wsUrl = base.replace('http', 'ws') + '/ws'
 afterAll(() => app.stop())
 
 const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
   fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) })
 
-// Collects every message a socket gets after sending `msgs`, for `ms` milliseconds.
-async function socket(msgs: unknown[], ms = 400) {
-  const ws = new WebSocket(base.replace('http', 'ws') + '/ws')
-  const got: any[] = []
+// Opens a socket (optionally from its own IP), sends `msgs`, and keeps every message it gets.
+async function connect(msgs: unknown[], ip?: string) {
+  const ws = new WebSocket(wsUrl, (ip && { headers: { 'x-real-ip': ip } }) as any), got: any[] = []
   let closed = false
   ws.onmessage = (e) => got.push(JSON.parse(String(e.data)))
   ws.onclose = () => (closed = true)
   await new Promise((r) => (ws.onopen = r))
   for (const m of msgs) ws.send(typeof m === 'string' ? m : JSON.stringify(m))
+  return { ws, got, closed: () => closed, react: (emoji: string) => ws.send(JSON.stringify({ react: emoji })) }
+}
+// One-shot: what a socket gets for `ms` after sending `msgs`.
+async function socket(msgs: unknown[], ms = 400) {
+  const s = await connect(msgs)
   await Bun.sleep(ms)
-  ws.close()
-  return { got, closed }
+  const closed = s.closed()
+  s.ws.close()
+  return { got: s.got, closed }
 }
 
 test('errors say nothing about internals', async () => {
@@ -71,11 +77,10 @@ const ip = { 'x-real-ip': '10.9.9.9' }
 let admin: Record<string, string> = {}
 const as = (path: string, body: object = {}) => post('/admin' + path, body, admin)
 const hacker = (path: string, token: string, body: object = {}) => post(path, { token, ...body }, ip).then((r) => r.json())
-// The server runs in this process, so moving Date.now moves the server's clock too. Frozen, so exact times compare.
+// The server runs in this process, so moving the clock moves the server's too. Frozen, so exact times compare.
 async function at<T>(ms: number, fn: () => Promise<T>) {
-  const real = Date.now, fixed = real() + ms
-  Date.now = () => fixed
-  try { return await fn() } finally { Date.now = real }
+  setSystemTime(Date.now() + ms)
+  try { return await fn() } finally { setSystemTime() }
 }
 const MIN = 60_000
 
@@ -87,10 +92,16 @@ test('organizer routes: login, a fresh checkpoint, and bad input is refused', as
   const id = (await (await as('/limit', { seconds: 120 })).json()).current.entryId
   expect((await as('/stop', {})).status).toBe(400) // must say who to stop
   for (const delta of [45, 0, '30', -3000]) expect((await as('/adjust', { id, delta })).status).toBe(400)
-  expect((await as('/call-next', { expect: null })).status).toBe(404) // removed
   for (const path of ['/pause', '/resume', '/adjust', '/stop', '/unremove']) {
     expect((await post('/admin' + path, { id, delta: 30 }, { ...ip, 'x-admin-token': 'nope'.repeat(16) })).status).toBe(401)
   }
+})
+
+test('an admin socket needs the real token, and then sees stream ids', async () => {
+  // Exactly this message: the admin page stops reconnecting and asks for the passcode again.
+  expect((await socket([{ role: 'admin', adminToken: 'x'.repeat(64) }])).got).toEqual([{ error: 'Not authorized' }])
+  const { got } = await socket([{ role: 'admin', adminToken: admin['x-admin-token'] }])
+  expect(got.at(-1).current).toMatchObject({ name: 'Ann', streamId: expect.any(String) })
 })
 
 test('pause over HTTP: the projector and the presenter both see the same frozen time', async () => {
@@ -155,42 +166,45 @@ test('one IP is rate limited across all routes', async () => {
   expect(codes.filter((c) => c === 200).length).toBeGreaterThan(100) // a busy NAT still gets through
 })
 
-test('reactions: queued hackers only, cooldown, allowlist, batched to hosts, admin toggle', async () => {
-  const url = base.replace('http', 'ws') + '/ws'
-  const open = async (hello: object) => {
-    const ws = new WebSocket(url, { headers: { 'x-real-ip': '10.9.9.9' } } as any), got: any[] = [] // own IP: earlier tests used up the shared request window
-    ws.onmessage = (e) => got.push(JSON.parse(String(e.data)))
-    await new Promise((r) => (ws.onopen = r))
-    ws.send(JSON.stringify(hello)); await Bun.sleep(150)
-    return { ws, got: () => got.filter((m) => m.reactions) }
-  }
+// Reaction sockets use their own IPs: earlier tests used up the shared request window.
+const batches = (s: { got: any[] }) => s.got.filter((m) => m.reactions)
+
+test('reactions: queued hackers only, cooldown, allowlist, one batch to hosts, admin toggle', async () => {
   await as('/session/end'); await as('/session/start')
   await hacker('/join', 'react-queued-1', { name: 'Ann', project: 'P' })
-  const host = await open({ role: 'host' })
-  const queued = await open({ role: 'hacker', token: 'react-queued-1' })
-  const outsider = await open({ role: 'hacker', token: 'react-outsider' })
-  for (const e of ['❤️', '❤️', 'nope']) queued.ws.send(JSON.stringify({ react: e })) // 2nd is inside the cooldown, 3rd isn't an emoji we know
-  outsider.ws.send(JSON.stringify({ react: '👍' }))
+  await hacker('/join', 'react-queued-2', { name: 'Ben', project: 'P' })
+  const host = await connect([{ role: 'host' }], '10.9.9.9')
+  const ann = await connect([{ role: 'hacker', token: 'react-queued-1' }], '10.9.9.9')
+  const ben = await connect([{ role: 'hacker', token: 'react-queued-2' }], '10.9.9.9')
+  const outsider = await connect([{ role: 'hacker', token: 'react-outsider' }], '10.9.9.9')
+  await Bun.sleep(150)
+  for (const e of ['❤️', '❤️', 'nope']) ann.react(e) // 2nd is inside the cooldown, 3rd isn't an emoji we know
+  ben.react('🐴')
+  outsider.react('👍') // not in the line
   await Bun.sleep(400)
-  expect(host.got()).toEqual([{ reactions: { '❤️': 1 } }])
+  expect(batches(host)).toEqual([{ reactions: { '❤️': 1, '🐴': 1 } }]) // everyone's taps in one message
+  expect(batches(ann).length + batches(ben).length).toBe(0) // only the projector gets them
+  ann.react('😭'); await Bun.sleep(400) // tapping at a normal pace always lands
+  expect(batches(host).at(-1)).toEqual({ reactions: { '😭': 1 } })
   await as('/reactions', { on: false }); await Bun.sleep(1200) // the next snapshot push carries the toggle to the sockets
-  queued.ws.send(JSON.stringify({ react: '🐴' })); await Bun.sleep(400)
-  expect(host.got().length).toBe(1)
+  ann.react('🐴'); await Bun.sleep(400)
+  expect(batches(host)).toHaveLength(2)
   await as('/reactions', { on: true })
-  ;[host, queued, outsider].forEach((s) => s.ws.close())
+  ;[host, ann, ben, outsider].forEach((s) => s.ws.close())
 }, 15000)
 
-test('reactions: spamming gets a warning, then slow mode', async () => {
+test('reactions: spamming gets a warning, then slow mode that really slows', async () => {
   await hacker('/join', 'react-spammer-1', { name: 'Bo', project: 'P' })
-  const ws = new WebSocket(base.replace('http', 'ws') + '/ws', { headers: { 'x-real-ip': '10.9.9.8' } } as any), got: any[] = []
-  ws.onmessage = (e) => got.push(JSON.parse(String(e.data)))
-  await new Promise((r) => (ws.onopen = r))
-  ws.send(JSON.stringify({ role: 'hacker', token: 'react-spammer-1' })); await Bun.sleep(150)
-  for (let i = 0; i < 20; i++) ws.send(JSON.stringify({ react: '❤️' })) // 1 lands, 19 are inside the cooldown
+  const host = await connect([{ role: 'host' }], '10.9.9.8')
+  const bo = await connect([{ role: 'hacker', token: 'react-spammer-1' }], '10.9.9.8')
+  await Bun.sleep(150)
+  for (let i = 0; i < 20; i++) bo.react('❤️') // 1 lands, 19 are inside the cooldown
   await Bun.sleep(300)
-  const notices = got.filter((m) => m.notice)
+  const notices = bo.got.filter((m) => m.notice)
   expect(notices.length).toBe(2)
   expect(notices[0].slowMs).toBeUndefined() // first offense: warning only
   expect(notices[1].slowMs).toBe(30_000) // second: slow mode
-  ws.close()
+  bo.react('❤️'); await Bun.sleep(400) // past the normal cooldown, but slow mode allows one per 2s
+  expect(batches(host)).toEqual([{ reactions: { '❤️': 1 } }])
+  ;[host, bo].forEach((s) => s.ws.close())
 }, 15000)

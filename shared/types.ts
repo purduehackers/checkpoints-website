@@ -2,7 +2,6 @@ export type EntryStatus = 'waiting' | 'called' | 'live' | 'done' | 'left' | 'rem
 export type ShareState = 'not_shared' | 'sharing' | 'stopped'
 export type Role = 'hacker' | 'admin' | 'host'
 export const REACTIONS = ['❤️', '👍', '😭', '🐴', '🤑'] as const
-export const REACT_COOLDOWN_MS = 200 // per socket, enforced by the server
 
 // Stream quality the organizer picks; the presenter's browser applies it as the encoder bitrate.
 export const QUALITY = {
@@ -19,7 +18,6 @@ export interface QueueItem {
   project: string
   shareState: ShareState
   connected: boolean
-  joinedAt: number
   streamId?: string // admin only
 }
 
@@ -28,7 +26,6 @@ export interface Current {
   name: string
   project: string
   status: 'called' | 'live'
-  startedAt: number | null
   deadline: number | null
   pausedLeft: number | null
   away?: boolean // admin/host: tab closed, about to be dropped unless they come back

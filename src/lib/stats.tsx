@@ -80,26 +80,11 @@ export function useRemoteStats(streamId: string | null, enabled: boolean) {
   return history
 }
 
-// Toggle state, persisted per browser, plus the right-click menu that flips it.
+// Toggle state, persisted per browser.
 export function useStatsToggle() {
   const [on, setOn] = useState(() => { try { return localStorage.getItem('cp-stats') === '1' } catch { return false } })
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const toggle = () => setOn((v) => { try { localStorage.setItem('cp-stats', v ? '0' : '1') } catch {} return !v })
-  useEffect(() => {
-    const open = (e: MouseEvent) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }) }
-    const close = () => setMenu(null)
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && close()
-    window.addEventListener('contextmenu', open)
-    window.addEventListener('click', close)
-    window.addEventListener('keydown', esc)
-    return () => { window.removeEventListener('contextmenu', open); window.removeEventListener('click', close); window.removeEventListener('keydown', esc) }
-  }, [])
-  const menuEl = menu && (
-    <div style={{ left: menu.x, top: menu.y }} className="fixed z-[60] rounded border border-neutral-700 bg-neutral-900 py-1 text-sm shadow-lg">
-      <button className="block w-full px-3 py-1 text-left hover:bg-neutral-800" onClick={toggle}>{on ? 'Hide' : 'Show'} stats for nerds</button>
-    </div>
-  )
-  return { on, toggle, menu: menuEl }
+  return { on, toggle }
 }
 
 export function StatsButton({ onClick, className = '' }: { onClick: () => void; className?: string }) {

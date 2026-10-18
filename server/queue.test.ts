@@ -1,92 +1,115 @@
-import { beforeAll, expect, test } from 'bun:test'
+import { afterEach, beforeAll, expect, setSystemTime, test } from 'bun:test'
 
 process.env.TURSO_DATABASE_URL = ':memory:'
 const q = await import('./queue')
+const { db } = await import('./db')
 
 // Other test files share this in-memory DB: always start from a fresh checkpoint.
-beforeAll(async () => { await q.endSession(); await q.startSession(120) })
+beforeAll(async () => { await q.endSession(); await q.startSession() })
+afterEach(() => setSystemTime()) // tests that freeze the clock never leak it
+const freeze = (ms: number) => (setSystemTime(ms), ms)
 
-const stopCur = async () => q.stop((await q.loadState('host')).current!.entryId)
+const host = () => q.loadState('host')
+const stopCur = async () => q.stop((await host()).current!.entryId)
 const pos = async (t: string) => (await q.loadState('hacker', t)).me?.position
+// Ready happened between `before` and now, so a full clock is the limit from then.
+const fullClock = (deadline: number | null, before: number, limitMs: number, msg?: string) => {
+  expect(deadline!, msg).toBeGreaterThanOrEqual(before + limitMs)
+  expect(deadline!, msg).toBeLessThanOrEqual(Date.now() + limitMs)
+}
 
 test('join is idempotent per token and ordered; the first joiner is called at once', async () => {
   await q.join('tok-aaaaaaaa', 'Ada', 'Engine')
   await q.join('tok-bbbbbbbb', 'Bob', 'Loom')
   await q.join('tok-cccccccc', 'Cy', 'Kite')
   await q.join('tok-aaaaaaaa', 'Ada', 'Engine')
-  expect((await q.loadState('host')).current).toMatchObject({ name: 'Ada', status: 'called' })
-  expect((await q.loadState('host')).queue.map((e) => e.name)).toEqual(['Bob', 'Cy'])
+  expect((await host()).current).toMatchObject({ name: 'Ada', status: 'called' })
+  expect((await host()).queue.map((e) => e.name)).toEqual(['Bob', 'Cy'])
   expect(await pos('tok-cccccccc')).toBe(2)
 })
 
 test('stream ids only reach admin and (own entry) hacker', async () => {
-  expect((await q.loadState('host')).queue[0].streamId).toBeUndefined()
+  expect((await host()).queue[0].streamId).toBeUndefined()
   expect((await q.loadState('admin')).queue[0].streamId).toBeString()
-  expect((await q.loadState('hacker', 'tok-aaaaaaaa')).me?.streamId).toBeString()
+  const ada = await q.loadState('hacker', 'tok-aaaaaaaa')
+  expect(ada.me?.streamId).toBeString()
+  // A hacker never sees anyone else's stream id, not even the presenter's.
+  const bob = await q.loadState('hacker', 'tok-bbbbbbbb')
+  expect(bob.current?.streamId).toBeUndefined()
+  expect(bob.queue.every((e) => e.streamId === undefined)).toBe(true)
+  expect(JSON.stringify(bob)).not.toContain(ada.me!.streamId)
+  // Position is 1-based among waiting; whoever is on stage has none.
+  expect([ada.me?.position, bob.me?.position]).toEqual([0, 1])
 })
 
 test('skip moves behind the next person', async () => {
-  await q.skip((await q.loadState('host')).queue[0].id)
-  expect((await q.loadState('host')).queue.map((e) => e.name)).toEqual(['Cy', 'Bob'])
+  await q.skip((await host()).queue[0].id)
+  expect((await host()).queue.map((e) => e.name)).toEqual(['Cy', 'Bob'])
 })
 
 test('called -> ready -> live sets a deadline; host sees stream only when live', async () => {
-  let host = await q.loadState('host')
-  expect(host.current).toMatchObject({ name: 'Ada', status: 'called' })
-  expect(host.current?.streamId).toBeUndefined()
+  let h = await host()
+  expect(h.current).toMatchObject({ name: 'Ada', status: 'called' })
+  expect(h.current?.streamId).toBeUndefined()
   // No share yet: the hacker's Ready is refused and the clock doesn't start.
   await expect(q.hackerReady('tok-aaaaaaaa')).rejects.toThrow('Share your screen first')
-  host = await q.loadState('host')
-  expect(host.current).toMatchObject({ status: 'called', deadline: null })
+  h = await host()
+  expect(h.current).toMatchObject({ status: 'called', deadline: null })
   await q.setShare('tok-aaaaaaaa', 'sharing')
+  const before = Date.now()
   await q.hackerReady('tok-aaaaaaaa')
-  host = await q.loadState('host')
-  expect(host.current?.status).toBe('live')
-  expect(host.current?.deadline).toBe(host.current!.startedAt! + 120_000)
-  expect(host.current?.streamId).toBeString()
+  h = await host()
+  expect(h.current?.status).toBe('live')
+  fullClock(h.current!.deadline, before, 120_000)
+  expect(h.current?.streamId).toBeString()
+  // A double-clicked Start (hacker or organizer) never restarts the clock.
+  freeze(Date.now() + 10_000)
+  await q.hackerReady('tok-aaaaaaaa'); await q.adminReady(h.current!.entryId)
+  expect((await host()).current?.deadline).toBe(h.current!.deadline)
 })
 
-test('quality and projector audio round-trip; bad quality is rejected', async () => {
-  expect((await q.loadState('host')).session).toMatchObject({ quality: '1080p', audio: true })
+test('quality, projector audio and reactions round-trip; bad quality is rejected', async () => {
+  expect((await host()).session).toMatchObject({ quality: '1080p', audio: true, reactions: true })
   await q.setQuality('720p')
   await q.setAudio(false)
-  expect((await q.loadState('hacker', 'tok-aaaaaaaa')).session).toMatchObject({ quality: '720p', audio: false })
+  await q.setReactions(false)
+  expect((await q.loadState('hacker', 'tok-aaaaaaaa')).session).toMatchObject({ quality: '720p', audio: false, reactions: false })
   await expect(q.setQuality('8k')).rejects.toThrow()
   await q.setQuality('1080p')
   await q.setAudio(true)
+  await q.setReactions(true)
 })
 
 test('expire ends a live slot at its deadline, not before', async () => {
-  const { deadline } = (await q.loadState('host')).current!
+  const { deadline } = (await host()).current!
   await q.expire(deadline! - 1)
-  expect((await q.loadState('host')).current).not.toBeNull()
+  expect((await host()).current).not.toBeNull()
   await q.expire(deadline!)
-  expect((await q.loadState('host')).current).toMatchObject({ name: 'Cy', status: 'called' }) // auto-advanced
+  expect((await host()).current).toMatchObject({ name: 'Cy', status: 'called' }) // auto-advanced
   expect((await q.loadState('hacker', 'tok-aaaaaaaa')).me?.status).toBe('done')
 })
 
 test('stop replaces the current presenter; remove drops a waiting entry', async () => {
-  expect((await q.loadState('host')).current?.name).toBe('Cy')
+  expect((await host()).current?.name).toBe('Cy')
   await stopCur()
-  expect((await q.loadState('host')).current?.name).toBe('Bob')
+  expect((await host()).current?.name).toBe('Bob')
   await q.join('tok-zzzzzzzz', 'Zed', 'Z')
-  await q.remove((await q.loadState('host')).queue[0].id)
-  expect((await q.loadState('host')).queue).toEqual([])
+  await q.remove((await host()).queue[0].id)
+  expect((await host()).queue).toEqual([])
 })
 
 test('ending the session closes joining', async () => {
   await q.endSession()
-  expect((await q.loadState('host')).session?.status).toBe('closed')
-  expect((await q.loadState('host')).current).toBeNull()
-  expect(q.join('tok-dddddddd', 'Di', 'Zip')).rejects.toThrow('No checkpoint')
+  expect((await host()).session?.status).toBe('closed')
+  expect((await host()).current).toBeNull()
+  await expect(q.join('tok-dddddddd', 'Di', 'Zip')).rejects.toThrow('No checkpoint')
 })
 
 // ---- a second session: leave/rejoin, share state, end early, limit, disconnect ----
-const host = () => q.loadState('host')
 const names = async () => (await host()).queue.map((e) => e.name)
 
 test('leave drops me from the line; rejoining sends me to the back', async () => {
-  await q.startSession(120)
+  await q.startSession()
   await q.join('tok-dummy000', 'Dum', 'X') // takes the stage, so Eve and Fay wait
   await q.join('tok-eeeeeeee', 'Eve', 'A')
   await q.join('tok-ffffffff', 'Fay', 'B')
@@ -98,11 +121,11 @@ test('leave drops me from the line; rejoining sends me to the back', async () =>
 })
 
 test('join validates and trims; a second session cannot start while one is open', async () => {
-  expect(q.join('tok-gggggggg', '  ', 'x')).rejects.toThrow('required')
-  expect(q.join('tok-gggggggg', 'x', '')).rejects.toThrow('required')
-  await q.join('tok-gggggggg', ` ${'N'.repeat(100)} `, 'P')
-  expect((await host()).queue.at(-1)!.name).toHaveLength(60)
-  await q.startSession(30) // no-op: already open
+  await expect(q.join('tok-gggggggg', '  ', 'x')).rejects.toThrow('required')
+  await expect(q.join('tok-gggggggg', 'x', '')).rejects.toThrow('required')
+  await q.join('tok-gggggggg', ` ${'N'.repeat(100)} `, 'P'.repeat(100))
+  expect((await host()).queue.at(-1)).toMatchObject({ name: 'N'.repeat(60), project: 'P'.repeat(80) })
+  await q.startSession() // no-op: already open
   expect((await host()).session?.limitSec).toBe(120)
   await q.leave('tok-gggggggg')
 })
@@ -130,13 +153,15 @@ test('only a live presenter can end early; ready on a waiting entry does nothing
 })
 
 test('time limit is validated and applies to the next slot', async () => {
-  expect(q.setLimit(5)).rejects.toThrow('limit')
-  expect(q.setLimit(99999)).rejects.toThrow('limit')
-  await q.setLimit(60)
+  for (const bad of [9.4, 3601, 99999, NaN, -60]) await expect(q.setLimit(bad)).rejects.toThrow('limit')
+  await q.setLimit(10); await q.setLimit(3600) // both ends are allowed
+  await q.setLimit(59.6) // rounded to whole seconds
+  expect((await host()).session?.limitSec).toBe(60)
+  const before = Date.now()
   await q.hackerReady('tok-eeeeeeee', true) // Eve isn't sharing but chose to present without a screen
   const c = (await host()).current!
   expect(c).toMatchObject({ name: 'Eve', status: 'live', shareState: 'not_shared' })
-  expect(c.deadline! - c.startedAt!).toBe(60_000)
+  fullClock(c.deadline, before, 60_000)
 })
 
 test('stop ends the current presenter; remove works on the current one too', async () => {
@@ -152,13 +177,10 @@ test('an entry unseen for 3+ minutes shows as disconnected until it is touched',
   await q.join('tok-dummy111', 'Dum', 'X') // on stage
   await q.join('tok-iiiiiiii', 'Ivy', 'D')
   expect((await host()).queue[0].connected).toBe(true)
-  const realNow = Date.now
-  Date.now = () => realNow() + 4 * 60_000
-  try {
-    expect((await host()).queue[0].connected).toBe(false)
-    await q.touch(['tok-iiiiiiii'])
-    expect((await host()).queue[0].connected).toBe(true)
-  } finally { Date.now = realNow }
+  setSystemTime(Date.now() + 4 * 60_000)
+  expect((await host()).queue[0].connected).toBe(false)
+  await q.touch(['tok-iiiiiiii'])
+  expect((await host()).queue[0].connected).toBe(true)
 })
 
 // ---- US-5.5 reorder ----
@@ -192,10 +214,12 @@ test('the waiting line is capped so a script cannot flood it', async () => {
   for (let i = 0; i < 201; i++) await q.join(`flood-${String(i).padStart(4, '0')}`, 'bot', 'spam')
   await expect(q.join('tok-oooooooo', 'Real', 'Person')).rejects.toThrow('full')
   expect((await host()).queue).toHaveLength(200)
+  await q.join('flood-0100', 'bot', 'spam') // already in line: a re-submit keeps the spot instead of failing
+  expect((await q.loadState('hacker', 'flood-0100')).me).toMatchObject({ status: 'waiting', position: 100 })
 })
 
 test('ready gate: needs a running share (or noShare); the clock starts only on Ready', async () => {
-  await q.endSession(); await q.startSession(90)
+  await fresh()
   for (const [t, n] of [['gate-aaaaaaaa', 'Gia'], ['gate-bbbbbbbb', 'Gus'], ['gate-cccccccc', 'Gwen']]) await q.join(t, n, 'Proj')
   // Not called yet: Ready (even with noShare) changes nothing.
   await q.hackerReady('gate-bbbbbbbb', true)
@@ -204,15 +228,14 @@ test('ready gate: needs a running share (or noShare); the clock starts only on R
   await expect(q.hackerReady('gate-aaaaaaaa')).rejects.toThrow('Share your screen first')
   await q.setShare('gate-aaaaaaaa', 'stopped')
   await expect(q.hackerReady('gate-aaaaaaaa')).rejects.toThrow('Share your screen first')
-  expect((await host()).current).toMatchObject({ name: 'Gia', status: 'called', deadline: null, startedAt: null })
+  expect((await host()).current).toMatchObject({ name: 'Gia', status: 'called', deadline: null })
   // Sharing: Ready goes live with deadline = now + limit.
   await q.setShare('gate-aaaaaaaa', 'sharing')
   const before = Date.now()
   await q.hackerReady('gate-aaaaaaaa')
   const c = (await host()).current!
   expect(c.status).toBe('live')
-  expect(c.startedAt!).toBeGreaterThanOrEqual(before)
-  expect(c.deadline).toBe(c.startedAt! + 90_000)
+  fullClock(c.deadline, before, 90_000)
   // noShare works while called.
   await q.stop(c.entryId) // Gus
   expect((await host()).current).toMatchObject({ name: 'Gus', status: 'called', deadline: null })
@@ -221,7 +244,7 @@ test('ready gate: needs a running share (or noShare); the clock starts only on R
 })
 
 test('a double-submitted join is one spot, not an error', async () => {
-  await q.endSession(); await q.startSession(90)
+  await fresh()
   await Promise.all([q.join('dbl-aaaaaaaa', 'Dee', 'Proj'), q.join('dbl-aaaaaaaa', 'Dee', 'Proj')])
   expect((await q.snapshot()).rows).toHaveLength(1)
 })
@@ -230,7 +253,7 @@ test('a double-submitted join is one spot, not an error', async () => {
 const cur = async () => (await host()).current
 const live = async (t: string) => { await q.hackerReady(t, true) }
 const fresh = async (...ns: string[]) => {
-  await q.endSession(); await q.startSession(90)
+  await q.endSession(); await q.startSession(); await q.setLimit(90)
   for (const n of ns) await q.join(`aa-${n}-xxxx`, n, 'P')
 }
 const status = async (n: string) => (await q.loadState('hacker', `aa-${n}-xxxx`)).me?.status
@@ -240,66 +263,54 @@ test('pause freezes time past the old deadline; resume restores the remaining ti
   await fresh('A', 'B')
   await live('aa-A-xxxx')
   const { entryId, deadline } = (await cur())!
-  const realNow = Date.now
-  let now = deadline! - 45_000
-  Date.now = () => now
-  try {
-    await q.pause(entryId)
-    expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: null, pausedLeft: 45_000 })
-    now = deadline! + 60_000
-    await q.expire(now)
-    await q.pause(entryId) // repeated pause keeps the frozen time
-    expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: null, pausedLeft: 45_000 })
-    await q.resume(entryId)
-    expect(await cur()).toMatchObject({ deadline: now + 45_000, pausedLeft: null })
-    now += 1000
-    await q.resume(entryId) // repeated resume does not extend the clock
-    expect((await cur())!.deadline).toBe(now + 44_000)
-  } finally { Date.now = realNow }
+  let now = freeze(deadline! - 45_000)
+  await q.pause(entryId)
+  expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: null, pausedLeft: 45_000 })
+  now = freeze(deadline! + 60_000)
+  await q.expire(now)
+  await q.pause(entryId) // repeated pause keeps the frozen time
+  expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: null, pausedLeft: 45_000 })
+  await q.resume(entryId)
+  expect(await cur()).toMatchObject({ deadline: now + 45_000, pausedLeft: null })
+  now = freeze(now + 1000)
+  await q.resume(entryId) // repeated resume does not extend the clock
+  expect((await cur())!.deadline).toBe(now + 44_000)
 })
 
 test('adjust adds and subtracts running time, clamped at zero until expire', async () => {
   await fresh('A', 'B')
   await live('aa-A-xxxx')
   const { entryId, deadline } = (await cur())!
-  const realNow = Date.now
-  const now = deadline! - 20_000
-  Date.now = () => now
-  try {
-    await q.adjust(entryId, 30)
-    expect(await cur()).toMatchObject({ deadline: deadline! + 30_000, pausedLeft: null })
-    await q.adjust(entryId, -30)
-    expect((await cur())!.deadline).toBe(deadline)
-    await q.adjust(entryId, -30)
-    expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: now, pausedLeft: null })
-    await q.expire(now)
-    expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
-  } finally { Date.now = realNow }
+  const now = freeze(deadline! - 20_000)
+  await q.adjust(entryId, 30)
+  expect(await cur()).toMatchObject({ deadline: deadline! + 30_000, pausedLeft: null })
+  await q.adjust(entryId, -30)
+  expect((await cur())!.deadline).toBe(deadline)
+  await q.adjust(entryId, -30)
+  expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: now, pausedLeft: null })
+  await q.expire(now)
+  expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
 })
 
 test('adjust adds and subtracts paused time, clamped at zero without expiring', async () => {
   await fresh('A')
   await live('aa-A-xxxx')
   const { entryId, deadline } = (await cur())!
-  const realNow = Date.now
-  let now = deadline! - 20_000
-  Date.now = () => now
-  try {
-    await q.pause(entryId)
-    await q.adjust(entryId, 30)
-    expect(await cur()).toMatchObject({ deadline: null, pausedLeft: 50_000 })
-    await q.adjust(entryId, -30)
-    expect((await cur())!.pausedLeft).toBe(20_000)
-    await q.adjust(entryId, -30)
-    now = deadline! + 60_000
-    await q.expire(now)
-    expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: null, pausedLeft: 0 })
-    await q.resume(entryId)
-    expect(await cur()).toMatchObject({ deadline: now, pausedLeft: null })
-    now += 1000
-    await q.pause(entryId)
-    expect((await cur())!.pausedLeft).toBe(0)
-  } finally { Date.now = realNow }
+  freeze(deadline! - 20_000)
+  await q.pause(entryId)
+  await q.adjust(entryId, 30)
+  expect(await cur()).toMatchObject({ deadline: null, pausedLeft: 50_000 })
+  await q.adjust(entryId, -30)
+  expect((await cur())!.pausedLeft).toBe(20_000)
+  await q.adjust(entryId, -30)
+  const now = freeze(deadline! + 60_000)
+  await q.expire(now)
+  expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: null, pausedLeft: 0 })
+  await q.resume(entryId)
+  expect(await cur()).toMatchObject({ deadline: now, pausedLeft: null })
+  freeze(now + 1000)
+  await q.pause(entryId)
+  expect((await cur())!.pausedLeft).toBe(0)
 })
 
 test('pause, resume and adjust on non-live or unknown entries are no-ops', async () => {
@@ -330,10 +341,11 @@ test('a paused presenter who finishes any way frees the stage, and their next tu
     if (way === 'remove') continue // removed people can't come back
     await q.join('aa-A-xxxx', 'A', 'P') // back of the line
     await q.stop((await cur())!.entryId) // B done, A up again
+    const before = Date.now()
     await live('aa-A-xxxx')
     const again = (await cur())!
     expect(again, way).toMatchObject({ name: 'A', status: 'live', pausedLeft: null })
-    expect(again.deadline! - again.startedAt!, way).toBe(90_000) // not the old frozen time
+    fullClock(again.deadline, before, 90_000, way) // not the old frozen time
   }
 })
 
@@ -345,7 +357,7 @@ test('stop on someone waiting, or on a closed checkpoint, does nothing', async (
   await q.stop('no-such-id')
   expect(await cur()).toMatchObject({ name: 'A', status: 'called' })
   const a = (await cur())!.entryId
-  await q.endSession(); await q.startSession(90)
+  await fresh()
   await q.join('aa-X-xxxx', 'X', 'P')
   await q.stop(a) // A's old checkpoint is over; the new stage is untouched
   expect(await cur()).toMatchObject({ name: 'X', status: 'called' })
@@ -368,7 +380,6 @@ test('joining an empty stage calls that person at once; the next joiner waits', 
   expect(await cur()).toBeNull()
   await q.join('aa-A-xxxx', 'A', 'P')
   expect(await cur()).toMatchObject({ name: 'A', status: 'called' })
-  expect((await q.snapshot()).rows[0].called_at).toBeNumber()
   await q.join('aa-B-xxxx', 'B', 'P')
   expect(await cur()).toMatchObject({ name: 'A' })
   expect(await names()).toEqual(['B'])
@@ -376,7 +387,6 @@ test('joining an empty stage calls that person at once; the next joiner waits', 
 
 test('expire calls the first waiting person when the stage is empty (self-heal)', async () => {
   await fresh('A', 'B', 'C')
-  const { db } = await import('./db')
   await db.execute(`UPDATE queue_entries SET status = 'done' WHERE name = 'A'`) // e.g. older code finished it without advancing
   expect(await cur()).toBeNull()
   await q.expire()
@@ -389,7 +399,6 @@ test('skip on the called person goes behind the next and calls the next; alone i
   await q.skip((await cur())!.entryId)
   expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
   expect(await names()).toEqual(['A', 'C'])
-  expect((await q.snapshot()).rows.find((r) => r.name === 'A')!.called_at).toBeNull()
   await fresh('A')
   await q.skip((await cur())!.entryId)
   expect(await cur()).toMatchObject({ name: 'A', status: 'called' })
@@ -397,6 +406,30 @@ test('skip on the called person goes behind the next and calls the next; alone i
   await q.hackerReady('aa-A-xxxx', true)
   await q.skip((await cur())!.entryId) // live: not skippable
   expect(await cur()).toMatchObject({ name: 'A', status: 'live' })
+})
+
+test('skip on a waiting person moves them back exactly one place, even repeatedly; last in line stays put', async () => {
+  await fresh('A', 'B', 'C', 'D', 'E') // A on stage
+  const id = async (n: string) => (await host()).queue.find((e) => e.name === n)!.id
+  await q.skip(await id('B'))
+  expect(await names()).toEqual(['C', 'B', 'D', 'E'])
+  await q.skip(await id('B')); await q.skip(await id('B')) // halfway keys between neighbours keep working
+  expect(await names()).toEqual(['C', 'D', 'E', 'B'])
+  await q.skip(await id('B'))
+  expect(await names()).toEqual(['C', 'D', 'E', 'B'])
+  await q.skip('no-such-id')
+  expect(await names()).toEqual(['C', 'D', 'E', 'B'])
+})
+
+test('Start timer on someone no longer called (stale organizer page) does nothing', async () => {
+  await fresh('A', 'B')
+  const b = (await host()).queue[0].id
+  await q.adminReady(b) // B is waiting
+  expect(await cur()).toMatchObject({ name: 'A', status: 'called' })
+  expect(await status('B')).toBe('waiting')
+  await q.adminReady('no-such-id')
+  await q.hackerReady('no-such-token')
+  expect(await calledOrLive()).toBe(1)
 })
 
 test('concurrent joins and expire leave exactly one called/live', async () => {
@@ -412,13 +445,12 @@ test('expire, end, stop advance to the first waiting person', async () => {
   const { deadline } = (await cur())!
   await q.expire(deadline!)
   expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
-  expect((await q.loadState('host')).queue.map((e) => e.name)).toEqual(['C', 'D'])
+  expect((await host()).queue.map((e) => e.name)).toEqual(['C', 'D'])
   await live('aa-B-xxxx')
   await q.end('aa-B-xxxx')
   expect(await cur()).toMatchObject({ name: 'C', status: 'called' })
   await stopCur()
   expect(await cur()).toMatchObject({ name: 'D', status: 'called' })
-  expect((await q.snapshot()).rows.find((r) => r.name === 'D')!.called_at).toBeNumber()
 })
 
 test('current leaving or being removed advances; a waiting person leaving or removed does not', async () => {
@@ -531,7 +563,7 @@ test('bye for an unknown token or a finished entry is a no-op, and bye_at is not
 })
 
 test('after presenting you can join again at the back; removed stays out', async () => {
-  await q.endSession(); await q.startSession(90)
+  await fresh()
   await q.join('again-aaaaaaa', 'Ann', 'P1')
   await q.join('again-bbbbbbb', 'Ben', 'P2')
   await q.hackerReady('again-aaaaaaa', true)
@@ -542,7 +574,7 @@ test('after presenting you can join again at the back; removed stays out', async
   expect(ann).toMatchObject({ status: 'waiting', position: 1, project: 'P1 v2' })
   expect((await host()).current).toMatchObject({ name: 'Ben', status: 'called', deadline: null })
   const row = (await q.snapshot()).rows.find((r) => r.client_token === 'again-aaaaaaa')!
-  expect([row.started_at, row.deadline]).toEqual([null, null]) // the old slot's clock doesn't come back
+  expect(row.deadline).toBeNull() // the old slot's clock doesn't come back
   await q.remove(ann.entryId)
   await q.join('again-aaaaaaa', 'Ann', 'P1')
   expect((await q.loadState('hacker', 'again-aaaaaaa')).me?.status).toBe('removed')
@@ -646,14 +678,13 @@ test('heartbeats after a checkpoint ended do not touch it or the next one', asyn
   await q.expire(t + 11 * 60_000) // ends
   await q.adminSeen(t + 11 * 60_000); await q.activity(t + 11 * 60_000) // late page, nothing open to update
   expect(await sessionStatus()).toBe('closed')
-  await q.startSession(90) // a fresh night starts with fresh clocks
+  await fresh() // a fresh night starts with fresh clocks
   await q.expire()
   expect(await sessionStatus()).toBe('open')
 })
 
 test('a checkpoint opened before auto-end existed never ends by itself', async () => {
   await fresh('A')
-  const { db } = await import('./db')
   await db.execute(`UPDATE sessions SET admin_seen_at = NULL, active_at = NULL WHERE status = 'open'`)
   await q.expire(Date.now() + 24 * 60 * 60_000)
   expect(await sessionStatus()).toBe('open')
@@ -682,7 +713,7 @@ test('undo only brings back removed people, only in the checkpoint they were rem
   await q.unremove('no-such-id')
   expect(await names()).toEqual(['C'])
   await q.remove(cId)
-  await q.endSession(); await q.startSession(90)
+  await fresh()
   await q.unremove(cId) // that checkpoint is over: C doesn't reappear in the new one
   expect(await names()).toEqual([])
   expect(await cur()).toBeNull()

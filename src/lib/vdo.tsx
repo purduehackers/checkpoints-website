@@ -16,12 +16,12 @@ const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
 const noAudioBrowser = /firefox|^((?!chrome|android).)*safari/i.test(ua)
 const linux = /linux/i.test(ua) && !/android/i.test(ua)
 const mac = /macintosh/i.test(ua)
+const tabHint = linux ? ' Try sharing a browser tab instead, which avoids the system picker.' : ''
 // getDisplayMedia failures, in plain words. The raw name stays so a screenshot tells us what broke.
 // A plain NotAllowedError is the hacker cancelling; "by system" is the OS refusing.
 function captureError(e: unknown): { msg: string; retry: boolean } {
   const name = String((e as Error)?.name ?? 'Error')
   const denied = name === 'NotAllowedError' && /system/i.test(String((e as Error)?.message))
-  const tabHint = linux ? ' Try sharing a browser tab instead, which avoids the system picker.' : ''
   // On Linux a broken portal also surfaces as a plain NotAllowedError, so offer the fallbacks there.
   if (name === 'NotAllowedError' && !denied) return { msg: `Sharing was cancelled or blocked.${tabHint} (${name})`, retry: linux }
   const msg = denied && mac ? 'Your Mac blocked screen sharing. Allow your browser in System Settings › Privacy & Security › Screen Recording, then restart it.'
@@ -95,7 +95,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     if (!track || track.readyState === 'ended') {
       s.getTracks().forEach((t) => t.stop())
       setRetry(!basic)
-      return setError(`The screen capture produced no video.${linux ? ' Try sharing a browser tab instead, which avoids the system picker.' : ''} (EmptyCapture)`)
+      return setError(`The screen capture produced no video.${tabHint} (EmptyCapture)`)
     }
     stop() // "Change window": replace the previous share. Claimed before any await, so a newer share() or stop() makes this one bail below.
     stream.current = s
@@ -104,7 +104,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     setHasAudio(s.getAudioTracks().length > 0)
     video.current!.srcObject = s
     // Fires when the hacker clicks the browser's "Stop sharing" or the window closes.
-    s.getVideoTracks()[0].onended = () => { if (stream.current === s) { stop(); report('stopped') } }
+    track.onended =() => { if (stream.current === s) { stop(); report('stopped') } }
     try {
       // Cap fps after capture; a refused (or never-settling) cap must never kill the share.
       if (!basic) await Promise.race([track.applyConstraints(FPS_CAP).catch(() => {}), new Promise((r) => setTimeout(r, 2000))])

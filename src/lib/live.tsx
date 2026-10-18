@@ -14,7 +14,7 @@ export const hackerToken = () => {
 export const adminKey = 'cp-admin'
 export const adminToken = () => { try { return localStorage.getItem(adminKey) ?? '' } catch { return '' } }
 
-export async function api(path: string, body?: object, admin = false): Promise<State> {
+export async function api<T = State>(path: string, body?: object, admin = false): Promise<T> {
   const r = await fetch('/api' + path, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...(admin && { 'x-admin-token': adminToken() }) },
@@ -81,6 +81,8 @@ export function waitMs(s: State, ahead: number, now: number) {
   return cur + ahead * limit
 }
 export const aboutMin = (ms: number) => ms < 60_000 ? 'under a minute' : `about ${Math.ceil(ms / 60_000)} min`
+export const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`
+export const span = (sec: number) => sec % 60 ? `${sec} seconds` : `${sec / 60} minute${sec === 60 ? '' : 's'}`
 
 export function Spinner({ className = 'size-4' }: { className?: string }) {
   return <span role="status" aria-label="Loading" className={`inline-block animate-spin rounded-full border-2 border-current border-t-transparent ${className}`} />

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Badge, fmt, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
-import { FloatingReactions, spawn } from '../lib/reactions'
+import { spawn } from '../lib/reactions'
 import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
 
 // The projector may be opened on an old/preview URL, so the shown address can be pinned (build-time var).
@@ -34,8 +34,7 @@ export default function Host() {
     <main className={`relative flex h-screen flex-col ${idle ? 'cursor-none' : ''}`}>
       <Badge online={online} />
       {c?.away && <div className="absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-lg bg-amber-500 px-6 py-3 text-3xl font-bold text-black"><span className="dots">{c.name} disconnected</span></div>}
-      {stats.menu}
-      <FloatingReactions box={reactBox} />
+      <div ref={reactBox} className="pointer-events-none absolute bottom-0 right-0 top-0 z-20 w-40 overflow-hidden" />
       {stats.on && <StatsOverlay history={history} title={live ? `Live: ${c!.name}` : 'Nobody live'} onClose={stats.toggle} />}
       {live ? (
         <>
@@ -51,7 +50,6 @@ export default function Host() {
           {state?.session && !open && <p className="text-3xl">Checkpoints have ended. Thanks for coming!</p>}
           {open && <p className="text-4xl">Join at <b className="text-amber-400">{joinHost}</b></p>}
           {c?.status === 'called' && <p className="max-w-4xl text-5xl leading-tight"><b className="text-green-400">{c.name}</b>, you're up!<br />Walk to the front and press <b>Start presenting</b> on your laptop.</p>}
-          {c?.status === 'live' && <p className="text-3xl">Up now: <b>{c.name}</b> · {c.project}</p>}
           {open && !c && state!.queue[0] && <p className="text-2xl">Up next: <b>{state!.queue[0].name}</b></p>}
           {open && (
             <ol className="space-y-1 text-xl text-neutral-300">

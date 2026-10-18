@@ -31,8 +31,6 @@ CREATE TABLE IF NOT EXISTS queue_entries (
   share_state TEXT NOT NULL DEFAULT 'not_shared' CHECK (share_state IN ('not_shared','sharing','stopped')),
   sort_key REAL NOT NULL,
   joined_at INTEGER NOT NULL,
-  called_at INTEGER,
-  started_at INTEGER,
   deadline INTEGER,
   paused_left INTEGER,
   last_seen_at INTEGER NOT NULL,
