@@ -5,6 +5,7 @@ const q = await import('./queue')
 
 beforeAll(() => q.startSession(120))
 
+const stopCur = async () => q.stop((await q.loadState('host')).current!.entryId)
 const pos = async (t: string) => (await q.loadState('hacker', t)).me?.position
 
 test('join is idempotent per token and ordered; the first joiner is called at once', async () => {
@@ -139,7 +140,7 @@ test('time limit is validated and applies to the next slot', async () => {
 })
 
 test('stop ends the current presenter; remove works on the current one too', async () => {
-  await q.stop()
+  await stopCur()
   expect((await host()).current).toBeNull()
   await q.join('tok-hhhhhhhh', 'Hal', 'C') // empty stage: called at once
   await q.remove((await host()).current!.entryId)
@@ -162,7 +163,7 @@ test('an entry unseen for 3+ minutes shows as disconnected until it is touched',
 
 // ---- US-5.5 reorder ----
 test('move shifts a waiting entry up or down one place; edges and non-waiting are no-ops', async () => {
-  await q.stop(); await q.leave('tok-iiiiiiii') // stop calls Ivy, who then leaves
+  await stopCur(); await q.leave('tok-iiiiiiii') // stop calls Ivy, who then leaves
   await q.join('tok-blocker1', 'Blk', 'X') // on stage, so the three below wait
   for (const [t, n] of [['tok-jjjjjjjj', 'Jo'], ['tok-kkkkkkkk', 'Ki'], ['tok-llllllll', 'Lu']]) await q.join(t, n, 'P')
   const id = async (n: string) => (await host()).queue.find((e) => e.name === n)!.id
@@ -287,7 +288,7 @@ test('expire, end, stop advance to the first waiting person', async () => {
   await live('aa-B-xxxx')
   await q.end('aa-B-xxxx')
   expect(await cur()).toMatchObject({ name: 'C', status: 'called' })
-  await q.stop()
+  await stopCur()
   expect(await cur()).toMatchObject({ name: 'D', status: 'called' })
   expect((await q.snapshot()).rows.find((r) => r.name === 'D')!.called_at).toBeNumber()
 })
@@ -298,7 +299,7 @@ test('current leaving or being removed advances; a waiting person leaving or rem
   expect(await cur()).toMatchObject({ name: 'B' })
   await q.remove((await cur())!.entryId)
   expect(await cur()).toMatchObject({ name: 'C' })
-  await q.stop(); await q.stop()
+  await stopCur(); await stopCur()
   expect(await cur()).toBeNull() // D was called by the first stop, finished by the second
   await q.join('aa-E-xxxx', 'E', 'P'); await q.join('aa-F-xxxx', 'F', 'P'); await q.join('aa-G-xxxx', 'G', 'P')
   await q.leave('aa-F-xxxx')
@@ -308,7 +309,7 @@ test('current leaving or being removed advances; a waiting person leaving or rem
 
 test('finishing with an empty line leaves the stage empty; endSession does not advance', async () => {
   await fresh('A')
-  await q.stop()
+  await stopCur()
   expect(await cur()).toBeNull()
   await fresh('A', 'B')
   await q.endSession()
@@ -320,9 +321,12 @@ test('concurrent finishes never leave two called/live entries', async () => {
   await fresh('A', 'B', 'C')
   await live('aa-A-xxxx')
   const { deadline } = (await cur())!
-  await Promise.all([q.stop(), q.stop(), q.expire(deadline!), q.end('aa-A-xxxx')])
+  const a = (await cur())!.entryId
+  await Promise.all([q.stop(a), q.stop(a), q.expire(deadline!), q.end('aa-A-xxxx')])
   expect(await calledOrLive()).toBe(1)
-  expect((await cur())!.name).not.toBe('A')
+  expect((await cur())!.name).toBe('B') // the repeated stops of A never touch B
+  await q.stop(a) // late click on someone already finished
+  expect((await cur())).toMatchObject({ name: 'B', status: 'called' })
 })
 
 // ---- closed tab (bye) ----

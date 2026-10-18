@@ -30,7 +30,7 @@ test('errors say nothing about internals', async () => {
   expect(bad.status).toBe(400)
   expect(await bad.json()).toEqual({ error: 'Invalid request' })
   expect((await post('/nope', {})).status).toBe(404)
-  expect((await post('/admin/stop', {}, { 'x-admin-token': 'x'.repeat(64) })).status).toBe(401)
+  expect((await post('/admin/stop', { id: 'x' }, { 'x-admin-token': 'x'.repeat(64) })).status).toBe(401)
 })
 
 test('request bodies are size-limited', async () => {

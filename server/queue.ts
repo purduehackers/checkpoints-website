@@ -173,9 +173,11 @@ export async function callNext(expect: string | null) {
   }
 }
 
-export async function stop() {
-  const s = await openSession()
-  if (s && (await finishCurrent(s.id))) await advance(s.id)
+// Ends exactly the entry the organizer clicked. If it already finished (deadline, double-click), the next
+// person who was just called is NOT touched.
+export async function stop(id: string) {
+  const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE id = ? AND ${OPEN} AND status IN ('called','live')`, [id])
+  if (n) await advanceOpen()
 }
 export async function remove(id: string) {
   const n = await changes(`UPDATE queue_entries SET status = 'removed' WHERE id = ? AND status IN ('called','live')`, [id])

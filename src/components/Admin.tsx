@@ -86,7 +86,7 @@ function Panel({ onDenied }: { onDenied: () => void }) {
               {c.deadline && <span className="text-2xl tabular-nums">{fmt(c.deadline - now())}</span>}
               {c.status === 'called' && <button className="rounded bg-green-600 px-3 py-1" onClick={() => act('/ready', { id: c.entryId })}>Ready</button>}
               {c.status === 'called' && <button className="rounded bg-neutral-700 px-3 py-1" onClick={() => act('/skip', { id: c.entryId })}>Skip</button>}
-              <button className="rounded bg-red-700 px-3 py-1" onClick={() => act('/stop')}>Stop</button>
+              <button className="rounded bg-red-700 px-3 py-1" onClick={() => act('/stop', { id: c.entryId })}>Stop</button>
               {c.streamId && <button className="text-sm underline" onClick={() => { setPinned(true); setPreview(c.streamId!) }}>Preview</button>}
             </div>
           </div>
