@@ -181,7 +181,7 @@ export default function Hacker() {
             {msTotal !== null && <p className="text-neutral-400">{fmt(msTotal)} left</p>}
           </div>
         )}
-        {state.session!.reactions && <ReactionPanel react={react} notice={notice} />}
+        {me.status === 'waiting' && state.session!.reactions && <ReactionPanel react={react} notice={notice} />}
         {canShare ? (
           <div data-tour="share"><ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} shareRef={shareFn} hideShare={me.status === 'called'} /></div>
         ) : (

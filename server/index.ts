@@ -52,14 +52,15 @@ function push(sub: Sub, snap: q.Snapshot, force = false) {
   const state = q.view(snap, sub.role, sub.token)
   const { serverNow, ...rest } = state
   // Refreshed with every snapshot (about 1s), so the admin toggle and leaving the queue take effect quickly.
-  sub.canReact = sub.role === 'hacker' && state.session?.status === 'open' && state.session.reactions && ['waiting', 'called', 'live'].includes(state.me?.status ?? '')
+  // Waiting only: the person on stage is presenting, not reacting.
+  sub.canReact = sub.role === 'hacker' && state.session?.status === 'open' && state.session.reactions && state.me?.status === 'waiting'
   const key = JSON.stringify(rest) // only send when something changed
   if (force || key !== sub.last) { sub.last = key; sub.send(JSON.stringify(state)) }
 }
-// Reactions are ephemeral: counted in memory and flushed to hosts as one {emoji: n} message per window,
-// so fan-out is one message per host per window however many people tap. Per instance, like the rest of the live state.
+// Reactions are counted in memory and written as one {emoji: n} row per window. The host's socket can be on another
+// Vercel instance, so delivery is through the DB: each tick, an instance holding hosts sends them everything new as one message.
 const REACT_BATCH_MS = 250, REACT_COOLDOWN_MS = 200 // cooldown is per socket
-let tally: Record<string, number> = {}, flushing = false
+let tally: Record<string, number> = {}, flushing = false, reactAfter: number | null = null
 // Spam, Discord-style: STRIKES taps inside the cooldown within STRIKE_MS is an offense. The first gets a warning;
 // a repeat within OFFENSE_MS gets slow mode (one reaction per SLOW_MS for SLOW_FOR_MS). Taps are never queued.
 const STRIKES = 8, STRIKE_MS = 3000, OFFENSE_MS = 120_000, SLOW_MS = 2000, SLOW_FOR_MS = 30_000
@@ -82,10 +83,17 @@ function react(sub: Sub, emoji: unknown) {
   if (flushing) return
   flushing = true
   setTimeout(() => {
-    const msg = JSON.stringify({ reactions: tally })
+    const counts = tally
     tally = {}; flushing = false
-    for (const s of subs.values()) if (s.role === 'host') s.send(msg)
+    q.addReactions(counts).catch(console.error)
   }, REACT_BATCH_MS)
+}
+async function relayReactions() {
+  const hosts = [...subs.values()].filter((s) => s.role === 'host')
+  if (!hosts.length) { reactAfter = null; return } // a host arriving later starts fresh, not with a backlog
+  const { last, counts } = await q.newReactions(reactAfter)
+  reactAfter = last
+  if (Object.keys(counts).length) { const msg = JSON.stringify({ reactions: counts }); for (const s of hosts) s.send(msg) }
 }
 
 // At most one broadcast in flight plus one queued, so a burst of requests can't multiply DB reads.
@@ -107,6 +115,7 @@ async function tick() {
     await q.touch(tokens)
     if ([...subs.values()].some((s) => s.role === 'admin')) await q.adminSeen()
   }
+  await relayReactions()
   await pushAll()
 }
 
@@ -213,6 +222,6 @@ export const app = new Elysia({
       const sub = subs.get(String(ws.id))
       if (sub) { const n = (ipSockets.get(sub.ip) ?? 1) - 1; n > 0 ? ipSockets.set(sub.ip, n) : ipSockets.delete(sub.ip) }
       subs.delete(String(ws.id))
-      if (!subs.size) { clearInterval(timer); timer = undefined }
+      if (!subs.size) { clearInterval(timer); timer = undefined; reactAfter = null } // no tick will see the hosts gone
     },
   })

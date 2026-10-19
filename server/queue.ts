@@ -76,6 +76,21 @@ export async function setQuality(quality: string) {
 export const setAudio = (on: boolean) => run(`UPDATE sessions SET audio = ? WHERE status = 'open'`, [on ? 1 : 0])
 export const setReactions = (on: boolean) => run(`UPDATE sessions SET reactions = ? WHERE status = 'open'`, [on ? 1 : 0])
 
+// Reactions cross instances through the DB: each instance writes its batches, every instance with a host reads them.
+export async function addReactions(counts: Record<string, number>, now = Date.now()) {
+  await run(`INSERT INTO reactions (at, counts) VALUES (?, ?)`, [now, JSON.stringify(counts)])
+  await run(`DELETE FROM reactions WHERE at < ?`, [now - 60_000])
+}
+// Everything after id `after`, summed. after = null only finds where to start, so a new reader never replays old taps.
+// By id, not time: server instances' clocks can disagree.
+export async function newReactions(after: number | null) {
+  const counts: Record<string, number> = {}
+  if (after === null) return { last: Number((await one(`SELECT COALESCE(MAX(id), 0) AS id FROM reactions`))!.id), counts }
+  const rows = await all(`SELECT id, counts FROM reactions WHERE id > ? ORDER BY id`, [after])
+  for (const r of rows) for (const [e, n] of Object.entries(JSON.parse(r.counts) as Record<string, number>)) counts[e] = (counts[e] ?? 0) + n
+  return { last: rows.length ? Number(rows.at(-1)!.id) : after, counts }
+}
+
 const MAX_WAITING = 200 // a script can't bury the line; far above a real hack night. Reset = end + start a session.
 // Names go on the projector: drop control/format chars (bidi overrides, zero-width) and cap stacked combining marks.
 const clean = (s: string, max: number) =>

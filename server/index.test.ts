@@ -167,44 +167,64 @@ test('one IP is rate limited across all routes', async () => {
 })
 
 // Reaction sockets use their own IPs: earlier tests used up the shared request window.
+// Hosts get reactions through the DB on each 1s tick, so the host's socket can be on any instance.
 const batches = (s: { got: any[] }) => s.got.filter((m) => m.reactions)
+const settle = () => Bun.sleep(1100) // one tick: the host's instance starts reading, and pushes reach sockets
+const delivered = () => Bun.sleep(1400) // the 250ms batch, then the next tick
 
-test('reactions: queued hackers only, cooldown, allowlist, one batch to hosts, admin toggle', async () => {
+test('reactions: waiting hackers only, cooldown, allowlist, one batch to hosts, admin toggle', async () => {
   await as('/session/end'); await as('/session/start')
+  await hacker('/join', 'react-stage-0', { name: 'Sam', project: 'P' }) // first in: called to the stage
   await hacker('/join', 'react-queued-1', { name: 'Ann', project: 'P' })
   await hacker('/join', 'react-queued-2', { name: 'Ben', project: 'P' })
   const host = await connect([{ role: 'host' }], '10.9.9.9')
+  const sam = await connect([{ role: 'hacker', token: 'react-stage-0' }], '10.9.9.9')
   const ann = await connect([{ role: 'hacker', token: 'react-queued-1' }], '10.9.9.9')
   const ben = await connect([{ role: 'hacker', token: 'react-queued-2' }], '10.9.9.9')
   const outsider = await connect([{ role: 'hacker', token: 'react-outsider' }], '10.9.9.9')
-  await Bun.sleep(150)
+  await settle()
   for (const e of ['❤️', '❤️', 'nope']) ann.react(e) // 2nd is inside the cooldown, 3rd isn't an emoji we know
   ben.react('🐴')
   outsider.react('👍') // not in the line
-  await Bun.sleep(400)
+  sam.react('👍') // on stage: presenting, not reacting
+  await delivered()
   expect(batches(host)).toEqual([{ reactions: { '❤️': 1, '🐴': 1 } }]) // everyone's taps in one message
-  expect(batches(ann).length + batches(ben).length).toBe(0) // only the projector gets them
-  ann.react('😭'); await Bun.sleep(400) // tapping at a normal pace always lands
+  expect(batches(ann).length + batches(ben).length + batches(sam).length).toBe(0) // only the projector gets them
+  ann.react('😭'); await delivered() // tapping at a normal pace always lands
   expect(batches(host).at(-1)).toEqual({ reactions: { '😭': 1 } })
-  await as('/reactions', { on: false }); await Bun.sleep(1200) // the next snapshot push carries the toggle to the sockets
-  ann.react('🐴'); await Bun.sleep(400)
+  await as('/reactions', { on: false }); await settle() // the next snapshot push carries the toggle to the sockets
+  ann.react('🐴'); await delivered()
   expect(batches(host)).toHaveLength(2)
   await as('/reactions', { on: true })
-  ;[host, ann, ben, outsider].forEach((s) => s.ws.close())
-}, 15000)
+  ;[host, sam, ann, ben, outsider].forEach((s) => s.ws.close())
+}, 20000)
 
 test('reactions: spamming gets a warning, then slow mode that really slows', async () => {
-  await hacker('/join', 'react-spammer-1', { name: 'Bo', project: 'P' })
+  await hacker('/join', 'react-spammer-1', { name: 'Bo', project: 'P' }) // Sam still holds the stage
   const host = await connect([{ role: 'host' }], '10.9.9.8')
   const bo = await connect([{ role: 'hacker', token: 'react-spammer-1' }], '10.9.9.8')
-  await Bun.sleep(150)
+  await settle()
   for (let i = 0; i < 20; i++) bo.react('❤️') // 1 lands, 19 are inside the cooldown
   await Bun.sleep(300)
   const notices = bo.got.filter((m) => m.notice)
   expect(notices.length).toBe(2)
   expect(notices[0].slowMs).toBeUndefined() // first offense: warning only
   expect(notices[1].slowMs).toBe(30_000) // second: slow mode
-  bo.react('❤️'); await Bun.sleep(400) // past the normal cooldown, but slow mode allows one per 2s
+  bo.react('❤️'); await delivered() // past the normal cooldown, but slow mode allows one per 2s
   expect(batches(host)).toEqual([{ reactions: { '❤️': 1 } }])
   ;[host, bo].forEach((s) => s.ws.close())
 }, 15000)
+
+// The bug this relay fixes: on Vercel the tapper and the projector are often on different instances.
+test('reactions written by another instance reach a host here, without replaying older ones', async () => {
+  const { db } = await import('./db')
+  const add = (counts: object) => db.execute({ sql: 'INSERT INTO reactions (at, counts) VALUES (?, ?)', args: [Date.now(), JSON.stringify(counts)] })
+  await Bun.sleep(200) // earlier hosts' sockets finish closing, so this one is a fresh reader
+  await add({ '👍': 9 }) // tapped while no projector was up: stale by the time one is
+  const host = await connect([{ role: 'host' }], '10.9.9.7')
+  await settle()
+  await add({ '🔥': 3 })
+  await settle()
+  expect(batches(host)).toEqual([{ reactions: { '🔥': 3 } }]) // earlier tests' rows are still in the table
+  host.ws.close()
+}, 10000)

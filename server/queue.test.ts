@@ -729,3 +729,16 @@ test('if the stage emptied before the undo, the restored person is called', asyn
   expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
   expect(await calledOrLive()).toBe(1)
 })
+
+test('reaction relay: a new reader starts at the end, then gets everything newer once, summed; old rows are pruned', async () => {
+  await q.addReactions({ '👍': 5 }) // from before this reader existed: never replayed
+  const start = await q.newReactions(null)
+  expect(start.counts).toEqual({})
+  await q.addReactions({ '❤️': 2 })
+  await q.addReactions({ '❤️': 1, '🐴': 1 }) // e.g. another instance's batch
+  const got = await q.newReactions(start.last)
+  expect(got.counts).toEqual({ '❤️': 3, '🐴': 1 })
+  expect(await q.newReactions(got.last)).toEqual({ last: got.last, counts: {} }) // nothing twice
+  await q.addReactions({ '😭': 1 }, Date.now() + 61_000) // a minute on, the earlier rows are gone
+  expect((await db.execute('SELECT counts FROM reactions')).rows.map((r) => r.counts)).toEqual(['{"😭":1}'])
+})
