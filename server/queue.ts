@@ -77,10 +77,9 @@ export const setAudio = (on: boolean) => run(`UPDATE sessions SET audio = ? WHER
 export const setReactions = (on: boolean) => run(`UPDATE sessions SET reactions = ? WHERE status = 'open'`, [on ? 1 : 0])
 
 // Reactions cross instances through the DB: each instance writes its batches, every instance with a host reads them.
-export async function addReactions(counts: Record<string, number>, now = Date.now()) {
-  await run(`INSERT INTO reactions (at, counts) VALUES (?, ?)`, [now, JSON.stringify(counts)])
-  await run(`DELETE FROM reactions WHERE at < ?`, [now - 60_000])
-}
+export const addReactions = (counts: Record<string, number>, now = Date.now()) =>
+  run(`INSERT INTO reactions (at, counts) VALUES (?, ?)`, [now, JSON.stringify(counts)])
+export const pruneReactions = (now = Date.now()) => run(`DELETE FROM reactions WHERE at < ?`, [now - 60_000])
 // Everything after id `after`, summed. after = null only finds where to start, so a new reader never replays old taps.
 // By id, not time: server instances' clocks can disagree.
 export async function newReactions(after: number | null) {

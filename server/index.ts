@@ -58,9 +58,11 @@ function push(sub: Sub, snap: q.Snapshot, force = false) {
   if (force || key !== sub.last) { sub.last = key; sub.send(JSON.stringify(state)) }
 }
 // Reactions are counted in memory and written as one {emoji: n} row per window. The host's socket can be on another
-// Vercel instance, so delivery is through the DB: each tick, an instance holding hosts sends them everything new as one message.
-const REACT_BATCH_MS = 250, REACT_COOLDOWN_MS = 200 // cooldown is per socket
-let tally: Record<string, number> = {}, flushing = false, reactAfter: number | null = null
+// Vercel instance, so delivery is through the DB: an instance holding hosts polls for new rows every REACT_POLL_MS
+// (only while it has a host) and sends them as one message. Tap to screen is about 0.1–0.3s.
+const REACT_BATCH_MS = 100, REACT_POLL_MS = 150, REACT_COOLDOWN_MS = 200 // cooldown is per socket
+let tally: Record<string, number> = {}, flushing = false, reactAfter: number | null = null, relaying = false
+let relayTimer: ReturnType<typeof setInterval> | undefined
 // Spam, Discord-style: STRIKES taps inside the cooldown within STRIKE_MS is an offense. The first gets a warning;
 // a repeat within OFFENSE_MS gets slow mode (one reaction per SLOW_MS for SLOW_FOR_MS). Taps are never queued.
 const STRIKES = 8, STRIKE_MS = 3000, OFFENSE_MS = 120_000, SLOW_MS = 2000, SLOW_FOR_MS = 30_000
@@ -89,11 +91,13 @@ function react(sub: Sub, emoji: unknown) {
   }, REACT_BATCH_MS)
 }
 async function relayReactions() {
-  const hosts = [...subs.values()].filter((s) => s.role === 'host')
-  if (!hosts.length) { reactAfter = null; return } // a host arriving later starts fresh, not with a backlog
-  const { last, counts } = await q.newReactions(reactAfter)
-  reactAfter = last
-  if (Object.keys(counts).length) { const msg = JSON.stringify({ reactions: counts }); for (const s of hosts) s.send(msg) }
+  if (relaying) return // a slow read must not overlap the next one and send its rows twice
+  relaying = true
+  try {
+    const { last, counts } = await q.newReactions(reactAfter)
+    reactAfter = last
+    if (Object.keys(counts).length) { const msg = JSON.stringify({ reactions: counts }); for (const s of subs.values()) if (s.role === 'host') s.send(msg) }
+  } finally { relaying = false }
 }
 
 // At most one broadcast in flight plus one queued, so a burst of requests can't multiply DB reads.
@@ -114,8 +118,8 @@ async function tick() {
   if (++ticks % TOUCH_EVERY === 0) {
     await q.touch(tokens)
     if ([...subs.values()].some((s) => s.role === 'admin')) await q.adminSeen()
+    await q.pruneReactions()
   }
-  await relayReactions()
   await pushAll()
 }
 
@@ -213,6 +217,7 @@ export const app = new Elysia({
       subs.set(id, sub)
       ipSockets.set(ip, (ipSockets.get(ip) ?? 0) + 1)
       timer ??= setInterval(() => tick().catch(console.error), TICK_MS)
+      if (role === 'host') relayTimer ??= setInterval(() => relayReactions().catch(console.error), REACT_POLL_MS)
       if (sub.token) await q.back(sub.token) // a refresh or reconnect cancels a pending bye
       await q.expire() // first message must not show a slot whose deadline passed while nobody was connected
       if (role === 'admin') await q.adminSeen() // after expire: an organizer arriving late doesn't revive a timed-out night
@@ -222,6 +227,8 @@ export const app = new Elysia({
       const sub = subs.get(String(ws.id))
       if (sub) { const n = (ipSockets.get(sub.ip) ?? 1) - 1; n > 0 ? ipSockets.set(sub.ip, n) : ipSockets.delete(sub.ip) }
       subs.delete(String(ws.id))
-      if (!subs.size) { clearInterval(timer); timer = undefined; reactAfter = null } // no tick will see the hosts gone
+      if (!subs.size) { clearInterval(timer); timer = undefined }
+      // Last host gone: stop polling. One arriving later starts from the newest row, not with a backlog.
+      if (![...subs.values()].some((s) => s.role === 'host')) { clearInterval(relayTimer); relayTimer = undefined; reactAfter = null }
     },
   })

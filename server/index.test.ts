@@ -167,10 +167,10 @@ test('one IP is rate limited across all routes', async () => {
 })
 
 // Reaction sockets use their own IPs: earlier tests used up the shared request window.
-// Hosts get reactions through the DB on each 1s tick, so the host's socket can be on any instance.
+// Hosts get reactions through the DB (polled every 150ms), so the host's socket can be on any instance.
 const batches = (s: { got: any[] }) => s.got.filter((m) => m.reactions)
-const settle = () => Bun.sleep(1100) // one tick: the host's instance starts reading, and pushes reach sockets
-const delivered = () => Bun.sleep(1400) // the 250ms batch, then the next tick
+const settle = () => Bun.sleep(1100) // one tick: snapshot pushes (canReact, the toggle) reach sockets
+const delivered = () => Bun.sleep(400) // the 100ms batch, then the next 150ms poll: a tap is on screen this fast
 
 test('reactions: waiting hackers only, cooldown, allowlist, one batch to hosts, admin toggle', async () => {
   await as('/session/end'); await as('/session/start')
@@ -224,7 +224,7 @@ test('reactions written by another instance reach a host here, without replaying
   const host = await connect([{ role: 'host' }], '10.9.9.7')
   await settle()
   await add({ '🔥': 3 })
-  await settle()
+  await delivered()
   expect(batches(host)).toEqual([{ reactions: { '🔥': 3 } }]) // earlier tests' rows are still in the table
   host.ws.close()
 }, 10000)

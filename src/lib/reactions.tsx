@@ -15,7 +15,7 @@ export function ReactionPanel({ react, notice }: { react: (emoji: string) => voi
 
 const MAX_LIVE = 80 // DOM nodes in flight; the rest of a spike is dropped
 // Host side: plain DOM + Web Animations, so a spike never goes through React renders. Each emoji drifts up the
-// right edge and fades. Counts arrive as one batch per server tick (allowlisted by the server); spread them across it so it reads as a stream.
+// right edge and fades. Counts arrive as one batch per server poll (allowlisted by the server); spread them across it so it reads as a stream.
 export function spawn(box: HTMLDivElement | null, counts: Record<string, number>) {
   if (!box) return
   for (const [emoji, n] of Object.entries(counts)) {
@@ -32,6 +32,6 @@ export function spawn(box: HTMLDivElement | null, counts: Record<string, number>
         return { transform: `translate(${amp * Math.sin(phase + t * swings * 6.28)}px,-${t * rise}vh)`, opacity: t < 0.1 ? t * 10 : 1 - Math.max(0, t - 0.6) / 0.4 }
       })
       el.animate(frames, { duration: 2500 + Math.random() * 1500, easing: 'ease-out' }).onfinish = () => el.remove()
-    }, Math.random() * 1000)
+    }, Math.random() * 150)
   }
 }

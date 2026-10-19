@@ -739,6 +739,7 @@ test('reaction relay: a new reader starts at the end, then gets everything newer
   const got = await q.newReactions(start.last)
   expect(got.counts).toEqual({ '❤️': 3, '🐴': 1 })
   expect(await q.newReactions(got.last)).toEqual({ last: got.last, counts: {} }) // nothing twice
-  await q.addReactions({ '😭': 1 }, Date.now() + 61_000) // a minute on, the earlier rows are gone
+  await q.addReactions({ '😭': 1 }, Date.now() + 61_000)
+  await q.pruneReactions(Date.now() + 61_000) // a minute on, the earlier rows are gone
   expect((await db.execute('SELECT counts FROM reactions')).rows.map((r) => r.counts)).toEqual(['{"😭":1}'])
 })
