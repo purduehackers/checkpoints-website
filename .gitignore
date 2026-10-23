@@ -1,7 +1,8 @@
 node_modules
 dist
-.env
 .vercel
 .astro
 *.db
 .direnv
+.env*
+!.env.example
