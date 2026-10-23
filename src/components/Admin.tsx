@@ -63,10 +63,10 @@ export default function Admin() {
       </main>
     );
   }
-  return <Panel onDenied={() => setDenied(true)} />;
+  return <Panel name={user.name} onDenied={() => setDenied(true)} />;
 }
 
-function Panel({ onDenied }: { onDenied: () => void }) {
+function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
   const { state, online, denied, apply, now } = useLive("admin");
   useEffect(() => {
     if (denied) onDenied();
@@ -125,6 +125,12 @@ function Panel({ onDenied }: { onDenied: () => void }) {
         />
       )}
       <fieldset disabled={busy} className="min-w-0 space-y-4">
+        <p className="text-sm text-neutral-400">
+          Hello, <b className="text-neutral-100">{name}</b> ·{" "}
+          <a href={signOutUrl()} className="underline">
+            Sign out
+          </a>
+        </p>
         <div className="flex flex-wrap items-center gap-2">
           {open ? (
             <button
