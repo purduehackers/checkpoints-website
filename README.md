@@ -6,7 +6,7 @@ This guide is for the organizer running a checkpoint night. Developers: see [doc
 
 ## What you need
 
-- The site URL and the **organizer passcode**. In the discord (will be changed when auth is finished).
+- The site URL and a **Purdue Hackers ID with the organizer role**. Ask an ID admin to give you the role at [id.purduehackers.com](https://id.purduehackers.com).
 - A **projector laptop** running Chrome or Edge, plugged into the projector and speakers.
 - Optionally, a second laptop for yourself to run the queue. You can also run everything from the projector laptop.
 
@@ -21,7 +21,7 @@ There are three pages:
 ## Before the night (5 minutes)
 
 1. **On the projector laptop, open `/host`.** Click **Fullscreen**. The click also lets the page play sound.
-2. **Open `/admin` and enter the passcode,** on your own laptop.
+2. **Open `/admin` and sign in with Purdue Hackers,** on your own laptop.
 3. **Click Start checkpoint.** The projector now shows the join address and the line. The first person to join is up automatically.
 
 ## Running the queue
@@ -72,9 +72,9 @@ The row under each name shows whether that person is **sharing**, **not sharing*
 | The line is full of fake names | Click **End checkpoints**, then **Start checkpoint**. This starts a fresh, empty line |
 | A hacker's share fails with an error name in brackets, like `(NotReadableError)` | Have them click **Try basic share**. If that fails too, share a browser tab. Screenshot the error and send it to the devs |
 | A share still won't work | Have them click **Use backup share** at the bottom of their page. It opens vdo.ninja's own screen share. Then press **Ready** for them. Last resort: plug their laptop into the projector over HDMI |
-| "Too many attempts" when logging in | Wait 15 minutes. Check the passcode with whoever deployed the site |
+| `/admin` says your account isn't an organizer | Ask an ID admin for the organizer role, then click **Sign out** and sign in again. Role changes apply at the next sign-in |
 
 ## Keeping it safe
 
-- **Use a long random passcode,** 20+ characters. Changing it logs out every organizer.
-- **Anyone can join the line from a new browser.** There are no accounts yet. Use **Remove** for anyone who shouldn't be there.
+- **Only organizers in Purdue Hackers ID can run the queue.** Taking the role away in ID applies at that person's next sign-in. Sessions last 12 hours.
+- **Anyone can join the line from a new browser.** Hackers don't sign in. Use **Remove** for anyone who shouldn't be there.
