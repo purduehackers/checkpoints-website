@@ -42,10 +42,11 @@ function cameraError(e: unknown): string {
 const FPS_CAP: MediaTrackConstraints = { frameRate: { ideal: 30, max: 30 } }
 
 // Hacker's share with its own preview. Unmounting it ends the share.
-export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState, shareRef, hideShare, camera }: {
+export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState, shareRef, hideShare, camera, beforeShare }: {
   streamId: string; label: string; live: boolean; quality: Quality; stats: boolean; onCloseStats: () => void; onState: (s: ShareState) => void
   shareRef?: { current: (() => boolean) | null }; hideShare?: boolean // the parent's own button starts the share (one click instead of two)
   camera?: boolean // phones share the camera, not a screen. No mic: it would feed back through the projector speakers
+  beforeShare?: (go: () => void) => boolean // true = the parent took over (e.g. a quiz) and will call go() from a click
 }) {
   const video = useRef<HTMLVideoElement>(null)
   const sdk = useRef<VDONinjaSDK | null>(null)
@@ -158,7 +159,8 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
   }
 
   // false = the backup tab owns the stream, so the parent must not start a share here
-  if (shareRef) shareRef.current = () => { if (backup) return false; share(); return true }
+  const first = () => beforeShare?.(() => share()) || (share(), false) // the first share of a device may need the quiz
+  if (shareRef) shareRef.current = () => { if (backup) return false; first(); return true }
 
   useEffect(() => () => { stop(); sdk.current?.disconnect().catch(() => {}) }, [])
   useEffect(muteUnlessLive, [live])
@@ -187,7 +189,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
         <video ref={video} autoPlay muted playsInline className={`h-full w-full object-contain ${camera && facing === 'user' ? '-scale-x-100' : ''}`} />
         {connecting && <div className="absolute inset-0 flex items-center justify-center gap-3 bg-neutral-900/80 text-lg"><Spinner className="size-6" />Connecting…</div>}
         {state !== 'sharing' && !backup && !hideShare && !connecting && (
-          <button onClick={() => share()} className="absolute inset-0 m-auto h-fit w-fit rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-black">
+          <button onClick={first} className="absolute inset-0 m-auto h-fit w-fit rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-black">
             {state === 'stopped' ? 'Share again' : camera ? 'Share your camera' : 'Share your screen'}
           </button>
         )}
@@ -221,7 +223,11 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
 // stereo Opus in the viewer's SDP answer, which the sender's encoder honours; bitrate/scale params would
 // be ignored) and `muted` is applied via the IFRAME API's { mute } postMessage, so toggling sound never
 // reloads the live stream. src doesn't depend on `muted` for that reason.
-export function ViewFrame({ streamId, className = '', muted }: { streamId: string; className?: string; muted?: boolean }) {
+// onVideo: is a publisher connected? vdo.ninja documents no "video arrived" push event for a viewer (its
+// view-connection/push-connection events are for the publisher side), so we poll the documented { getStats }
+// message, whose reply has stats.total_inbound_connections (docs.vdo.ninja, "IFRAME API"). >0 = a stream is coming in.
+// null = no reply yet, so the caller can't tell.
+export function ViewFrame({ streamId, className = '', muted, onVideo }: { streamId: string; className?: string; muted?: boolean; onVideo?: (has: boolean | null) => void }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const startMuted = useMemo(() => muted, [streamId]) // &mutespeaker closes the gap before the first postMessage lands; later toggles never touch src
   const [loaded, setLoaded] = useState(false)
@@ -229,6 +235,21 @@ export function ViewFrame({ streamId, className = '', muted }: { streamId: strin
   const send = () => { if (muted !== undefined) ref.current?.contentWindow?.postMessage({ mute: muted }, 'https://vdo.ninja') }
   // Re-sent every 2s: a message that lands before vdo.ninja is listening is dropped, and { mute } is idempotent.
   useEffect(() => { send(); const i = setInterval(send, 2000); return () => clearInterval(i) }, [muted])
+  const cb = useRef(onVideo)
+  cb.current = onVideo
+  useEffect(() => {
+    if (!cb.current) return
+    cb.current(null) // new stream (or fresh mount): unknown until the iframe answers
+    const ask = () => ref.current?.contentWindow?.postMessage({ getStats: true }, 'https://vdo.ninja')
+    const on = (e: MessageEvent) => {
+      if (e.origin !== 'https://vdo.ninja' || e.source !== ref.current?.contentWindow || !e.data?.stats) return
+      const st = e.data.stats, inbound = st.inbound ?? st.inbound_stats ?? {}
+      cb.current?.((Number.isFinite(st.total_inbound_connections) ? st.total_inbound_connections : Object.keys(inbound).length) > 0)
+    }
+    window.addEventListener('message', on)
+    ask(); const i = setInterval(ask, 2000) // early asks land before vdo.ninja listens and are dropped; the next one works
+    return () => { window.removeEventListener('message', on); clearInterval(i) }
+  }, [streamId])
   return (
     <div className={`relative ${className}`}>
       {!loaded && <div className="absolute inset-0 flex items-center justify-center text-neutral-400"><Spinner className="size-8" /></div>}
