@@ -159,6 +159,19 @@ test('/bye accepts a beacon-style JSON body and rejects a bad one', async () => 
   expect((await post('/bye', { token: 1 })).status).toBe(400)
 })
 
+test('quiz over HTTP: join with a fingerprint, pass once, and the same device is known under a new token', async () => {
+  await as('/session/end'); await as('/session/start')
+  const fp = 'a1b2c3d4e5f60718'
+  expect((await hacker('/join', 'quiz-http-0001', { name: 'Qu', project: 'P', fp })).me.quizPassed).toBe(false)
+  expect((await hacker('/quiz', 'quiz-http-0001')).me.quizPassed).toBe(true)
+  expect((await hacker('/join', 'quiz-http-0002', { name: 'Qv', project: 'P', fp })).me.quizPassed).toBe(true)
+  expect((await hacker('/join', 'quiz-http-0003', { name: 'Qw', project: 'P' })).me.quizPassed).toBe(false)
+  for (const bad of ['xyz', 'ABCDEF0123456789', 'abc', 'a'.repeat(65), 12345, '']) {
+    expect((await post('/join', { token: 'quiz-http-0004', name: 'Qx', project: 'P', fp: bad }, ip)).status, String(bad)).toBe(400)
+  }
+  expect((await post('/quiz', { token: 1 }, ip)).status).toBe(400)
+})
+
 // Last: it uses up this IP's request budget.
 test('one IP is rate limited across all routes', async () => {
   const codes = await Promise.all(Array.from({ length: 700 }, () => fetch(base + '/health').then((r) => r.status)))

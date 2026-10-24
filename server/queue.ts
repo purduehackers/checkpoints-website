@@ -95,7 +95,7 @@ const MAX_WAITING = 200 // a script can't bury the line; far above a real hack n
 const clean = (s: string, max: number) =>
   s.normalize('NFC').replace(/\s+/g, ' ').replace(/\p{C}/gu, '').replace(/(\p{M}{2})\p{M}+/gu, '$1').trim().slice(0, max)
 
-export async function join(token: string, name: string, project: string) {
+export async function join(token: string, name: string, project: string, fp?: string) {
   name = clean(name, 60)
   project = clean(project, 80)
   if (!name || !project) throw new Error('name and project are required')
@@ -119,7 +119,15 @@ export async function join(token: string, name: string, project: string) {
   } else if (again) {
     await run(`UPDATE queue_entries SET status = 'waiting', bye_at = NULL, name = ?, project = ?, share_state = 'not_shared', deadline = NULL, paused_left = NULL, sort_key = ${NEXT_KEY}, joined_at = ?, last_seen_at = ? WHERE id = ? AND status IN ('left','done')`, [name, project, s.id, now, now, mine.id])
   } // else: already has a spot (or was removed): joining again returns it unchanged
+  if (fp) await run(`UPDATE queue_entries SET fp = ? WHERE session_id = ? AND client_token = ?`, [fp, s.id, token])
   await advance(s.id) // empty stage: the joiner is up right away
+}
+
+// The quiz was passed: remember this entry's device for good, so a new token or cleared storage doesn't ask again.
+// fp fills in an entry that joined before fingerprints existed.
+export async function passQuiz(token: string, fp?: string) {
+  if (fp) await run(`UPDATE queue_entries SET fp = COALESCE(fp, ?) WHERE client_token = ? AND ${OPEN}`, [fp, token])
+  await run(`INSERT OR IGNORE INTO passed_devices (fp, at) SELECT fp, ? FROM queue_entries WHERE client_token = ? AND ${OPEN} AND fp IS NOT NULL`, [Date.now(), token])
 }
 
 const ACTIVE = `IN ('waiting','called','live')`
@@ -251,7 +259,7 @@ export async function expire(now = Date.now()) {
 // doesn't grow with the number of open sockets.
 export async function snapshot() {
   const s = await latestSession()
-  return { s, rows: s ? await all(`SELECT * FROM queue_entries WHERE session_id = ? ORDER BY sort_key`, [s.id]) : [] }
+  return { s, rows: s ? await all(`SELECT e.*, EXISTS (SELECT 1 FROM passed_devices p WHERE p.fp = e.fp) AS quiz_passed FROM queue_entries e WHERE e.session_id = ? ORDER BY e.sort_key`, [s.id]) : [] }
 }
 export type Snapshot = Awaited<ReturnType<typeof snapshot>>
 
@@ -277,7 +285,7 @@ export function view({ s, rows }: Snapshot, role: Role, token?: string): State {
   const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec, quality: s.quality, audio: !!s.audio, reactions: !!s.reactions }, current, queue }
   const mine = role === 'hacker' && token ? rows.find((r) => r.client_token === token) : undefined
   if (mine) {
-    state.me = { entryId: mine.id, name: mine.name, project: mine.project, status: mine.status, position: waiting.indexOf(mine) + 1, streamId: mine.stream_id }
+    state.me = { entryId: mine.id, name: mine.name, project: mine.project, status: mine.status, position: waiting.indexOf(mine) + 1, streamId: mine.stream_id, quizPassed: !!mine.quiz_passed }
   }
   return state
 }

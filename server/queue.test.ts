@@ -743,3 +743,24 @@ test('reaction relay: a new reader starts at the end, then gets everything newer
   await q.pruneReactions(Date.now() + 61_000) // a minute on, the earlier rows are gone
   expect((await db.execute('SELECT counts FROM reactions')).rows.map((r) => r.counts)).toEqual(['{"😭":1}'])
 })
+
+test('quiz: a device that passed is remembered across tokens, sessions and entries; others are not', async () => {
+  await fresh()
+  const passed = async (t: string) => (await q.loadState('hacker', t)).me?.quizPassed
+  await q.join('quiz-aaaaaaaa', 'Quin', 'P', 'abcdef0123456789')
+  await q.join('quiz-nofp0000', 'Old', 'P') // an older client sends no fingerprint
+  expect(await passed('quiz-aaaaaaaa')).toBe(false)
+  await q.passQuiz('quiz-nofp0000') // nothing to remember
+  expect(await passed('quiz-nofp0000')).toBe(false)
+  await q.passQuiz('quiz-nofp0000', 'feedface00000000') // joined before fingerprints: /quiz fills it in
+  expect(await passed('quiz-nofp0000')).toBe(true)
+  await q.passQuiz('quiz-aaaaaaaa')
+  expect(await passed('quiz-aaaaaaaa')).toBe(true)
+  await q.join('quiz-bbbbbbbb', 'Quill', 'P', 'abcdef0123456789') // same device, new token
+  expect(await passed('quiz-bbbbbbbb')).toBe(true)
+  await q.join('quiz-cccccccc', 'Quade', 'P', '0123456789abcdef') // a different device
+  expect(await passed('quiz-cccccccc')).toBe(false)
+  await fresh() // and the next checkpoint
+  await q.join('quiz-dddddddd', 'Quincy', 'P', 'abcdef0123456789')
+  expect(await passed('quiz-dddddddd')).toBe(true)
+})
