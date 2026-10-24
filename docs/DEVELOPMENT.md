@@ -4,13 +4,15 @@ How to run, test and deploy Checkpoints. For running a checkpoint night, see the
 
 ## Run it
 
-Needs [Bun](https://bun.sh). Copy `.env.example` to `.env` and fill it in. Leave the Turso vars unset to use a local `local.db` file.
+Needs [Bun](https://bun.sh) (or `direnv allow` with Nix). Copy `.env.example` to `.env` and fill it in. Leave the Turso vars unset to use a local `local.db` file.
+
+Sign-in needs an application in [Purdue Hackers ID](https://id.purduehackers.com) (Applications → new) with the scopes `openid`, `profile` and `roles` and the redirect URL `http://localhost:4321/api/auth/callback`. Put its client ID in `ID_CLIENT_ID` (and `ID_CLIENT_SECRET` if you made it confidential), and set `SESSION_SECRET`. To work against a local ID instead, run it from `../id` and set `ID_ISSUER=http://localhost:5173/api/auth`. To get to `/admin`, your ID account needs the organizer role.
 
 ```
 bun install
 bun dev          # Elysia on :3000 + Astro on :4321 (proxies /api). Open http://localhost:4321
                  # Astro's dev server runs in the background; stop it with `bunx astro dev stop`
-bun test         # queue logic + API abuse tests (in-memory db)
+bun test         # queue logic + API, auth and abuse tests (in-memory db, fake ID)
 bun run build    # static site into dist/
 ```
 
@@ -25,11 +27,13 @@ Browsers only allow screen sharing and notifications on `localhost` or HTTPS.
 - `src/lib/vdo.tsx` holds VDO.Ninja sharing and viewing. Hackers capture their screen on our page (`getDisplayMedia`, so we know exactly when sharing starts and stops) and publish it with the [VDO.Ninja SDK](https://github.com/steveseguin/ninjasdk) (`@vdoninja/sdk`, MPL-2.0), which handles signalling, peer connections and TURN. Admin preview and projector watch plain `vdo.ninja/?view=<id>` iframes. The server only hands out private stream IDs (to the admin, and to /host while someone is live).
 - Quality is set on the sender: the SDK publisher ignores vdo.ninja viewer params like `&bitrate`/`&scale`, so the presenter's browser caps the capture (`applyConstraints`, `crop-and-scale`) and the encoder bitrate from the organizer's preset. Audio is captured raw (no echo cancel/denoise/auto gain), sent at 128 kbps, and muted until the presenter is live; the projector's `&stereo` makes it stereo.
 - `src/lib/stats.tsx` is "Stats for nerds": the presenter measures its own send stats and pipes them over the VDO.Ninja data channel; `/host` and `/admin` listen with a data-only viewer.
-- Hacker identity is a random token in `localStorage`. No Squid yet.
+- Organizers sign in with Purdue Hackers ID over OIDC (`server/auth.ts`, using [`openid-client`](https://github.com/panva/openid-client)): `/api/auth/login` → ID → `/api/auth/callback` (code flow, PKCE, state and nonce, ID token signature check), then userinfo for `name` and `roles`. The result is a stateless HMAC-signed HttpOnly cookie `{ sub, name, organizer }` that lasts 12 hours, so any instance can read it and Turso stores nothing about users. Role changes in ID apply at the next sign-in.
+- Organizer actions and the admin socket need `roles` to include `organizer` (ID's `admin` role grants it). Hackers don't sign in: their identity is a random token in `localStorage`. `/host` stays public.
+- Cookies are `SameSite=Lax`, which still lets other `*.purduehackers.com` sites send them, so every non-GET request and every socket hello checks that `Origin` matches the host.
 
 ## Deploy (Vercel Pro)
 
-One project: Astro static build plus `api/server.ts` as a Bun function with native WebSockets (Fluid compute, public beta). Set `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` and `ADMIN_PASSCODE` for both Production and Preview. `vercel.json` sets `bunVersion`, rewrites `/api/*` and sends anti-framing headers.
+One project: Astro static build plus `api/server.ts` as a Bun function with native WebSockets (Fluid compute, public beta). Set `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `ID_CLIENT_ID`, `ID_CLIENT_SECRET` (if confidential) and `SESSION_SECRET` for both Production and Preview. Register `https://<domain>/api/auth/callback` in the ID application for every domain people sign in on: a preview URL that isn't registered can't sign in. `vercel.json` sets `bunVersion`, rewrites `/api/*` and sends anti-framing headers.
 
 ## Limits
 
@@ -38,7 +42,6 @@ These live in `server/index.ts` and are counted per server instance. They're siz
 - requests and sockets per IP
 - total sockets
 - socket message size and request body size
-- login attempts per IP
 - the waiting line (`MAX_WAITING` in `server/queue.ts`)
 
 Names are cleaned of control and invisible characters. Stats from a presenter's browser are treated as untrusted.
@@ -49,4 +52,4 @@ Names are cleaned of control and invisible characters. Stats from a presenter's 
 - **Vercel deploy.** WebSocket routing through the `/api/:path*` rewrite is untested. The socket closes at max duration; the client reconnects on its own.
 - **Poll cost.** `TICK_MS` is 1s (marked `??` in `server/index.ts`). Each tick is a constant few Turso reads per instance, not per socket.
 
-Post-MVP: Squid login, recording, mic picker, moderation. The old prototype (recording, mic finder, designs) is in git history.
+Post-MVP: Recording, mic picker, moderation. The old prototype (recording, mic finder, designs) is in git history.
