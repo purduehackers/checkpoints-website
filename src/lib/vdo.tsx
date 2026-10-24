@@ -1,5 +1,5 @@
 // Everything VDO.Ninja lives here.
-// Sharing: we capture the screen ourselves (so we know exactly when it starts and stops) and the
+// Sharing: we capture the screen (phones: the camera) ourselves (so we know exactly when it starts and stops) and the
 // VDO.Ninja SDK handles signalling, peer connections and TURN. Viewing: plain vdo.ninja iframes.
 // Audio: the picker's "share audio" box adds an audio track that the SDK publishes with the video.
 // The track stays disabled (silent) until the hacker is live, and only the projector plays it.
@@ -29,14 +29,23 @@ function captureError(e: unknown): { msg: string; retry: boolean } {
     : 'Screen share failed.'
   return { msg: `${msg} (${name})`, retry: true }
 }
+// getUserMedia failures, same idea as captureError.
+function cameraError(e: unknown): string {
+  const name = String((e as Error)?.name ?? 'Error')
+  const msg = name === 'NotAllowedError' ? 'Camera access was blocked. Allow the camera for this site in your browser settings, then try again.'
+    : name === 'NotFoundError' || name === 'OverconstrainedError' ? 'No camera found.'
+    : 'Camera failed to start.'
+  return `${msg} (${name})`
+}
 // Frame rate only. A width/height cap with crop-and-scale re-renders the captured screen at the cap size,
 // which left the presenter's own display zoomed in. The organizer's quality is the encoder bitrate alone.
 const FPS_CAP: MediaTrackConstraints = { frameRate: { ideal: 30, max: 30 } }
 
 // Hacker's share with its own preview. Unmounting it ends the share.
-export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState, shareRef, hideShare }: {
+export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState, shareRef, hideShare, camera }: {
   streamId: string; label: string; live: boolean; quality: Quality; stats: boolean; onCloseStats: () => void; onState: (s: ShareState) => void
   shareRef?: { current: (() => boolean) | null }; hideShare?: boolean // the parent's own button starts the share (one click instead of two)
+  camera?: boolean // phones share the camera, not a screen. No mic: it would feed back through the projector speakers
 }) {
   const video = useRef<HTMLVideoElement>(null)
   const sdk = useRef<VDONinjaSDK | null>(null)
@@ -47,6 +56,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
   const [connecting, setConnecting] = useState(false) // picked a screen, stream not up yet
   const [hasAudio, setHasAudio] = useState(false)
   const [backup, setBackup] = useState(false) // backup tab owns the stream ID; don't publish it from here too
+  const [facing, setFacing] = useState<'environment' | 'user'>('environment') // back camera first, to show off hardware
   const [history, setHistory] = useState<Sample[]>([])
   const report = (s: ShareState) => { setState(s); onState(s) }
   const liveRef = useRef(live)
@@ -62,11 +72,20 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
   }
 
   // basic: no extra options, for a browser that rejects ours. A button, not an auto-retry: each call needs a fresh click.
-  async function share(basic = false) {
+  async function share(basic = false, face = facing) {
     setError('')
     setRetry(false)
     let s: MediaStream
+    // A phone can't open two cameras at once, so a flip lets go of the old one first. Tracks only: the publish is
+    // replaced below, and reporting 'stopped' would flash the banner and the admin badge on every flip.
+    const old = camera ? stream.current : null
+    old?.getTracks().forEach((t) => t.stop())
     try {
+      if (camera) s = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: face, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } },
+        audio: false,
+      })
+      else {
       // Ask for as little as possible: every extra option is one more way a portal/PipeWire picker can
       // reject or re-prompt.
       // Chromium-only hints (systemAudio, surfaceSwitching, selfBrowserSurface, suppressLocalAudioPlayback)
@@ -84,7 +103,12 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
           surfaceSwitching: 'include',
         }),
       } as DisplayMediaStreamOptions)
+      }
     } catch (e) {
+      if (camera) {
+        if (old && stream.current === old) { stop(); report('stopped') } // the flip failed and the old camera is already off
+        return setError(cameraError(e))
+      }
       const { msg, retry } = captureError(e)
       setRetry(retry && !basic)
       return setError(msg)
@@ -95,10 +119,15 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     if (!track || track.readyState === 'ended') {
       s.getTracks().forEach((t) => t.stop())
       setRetry(!basic)
+      if (camera) {
+        if (old && stream.current === old) { stop(); report('stopped') }
+        return setError('Camera failed to start. (EmptyCapture)')
+      }
       return setError(`The screen capture produced no video.${tabHint} (EmptyCapture)`)
     }
-    stop() // "Change window": replace the previous share. Claimed before any await, so a newer share() or stop() makes this one bail below.
+    stop() // "Change window" / "Flip camera": replace the previous share. Claimed before any await, so a newer share() or stop() makes this one bail below.
     stream.current = s
+    setFacing(face)
     setConnecting(true)
     muteUnlessLive()
     setHasAudio(s.getAudioTracks().length > 0)
@@ -107,7 +136,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     track.onended =() => { if (stream.current === s) { stop(); report('stopped') } }
     try {
       // Cap fps after capture; a refused (or never-settling) cap must never kill the share.
-      if (!basic) await Promise.race([track.applyConstraints(FPS_CAP).catch(() => {}), new Promise((r) => setTimeout(r, 2000))])
+      if (!basic && !camera) await Promise.race([track.applyConstraints(FPS_CAP).catch(() => {}), new Promise((r) => setTimeout(r, 2000))])
       if (!sdk.current) {
         // salt 'vdo.ninja' + default host/password: viewable at vdo.ninja/?view=<streamId>
         sdk.current = new VDONinjaSDK({ salt: 'vdo.ninja', label })
@@ -155,18 +184,22 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
   return (
     <div>
       <div className="relative aspect-video w-full overflow-hidden rounded bg-neutral-900">
-        <video ref={video} autoPlay muted playsInline className="h-full w-full object-contain" />
+        <video ref={video} autoPlay muted playsInline className={`h-full w-full object-contain ${camera && facing === 'user' ? '-scale-x-100' : ''}`} />
         {connecting && <div className="absolute inset-0 flex items-center justify-center gap-3 bg-neutral-900/80 text-lg"><Spinner className="size-6" />Connecting…</div>}
         {state !== 'sharing' && !backup && !hideShare && !connecting && (
           <button onClick={() => share()} className="absolute inset-0 m-auto h-fit w-fit rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-black">
-            {state === 'stopped' ? 'Share again' : 'Share your screen'}
+            {state === 'stopped' ? 'Share again' : camera ? 'Share your camera' : 'Share your screen'}
           </button>
         )}
       </div>
       {backup && <p className="mt-2 rounded bg-neutral-800 p-2 text-sm">You’re using the backup share in another tab. Close it before sharing here. <button className="underline" onClick={() => setBackup(false)}>Share here instead</button></p>}
       {state === 'stopped' && !backup && <p className="mt-2 rounded bg-red-900 p-2 text-sm">Your share stopped. Click “Share again”.</p>}
-      {state === 'not_shared' && !backup && <p className="mt-2 text-sm text-neutral-400">Pick “Entire screen”. For sound on the projector, share a browser tab instead and tick “Share audio”. Only the organizer sees it until you go live.{linux && ' On Linux, a browser tab is the most reliable choice.'}</p>}
-      {state === 'sharing' && (
+      {state === 'not_shared' && !backup && camera && <p className="mt-2 text-sm text-neutral-400">On mobile you can only share your camera. Only the organizer sees it until you go live.</p>}
+      {state === 'not_shared' && !backup && !camera && <p className="mt-2 text-sm text-neutral-400">Pick “Entire screen”. For sound on the projector, share a browser tab instead and tick “Share audio”. Only the organizer sees it until you go live.{linux && ' On Linux, a browser tab is the most reliable choice.'}</p>}
+      {state === 'sharing' && camera && (
+        <p className="mt-2 text-sm"><span className="text-green-400">Sharing your camera.</span> <button className="underline" onClick={() => share(false, facing === 'user' ? 'environment' : 'user')}>Flip camera</button></p>
+      )}
+      {state === 'sharing' && !camera && (
         <p className="mt-2 text-sm">
           {hasAudio ? <span className="text-green-400">Sharing with sound{live ? '' : ' (plays on the projector once you’re live)'}.</span>
             : noAudioBrowser ? <span className="text-amber-400">This browser can’t share sound. Use Chrome or Edge if your demo needs audio.</span>
@@ -174,11 +207,11 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
           <button className="underline" onClick={() => share()}>Change window</button>
         </p>
       )}
-      {error && <p className="mt-2 text-sm text-red-400">{error}{retry && <> <button className="underline" onClick={() => share(true)}>Try basic share</button></>}</p>}
+      {error && <p className="mt-2 text-sm text-red-400">{error}{retry && !camera && <> <button className="underline" onClick={() => share(true)}>Try basic share</button></>}</p>}
       {/* Fallback: vdo.ninja's own share page, publishing to the same stream the projector watches.
           Stop and disconnect ours first, so the stream ID is free and two publishers don't fight. The server sees "not sharing", so Ready goes through "Present without sharing". */}
-      <a className="mt-3 block rounded-lg border border-neutral-600 px-4 py-3 text-center font-medium text-neutral-200 hover:bg-neutral-800" href={`https://vdo.ninja/?push=${streamId}&screenshare`} target="_blank" rel="noopener noreferrer"
-        onClick={() => { stop(); sdk.current?.disconnect().catch(() => {}); sdk.current = null; setBackup(true); setError(''); report('not_shared') }}>Having trouble? Use backup share, then press “Present without sharing”.</a>
+      <a className="mt-3 block rounded-lg border border-neutral-600 px-4 py-3 text-center font-medium text-neutral-200 hover:bg-neutral-800" href={`https://vdo.ninja/?push=${streamId}${camera ? '' : '&screenshare'}`} target="_blank" rel="noopener noreferrer"
+        onClick={() => { stop(); sdk.current?.disconnect().catch(() => {}); sdk.current = null; setBackup(true); setError(''); report('not_shared') }}>Having trouble? Use backup {camera ? 'camera ' : ''}share, then press “Present without sharing”.</a>
       {stats && <StatsOverlay history={history} title="Your stream" onClose={onCloseStats} />}
     </div>
   )

@@ -6,11 +6,12 @@ import { ICONS, Tour, seen, type Step } from '../lib/tour'
 import { ReactionPanel } from '../lib/reactions'
 import type { ShareState } from '../../shared/types'
 
-// Phones can't screen share from a browser (Android Chrome may still expose getDisplayMedia, so check the device too).
+// Phones can't screen share from a browser (Android Chrome may still expose getDisplayMedia, so check the device too),
+// so they share their camera instead.
 // iPadOS reports itself as a Mac; touch points give it away.
 const phone = typeof navigator !== 'undefined' &&
   (/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent) || (/macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1))
-const canShare = !phone && typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia
+const canShare = typeof navigator !== 'undefined' && !!(phone ? navigator.mediaDevices?.getUserMedia : navigator.mediaDevices?.getDisplayMedia)
 
 // "It's your turn": a short, quiet 8-bit arpeggio made in the browser (no audio file). Browsers only let it play
 // after the page has been clicked once, which joining already did.
@@ -33,23 +34,13 @@ function chime() {
 }
 
 // First-time tour, one part per page state (the elements only exist then).
+const SHARE_TEXT = phone ? 'Share your camera early if you like. Only organizers see it.' : 'Share early if you like. Only organizers see it.'
 const TOUR: Record<'wait' | 'turn', Step[]> = {
   wait: [
     { target: 'status', icon: ICONS.hourglass, text: "Your spot. Flashes yellow when you're next, green when it's your turn." },
-    { target: 'share', icon: ICONS.screen, text: 'Share early if you like. Only organizers see it.' },
+    { target: 'share', icon: ICONS.screen, text: SHARE_TEXT },
   ],
   turn: [{ target: 'start', icon: ICONS.play, text: 'Walk up, then press this. Your time starts now.' }],
-}
-
-// Phones get a joke instead of the line: they can't share a screen. /host and /admin still work for watching.
-function PhoneNote() {
-  return (
-    <div className="flex min-h-[70vh] flex-col items-center justify-center gap-6 text-center">
-      <h1 className="text-4xl">Phone is too small</h1>
-      <a href="https://www.amazon.com/s?k=computer+monitor" target="_blank" rel="noopener noreferrer"
-        className="rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-black">Buy a screen</a>
-    </div>
-  )
 }
 
 export default function Hacker() {
@@ -58,7 +49,7 @@ export default function Hacker() {
   const [form, setForm] = useState({ name: '', project: '' })
   const [shareState, setShareState] = useState<ShareState>('not_shared')
   const reported = useRef<ShareState>('not_shared')
-  const shareFn = useRef<(() => boolean) | null>(null) // ShareBox's share(), so Start presenting can open the picker
+  const shareFn = useRef<(() => boolean) | null>(null) // ShareBox's share(), so Start presenting can open the picker (or camera)
   const startOnShare = useRef(false) // Start presenting was pressed before sharing: go live as soon as the share connects
   const stats = useStatsToggle()
   const [replay, setReplay] = useState(0) // "How it works" remounts the tour
@@ -126,7 +117,6 @@ export default function Hacker() {
     return () => { removeEventListener('beforeunload', ask); removeEventListener('pagehide', bye) }
   }, [active, token])
 
-  if (phone) return <Shell><PhoneNote /></Shell>
   if (!state) return <Shell><Badge online={online} /><p className="flex items-center gap-3"><Spinner className="size-5" />Loading…</p></Shell>
 
   const msTotal = cur?.pausedLeft ?? (cur?.deadline != null ? cur.deadline - now() : null)
@@ -163,7 +153,7 @@ export default function Hacker() {
         {me.status === 'waiting' && (
           <div data-tour="status" className={me.position === 1 ? 'rounded-lg bg-amber-400 p-4 text-black' : ''}>
             <h1 className="text-3xl font-semibold">{me.position === 1 ? "You're up next!" : `You're ${ordinal(me.position)} in line`}</h1>
-            <p className={me.position === 1 ? '' : 'text-neutral-400'}>{me.position === 1 ? 'Get your screen ready.' : `${me.position - 1} ${me.position === 2 ? 'person' : 'people'} ahead of you`} · up in {aboutMin(waitMs(state, me.position - 1, now()))}</p>
+            <p className={me.position === 1 ? '' : 'text-neutral-400'}>{me.position === 1 ? `Get your ${phone ? 'camera' : 'screen'} ready.` : `${me.position - 1} ${me.position === 2 ? 'person' : 'people'} ahead of you`} · up in {aboutMin(waitMs(state, me.position - 1, now()))}</p>
           </div>
         )}
         {/* Inline, not a full-page cover: the first in line is called automatically while still at their seat,
@@ -183,15 +173,15 @@ export default function Hacker() {
         )}
         {me.status === 'waiting' && state.session!.reactions && <ReactionPanel react={react} notice={notice} />}
         {canShare ? (
-          <div data-tour="share"><ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} shareRef={shareFn} hideShare={me.status === 'called'} /></div>
+          <div data-tour="share"><ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} shareRef={shareFn} hideShare={me.status === 'called'} camera={phone} /></div>
         ) : (
-          <p className="rounded bg-neutral-800 p-3 text-sm">This browser can’t share a screen. Use Chrome or Edge on a laptop. You can still wait here.</p>
+          <p className="rounded bg-neutral-800 p-3 text-sm">{phone ? 'This browser can’t use the camera. You can still wait here and present without sharing.' : 'This browser can’t share a screen. Use Chrome or Edge on a laptop. You can still wait here.'}</p>
         )}
         {/* Take the stage with no share from this page: talk-only, a phone, or the backup share. */}
         {/* Shown while waiting too, so people find it early; Ready only works once called. */}
         {me.status !== 'live' && shareState !== 'sharing' && (
           <button disabled={me.status !== 'called'} className="w-full rounded-lg border border-green-500 px-4 py-3 font-medium text-green-400 disabled:border-neutral-700 disabled:text-neutral-500"
-            onClick={() => confirm('Start your time without sharing your screen here?') && act('/ready', { noShare: true })}>
+            onClick={() => confirm('Start your time without sharing here?') && act('/ready', { noShare: true })}>
             Present without sharing{me.status !== 'called' && ' (when it’s your turn)'}
           </button>
         )}

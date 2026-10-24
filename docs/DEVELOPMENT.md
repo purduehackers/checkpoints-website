@@ -14,7 +14,7 @@ bun test         # queue logic + API abuse tests (in-memory db)
 bun run build    # static site into dist/
 ```
 
-Browsers only allow screen sharing and notifications on `localhost` or HTTPS.
+Browsers only allow screen sharing, camera access and notifications on `localhost` or HTTPS. Testing from a phone on the LAN over plain http won't work; use a tunnel (for example Cloudflare or ngrok) or a deployed preview.
 
 ## How it works
 

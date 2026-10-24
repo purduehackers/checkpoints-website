@@ -83,7 +83,7 @@ Identity for the MVP: a hacker is a random token stored in their browser (one qu
 - After joining, a "Share your screen" step starts the share (done with the VDO.Ninja SDK; the hacker's page captures the screen and publishes it, viewers use iframes).
 - My page shows a small preview in the corner while I wait.
 - The server records my entry's private stream ID. Only the organizer and the projector get stream IDs.
-- Joining and waiting still work without sharing (for example on a phone). The organizer sees "not sharing".
+- Joining and waiting still work without sharing (for example if I decline the browser prompt). The organizer sees "not sharing".
 
 ### ✅ US-3.2 Change what I'm sharing (MVP, S)
 *As a hacker, I can switch to a different window, so I can fix a wrong pick without leaving the queue.*
@@ -93,6 +93,13 @@ Identity for the MVP: a hacker is a random token stored in their browser (one qu
 *As a hacker, I see clearly when my share has stopped and can restart it. As an organizer, I can see who is not ready.*
 - The client reports its share state to the server: `not_shared`, `sharing` or `stopped`.
 - If the share ends (I closed it, or the browser killed it), I see a banner with a "Share again" button.
+
+### ✅ US-3.4 Share my camera from a phone (MVP, M)
+*As a hacker on a phone or iPad, I can join the queue and share my camera, so I can show off hardware.*
+- The flow is the same as on a laptop: join, wait, get called, **Start presenting**. iPads count as phones.
+- Start presenting opens the back camera. A "Flip camera" button switches to the front one.
+- No microphone sound is sent, so a phone near the speakers can't cause feedback.
+- The share box says "On mobile you can only share your camera." The backup link is `https://vdo.ninja/?push=<id>` (no `&screenshare`).
 
 ---
 

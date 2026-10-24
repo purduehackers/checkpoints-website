@@ -40,7 +40,7 @@ The showcase works if all of these hold during a live run with at least 5 laptop
 - Lessons learned:
   - Cloudflare tunnels buffer SSE, so use WebSockets or polling.
   - Background tabs throttle timers, so the server must own the 2:00 cutoff and the up-next alerts must not depend on page timers.
-  - Mobile browsers can't screen share, so phones can join but must show "use a laptop to share".
+  - Mobile browsers can't screen share, so phones share their camera instead (back camera, no mic).
 - The mic test and recording code are post-MVP (P-3 and P-4), but they are ready to lift.
 
 ---
@@ -122,7 +122,7 @@ The plan assumes **2–4 people** in four tracks: **A** server, **B** hacker pag
 | A | Stream ID per entry, share-state endpoint, token-based rejoin, `last_seen_at` and disconnect handling | US-2.4, US-3.3 (server) |
 | B | Share step after joining, corner preview, "Change window", banner for a stopped share | US-3.1, US-3.2, US-3.3 |
 | C | Share status and disconnected badges on admin rows | US-5.2 |
-| D | Help B with the share integration, and handle phones and Safari ("use a laptop to share") | US-3.1 |
+| D | Help B with the share integration, and handle phones (camera share) and Safari | US-3.1 |
 
 ### Day 4: The handoff (milestone M2)
 | Track | Work | Stories |
@@ -159,7 +159,7 @@ The plan assumes **2–4 people** in four tracks: **A** server, **B** hacker pag
 3. **Edge cases to hit on purpose:**
    - one volunteer refreshes mid-queue and keeps their spot;
    - one stops their share and restarts it;
-   - one joins from a phone and sees "use a laptop to share";
+   - one joins from a phone and shares the camera instead of a screen;
    - one enters a wrong code.
 4. Call next. Check that the up-next alert reaches person #2 while person #1 is getting ready.
 5. Person #1 presses Ready, goes live, and lets the timer run out: countdown at 0:15, auto-cut at 2:00, screensaver.
