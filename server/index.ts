@@ -134,7 +134,6 @@ const reply = async (role: Role, token?: string): Promise<State> => {
 
 const tok = t.String({ minLength: 8, maxLength: 64 })
 const hackerBody = t.Object({ token: tok })
-const fp = t.String({ pattern: '^[0-9a-f]{8,64}$', maxLength: 64 }) // device fingerprint: short hex
 
 export const app = new Elysia({
   prefix: '/api',
@@ -159,9 +158,8 @@ export const app = new Elysia({
   .get('/health', () => ({ ok: true }))
 
   // hacker
-  .post('/join', async ({ body }) => (await q.join(body.token, body.name, body.project, body.fp), reply('hacker', body.token)),
-    { body: t.Object({ token: tok, name: t.String({ maxLength: 200 }), project: t.String({ maxLength: 200 }), fp: t.Optional(fp) }) })
-  .post('/quiz', async ({ body }) => (await q.passQuiz(body.token, body.fp), reply('hacker', body.token)), { body: t.Object({ token: tok, fp: t.Optional(fp) }) })
+  .post('/join', async ({ body }) => (await q.join(body.token, body.name, body.project), reply('hacker', body.token)),
+    { body: t.Object({ token: tok, name: t.String({ maxLength: 200 }), project: t.String({ maxLength: 200 }) }) })
   // sendBeacon from pagehide; the answer is never read. The 5s grace in expire() does the actual removal.
   .post('/bye', async ({ body }) => (await q.bye(body.token), { ok: true }), { body: hackerBody })
   .post('/leave', async ({ body }) => (await q.leave(body.token), reply('hacker', body.token)), { body: hackerBody })

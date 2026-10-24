@@ -4,7 +4,6 @@ import { ShareBox } from '../lib/vdo'
 import { StatsButton, useStatsToggle } from '../lib/stats'
 import { ICONS, Tour, seen, type Step } from '../lib/tour'
 import { ReactionPanel } from '../lib/reactions'
-import { QuizModal, deviceFp } from '../lib/quiz'
 import type { ShareState } from '../../shared/types'
 
 // Phones can't screen share from a browser (Android Chrome may still expose getDisplayMedia, so check the device too),
@@ -52,8 +51,6 @@ export default function Hacker() {
   const reported = useRef<ShareState>('not_shared')
   const shareFn = useRef<(() => boolean) | null>(null) // ShareBox's share(), so Start presenting can open the picker (or camera)
   const startOnShare = useRef(false) // Start presenting was pressed before sharing: go live as soon as the share connects
-  const [quiz, setQuiz] = useState<{ go: () => void } | null>(null) // first-time quiz open, holding the share it will start
-  const quizDone = useRef(false) // passed here; the server's quizPassed lags a request
   const stats = useStatsToggle()
   const [replay, setReplay] = useState(0) // "How it works" remounts the tour
   useTick()
@@ -68,19 +65,6 @@ export default function Hacker() {
   }
 
   const me = state?.me
-  // Sharing needs the quiz first on a device that hasn't passed. true = quiz opened, it runs go() after the last answer.
-  const beforeShare = (go: () => void) => {
-    if (me?.quizPassed || quizDone.current) return false
-    setQuiz({ go })
-    return true
-  }
-  const passQuiz = () => {
-    quizDone.current = true
-    const { go } = quiz!
-    deviceFp(token).then((fp) => act('/quiz', { fp })) // not awaited: getDisplayMedia/getUserMedia must run inside this click
-    setQuiz(null)
-    go()
-  }
   const cur = state?.current?.entryId === me?.entryId ? state?.current : null
   const active = me && ['waiting', 'called', 'live'].includes(me.status)
   const open = state?.session?.status === 'open'
@@ -153,7 +137,7 @@ export default function Hacker() {
     body = (
       <form className="space-y-3" onSubmit={(e) => {
         e.preventDefault(); setError('')
-        deviceFp(token).then((fp) => act('/join', { ...form, fp }))
+        act('/join', form)
       }}>
         <h1 className="text-2xl font-semibold">Join the checkpoint</h1>
         <p className="text-sm text-neutral-400">Join → wait for green → walk up → Start presenting. You get {span(state.session!.limitSec)}.</p>
@@ -189,7 +173,7 @@ export default function Hacker() {
         )}
         {me.status === 'waiting' && state.session!.reactions && <ReactionPanel react={react} notice={notice} />}
         {canShare ? (
-          <div data-tour="share"><ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} shareRef={shareFn} hideShare={me.status === 'called'} camera={phone} beforeShare={beforeShare} /></div>
+          <div data-tour="share"><ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} shareRef={shareFn} hideShare={me.status === 'called'} camera={phone} /></div>
         ) : (
           <p className="rounded bg-neutral-800 p-3 text-sm">{phone ? 'This browser can’t use the camera. You can still wait here and present without sharing.' : 'This browser can’t share a screen. Use Chrome or Edge on a laptop. You can still wait here.'}</p>
         )}
@@ -216,7 +200,6 @@ export default function Hacker() {
       {me?.status === 'called' && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-green-400/25" />}
       {pending > 0 && <div className="late fixed bottom-3 right-3 z-50 flex items-center gap-2 rounded bg-neutral-800 px-3 py-1 text-sm"><Spinner />Working…</div>}
       {body}
-      {quiz && <QuizModal onPass={passQuiz} onCancel={() => { startOnShare.current = false; setQuiz(null) }} />}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
       {tour && <Tour key={tour + replay} part={tour} steps={TOUR[tour]} />}
       {tour && <button className="mt-6 text-xs text-neutral-500 underline" onClick={() => { seen.clear(); setReplay((n) => n + 1) }}>How it works</button>}

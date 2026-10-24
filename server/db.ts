@@ -35,7 +35,6 @@ CREATE TABLE IF NOT EXISTS queue_entries (
   paused_left INTEGER,
   last_seen_at INTEGER NOT NULL,
   bye_at INTEGER,
-  fp TEXT,
   UNIQUE (session_id, client_token)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_entry ON queue_entries(session_id) WHERE status IN ('called','live');
@@ -45,12 +44,6 @@ CREATE TABLE IF NOT EXISTS reactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   at INTEGER NOT NULL,
   counts TEXT NOT NULL
-);
-
--- Devices (browser fingerprints) that passed the first-time quiz. Kept across checkpoints.
-CREATE TABLE IF NOT EXISTS passed_devices (
-  fp TEXT PRIMARY KEY,
-  at INTEGER NOT NULL
 );
 `
 
@@ -64,7 +57,6 @@ const ADDED = [
   `ALTER TABLE sessions ADD COLUMN audio INTEGER NOT NULL DEFAULT 1`,
   `ALTER TABLE sessions ADD COLUMN reactions INTEGER NOT NULL DEFAULT 1`,
   `ALTER TABLE queue_entries ADD COLUMN bye_at INTEGER`, // nullable, so older code that never sets it keeps working
-  `ALTER TABLE queue_entries ADD COLUMN fp TEXT`, // nullable: entries from older clients have no fingerprint
 ]
 export const ready = db.executeMultiple(SCHEMA).then(async () => {
   for (const sql of ADDED) await db.execute(sql).catch((e) => { if (!/duplicate column/i.test(String(e))) throw e })

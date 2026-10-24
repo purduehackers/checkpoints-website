@@ -45,6 +45,5 @@ export interface State {
     status: EntryStatus
     position: number // 1-based among waiting; 0 if not waiting
     streamId: string
-    quizPassed: boolean // this device has passed the first-time quiz
   }
 }

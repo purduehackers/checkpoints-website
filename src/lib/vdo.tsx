@@ -42,11 +42,10 @@ function cameraError(e: unknown): string {
 const FPS_CAP: MediaTrackConstraints = { frameRate: { ideal: 30, max: 30 } }
 
 // Hacker's share with its own preview. Unmounting it ends the share.
-export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState, shareRef, hideShare, camera, beforeShare }: {
+export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState, shareRef, hideShare, camera }: {
   streamId: string; label: string; live: boolean; quality: Quality; stats: boolean; onCloseStats: () => void; onState: (s: ShareState) => void
   shareRef?: { current: (() => boolean) | null }; hideShare?: boolean // the parent's own button starts the share (one click instead of two)
   camera?: boolean // phones share the camera, not a screen. No mic: it would feed back through the projector speakers
-  beforeShare?: (go: () => void) => boolean // true = the parent took over (e.g. a quiz) and will call go() from a click
 }) {
   const video = useRef<HTMLVideoElement>(null)
   const sdk = useRef<VDONinjaSDK | null>(null)
@@ -159,8 +158,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
   }
 
   // false = the backup tab owns the stream, so the parent must not start a share here
-  const first = () => beforeShare?.(() => share()) || (share(), false) // the first share of a device may need the quiz
-  if (shareRef) shareRef.current = () => { if (backup) return false; first(); return true }
+  if (shareRef) shareRef.current = () => { if (backup) return false; share(); return true }
 
   useEffect(() => () => { stop(); sdk.current?.disconnect().catch(() => {}) }, [])
   useEffect(muteUnlessLive, [live])
@@ -189,7 +187,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
         <video ref={video} autoPlay muted playsInline className={`h-full w-full object-contain ${camera && facing === 'user' ? '-scale-x-100' : ''}`} />
         {connecting && <div className="absolute inset-0 flex items-center justify-center gap-3 bg-neutral-900/80 text-lg"><Spinner className="size-6" />Connecting…</div>}
         {state !== 'sharing' && !backup && !hideShare && !connecting && (
-          <button onClick={first} className="absolute inset-0 m-auto h-fit w-fit rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-black">
+          <button onClick={() => share()} className="absolute inset-0 m-auto h-fit w-fit rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-black">
             {state === 'stopped' ? 'Share again' : camera ? 'Share your camera' : 'Share your screen'}
           </button>
         )}
