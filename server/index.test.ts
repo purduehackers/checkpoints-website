@@ -187,7 +187,7 @@ test('organizer routes: sign in, a fresh checkpoint, and bad input is refused', 
   await hacker('/join', 'http-aaaaaaaa', { name: 'Ann', project: 'P' })
   const id = (await (await as('/limit', { seconds: 120 })).json()).current.entryId
   expect((await as('/stop', {})).status).toBe(400) // must say who to stop
-  for (const delta of [45, 0, '30', -3000]) expect((await as('/adjust', { id, delta })).status).toBe(400)
+  for (const delta of [45, 0, '30', -30, -3000]) expect((await as('/adjust', { id, delta })).status).toBe(400)
   for (const path of ['/pause', '/resume', '/adjust', '/stop', '/unremove']) {
     expect((await post('/admin' + path, { id, delta: 30 }, { ...ip, ...(await session(member)) })).status).toBe(401)
   }

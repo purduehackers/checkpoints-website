@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Badge, Spinner, aboutMin, api, fmt, signInUrl, signOutUrl, useLive, useTick, useUser, waitMs } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
-import { QUALITY, type Quality } from '../../shared/types'
+import { GRACE_MS, QUALITY, type Quality } from '../../shared/types'
 
 const SHARE_LABEL = { sharing: 'sharing', not_shared: 'not sharing', stopped: 'stopped' }
 
@@ -92,6 +92,8 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
             <div className="flex items-center gap-3">
               <div className="grow"><b>{c.name}</b> · {c.project}<div className="text-sm text-neutral-400">{c.away ? <span className="dots font-medium text-amber-400">disconnected</span> : <>{c.status === 'live' ? 'live' : 'getting ready'} · {SHARE_LABEL[c.shareState]}</>}</div></div>
               {(c.pausedLeft != null || c.deadline != null) && <span className={`text-2xl tabular-nums ${c.pausedLeft != null ? 'text-neutral-500' : ''}`}>{c.pausedLeft != null && '⏸ '}{fmt(c.pausedLeft ?? c.deadline! - now())}</span>}
+              {/* Save window: time ran out but the server keeps them live for GRACE_MS. Add time to bring them back. */}
+              {c.pausedLeft == null && c.deadline != null && c.deadline <= now() && <span className="rounded bg-red-600 px-2 py-1 text-sm font-semibold">Time's up · ends in {Math.max(0, Math.ceil((c.deadline + GRACE_MS - now()) / 1000))}s. Add time to keep them</span>}
               {c.pausedLeft != null && <span className="text-sm text-neutral-400">Paused</span>}
               {c.status === 'called' && <button className="rounded bg-green-600 px-3 py-1" onClick={() => act('/ready', { id: c.entryId })}>Start timer</button>}
               {c.status === 'called' && <button className="rounded bg-neutral-700 px-3 py-1" onClick={() => act('/skip', { id: c.entryId })}>Skip</button>}
@@ -100,7 +102,7 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
             </div>
             {c.status === 'live' && <div className="mt-3 flex gap-2">
               <button className="rounded bg-neutral-700 px-3 py-1" onClick={() => act(c.pausedLeft != null ? '/resume' : '/pause', { id: c.entryId })}>{c.pausedLeft != null ? 'Resume' : 'Pause'}</button>
-              <button className="rounded bg-neutral-700 px-3 py-1" onClick={() => act('/adjust', { id: c.entryId, delta: -30 })}>-30s</button>
+              <button className="rounded bg-neutral-700 px-3 py-1" onClick={() => act('/adjust', { id: c.entryId, delta: 15 })}>+15s</button>
               <button className="rounded bg-neutral-700 px-3 py-1" onClick={() => act('/adjust', { id: c.entryId, delta: 30 })}>+30s</button>
             </div>}
           </div>
