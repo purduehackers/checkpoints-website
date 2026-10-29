@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Badge, Spinner, aboutMin, adminKey, adminToken, api, fmt, useLive, useTick, waitMs } from '../lib/live'
+import { Badge, Spinner, aboutMin, api, fmt, signInUrl, signOutUrl, useLive, useTick, useUser, waitMs } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
 import { QUALITY, type Quality } from '../../shared/types'
@@ -7,28 +7,31 @@ import { QUALITY, type Quality } from '../../shared/types'
 const SHARE_LABEL = { sharing: 'sharing', not_shared: 'not sharing', stopped: 'stopped' }
 
 export default function Admin() {
-  const [authed, setAuthed] = useState(!!adminToken())
-  const [pass, setPass] = useState('')
-  const [error, setError] = useState('')
-  if (!authed) {
+  const user = useUser()
+  const [denied, setDenied] = useState(false)
+  if (user === undefined) return <main className="p-6">Loading…</main>
+  if (!user?.organizer || denied) {
     return (
       <main className="mx-auto max-w-sm space-y-3 p-6">
         <h1 className="text-2xl font-semibold">Organizer</h1>
-        <input type="password" placeholder="Passcode" value={pass} onChange={(e) => setPass(e.target.value)} className="w-full rounded bg-neutral-800 p-3" />
-        <button className="w-full rounded bg-amber-500 p-3 font-semibold text-black" onClick={async () => {
-          try {
-            const { token } = await api<{ token: string }>('/admin/login', { passcode: pass })
-            localStorage.setItem(adminKey, token); setAuthed(true)
-          } catch (e: any) { setError(e.message) }
-        }}>Enter</button>
-        {error && <p className="text-red-400">{error}</p>}
+        {user && !denied ? (
+          <>
+            <p className="text-neutral-300">Signed in as <b>{user.name}</b>, which isn't an organizer account. Ask an ID admin for the organizer role, then sign in again.</p>
+            <a href={signOutUrl()} className="block w-full rounded bg-neutral-700 p-3 text-center">Sign out</a>
+          </>
+        ) : (
+          <>
+            {denied && <p className="text-neutral-300">Your session ended. Sign in again.</p>}
+            <a href={signInUrl()} className="block w-full rounded bg-amber-500 p-3 text-center font-semibold text-black">Sign in with Purdue Hackers</a>
+          </>
+        )}
       </main>
     )
   }
-  return <Panel onDenied={() => { localStorage.removeItem(adminKey); setAuthed(false) }} />
+  return <Panel name={user.name} onDenied={() => setDenied(true)} />
 }
 
-function Panel({ onDenied }: { onDenied: () => void }) {
+function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
   const { state, online, denied, apply, now } = useLive('admin')
   useEffect(() => { if (denied) onDenied() }, [denied])
   const [error, setError] = useState('')
@@ -41,7 +44,7 @@ function Panel({ onDenied }: { onDenied: () => void }) {
 
   const act = (path: string, body?: object) => {
     setBusy(true)
-    return api('/admin' + path, body, true)
+    return api('/admin' + path, body)
       .then((s) => { setError(''); apply(s) })
       .catch((e) => (e.message === 'Not authorized' ? onDenied() : setError(e.message)))
       .finally(() => setBusy(false))
@@ -63,6 +66,7 @@ function Panel({ onDenied }: { onDenied: () => void }) {
       <Badge online={online} />
       {stats.on && <StatsOverlay history={history} title={statsStream && statsStream === c?.streamId ? `On stage: ${c.name}` : 'Previewed stream'} onClose={stats.toggle} />}
       <fieldset disabled={busy} className="min-w-0 space-y-4">
+        <p className="text-sm text-neutral-400">Hello, <b className="text-neutral-100">{name}</b> · <a href={signOutUrl()} className="underline">Sign out</a></p>
         <div className="flex flex-wrap items-center gap-2">
           {busy && <span className="late"><Spinner /></span>}
           {open ? <button className="rounded bg-red-700 px-3 py-2" onClick={() => confirm('End checkpoints?') && act('/session/end')}>End checkpoints</button>
