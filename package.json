@@ -17,6 +17,7 @@
     "@vdoninja/sdk": "^1.6.1",
     "astro": "^7.3.5",
     "elysia": "^1.4.30",
+    "openid-client": "^6.8.8",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tailwindcss": "^4.3.3"

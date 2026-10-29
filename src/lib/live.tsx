@@ -11,13 +11,21 @@ export const hackerToken = () => {
     return t
   } catch { return (window as any).__cpTok ??= uuid() }
 }
-export const adminKey = 'cp-admin'
-export const adminToken = () => { try { return localStorage.getItem(adminKey) ?? '' } catch { return '' } }
 
-export async function api<T = State>(path: string, body?: object, admin = false): Promise<T> {
+// The organizer signed in with Purdue Hackers ID. The session is an HttpOnly cookie, so the page asks the server.
+export type User = { sub: string; name: string; organizer: boolean }
+export function useUser() {
+  const [user, setUser] = useState<User | null | undefined>(undefined) // undefined while loading
+  useEffect(() => { fetch('/api/me').then((r) => r.json()).then((j) => setUser(j.user ?? null), () => setUser(null)) }, [])
+  return user
+}
+export const signInUrl = (next = location.pathname) => `/api/auth/login?next=${encodeURIComponent(next)}`
+export const signOutUrl = (next = location.pathname) => `/api/auth/logout?next=${encodeURIComponent(next)}`
+
+export async function api<T = State>(path: string, body?: object): Promise<T> {
   const r = await fetch('/api' + path, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...(admin && { 'x-admin-token': adminToken() }) },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body ?? {}),
   })
   const j = await r.json()
@@ -29,7 +37,7 @@ export async function api<T = State>(path: string, body?: object, admin = false)
 export function useLive(role: Role, onReactions?: (counts: Record<string, number>) => void) {
   const [state, setState] = useState<State | null>(null)
   const [online, setOnline] = useState(false)
-  const [denied, setDenied] = useState(false) // admin token refused (passcode changed or bad token)
+  const [denied, setDenied] = useState(false) // admin socket refused (session expired or not an organizer)
   const skew = useRef(0)
   const sock = useRef<WebSocket>(null)
   const [notice, setNotice] = useState<{ text: string; until: number; slowUntil: number } | null>(null) // from the reaction spam guard
@@ -44,7 +52,7 @@ export function useLive(role: Role, onReactions?: (counts: Record<string, number
       ws = sock.current = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`)
       ws.onopen = () => {
         delay = 500
-        ws.send(JSON.stringify({ role, token: role === 'hacker' ? hackerToken() : undefined, adminToken: role === 'admin' ? adminToken() : undefined }))
+        ws.send(JSON.stringify({ role, token: role === 'hacker' ? hackerToken() : undefined }))
       }
       ws.onmessage = (e) => {
         const m = JSON.parse(e.data)
