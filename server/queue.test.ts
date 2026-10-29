@@ -2,6 +2,7 @@ import { afterEach, beforeAll, expect, setSystemTime, test } from 'bun:test'
 
 process.env.TURSO_DATABASE_URL = ':memory:'
 const q = await import('./queue')
+const { GRACE_MS } = await import('../shared/types')
 const { db } = await import('./db')
 
 // Other test files share this in-memory DB: always start from a fresh checkpoint.
@@ -80,11 +81,11 @@ test('quality, projector audio and reactions round-trip; bad quality is rejected
   await q.setReactions(true)
 })
 
-test('expire ends a live slot at its deadline, not before', async () => {
+test('expire ends a live slot GRACE_MS after its deadline, not before', async () => {
   const { deadline } = (await host()).current!
-  await q.expire(deadline! - 1)
-  expect((await host()).current).not.toBeNull()
-  await q.expire(deadline!)
+  await q.expire(deadline! + GRACE_MS - 1)
+  expect((await host()).current).toMatchObject({ name: 'Ada', status: 'live' })
+  await q.expire(deadline! + GRACE_MS)
   expect((await host()).current).toMatchObject({ name: 'Cy', status: 'called' }) // auto-advanced
   expect((await q.loadState('hacker', 'tok-aaaaaaaa')).me?.status).toBe('done')
 })
@@ -277,22 +278,30 @@ test('pause freezes time past the old deadline; resume restores the remaining ti
   expect((await cur())!.deadline).toBe(now + 44_000)
 })
 
-test('adjust adds and subtracts running time, clamped at zero until expire', async () => {
+test('adjust +30 / +15 add to the remaining running time', async () => {
   await fresh('A', 'B')
   await live('aa-A-xxxx')
   const { entryId, deadline } = (await cur())!
-  const now = freeze(deadline! - 20_000)
+  freeze(deadline! - 20_000)
   await q.adjust(entryId, 30)
   expect(await cur()).toMatchObject({ deadline: deadline! + 30_000, pausedLeft: null })
-  await q.adjust(entryId, -30)
-  expect((await cur())!.deadline).toBe(deadline)
-  await q.adjust(entryId, -30)
-  expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: now, pausedLeft: null })
-  await q.expire(now)
-  expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
+  await q.adjust(entryId, 15)
+  expect((await cur())!.deadline).toBe(deadline! + 45_000)
 })
 
-test('adjust adds and subtracts paused time, clamped at zero without expiring', async () => {
+test('negative or odd deltas are ignored', async () => {
+  await fresh('A')
+  await live('aa-A-xxxx')
+  const { entryId, deadline } = (await cur())!
+  freeze(deadline! - 20_000)
+  for (const d of [-30, -15, 0, 1, 10, 45, 60, NaN, Infinity]) await q.adjust(entryId, d)
+  expect(await cur()).toMatchObject({ deadline, pausedLeft: null })
+  await q.pause(entryId)
+  for (const d of [-30, 0, 20, 45]) await q.adjust(entryId, d)
+  expect(await cur()).toMatchObject({ deadline: null, pausedLeft: 20_000 })
+})
+
+test('adjust adds paused time', async () => {
   await fresh('A')
   await live('aa-A-xxxx')
   const { entryId, deadline } = (await cur())!
@@ -300,17 +309,53 @@ test('adjust adds and subtracts paused time, clamped at zero without expiring', 
   await q.pause(entryId)
   await q.adjust(entryId, 30)
   expect(await cur()).toMatchObject({ deadline: null, pausedLeft: 50_000 })
-  await q.adjust(entryId, -30)
-  expect((await cur())!.pausedLeft).toBe(20_000)
-  await q.adjust(entryId, -30)
   const now = freeze(deadline! + 60_000)
-  await q.expire(now)
-  expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: null, pausedLeft: 0 })
+  await q.expire(now) // paused is never ended
+  expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: null, pausedLeft: 50_000 })
   await q.resume(entryId)
-  expect(await cur()).toMatchObject({ deadline: now, pausedLeft: null })
-  freeze(now + 1000)
+  expect(await cur()).toMatchObject({ deadline: now + 50_000, pausedLeft: null })
+})
+
+test('save window: live at deadline+10s, done at deadline+15s; the next person is called only then', async () => {
+  await fresh('A', 'B')
+  await live('aa-A-xxxx')
+  const { entryId, deadline } = (await cur())!
+  await q.expire(deadline! + 10_000)
+  expect(await cur()).toMatchObject({ entryId, status: 'live', deadline })
+  expect(await status('B')).toBe('waiting') // not called during the grace window
+  expect(await calledOrLive()).toBe(1)
+  await q.expire(deadline! + GRACE_MS)
+  expect(await status('A')).toBe('done')
+  expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
+})
+
+test('+15 in the save window brings them back with 15s from now', async () => {
+  await fresh('A', 'B')
+  await live('aa-A-xxxx')
+  const { entryId, deadline } = (await cur())!
+  const now = freeze(deadline! + 10_000)
+  await q.adjust(entryId, 15)
+  expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: now + 15_000 })
+  await q.expire(deadline! + GRACE_MS + 1_000) // the old cutoff has passed, the new clock hasn't
+  expect(await cur()).toMatchObject({ entryId, status: 'live' })
+  await q.expire(now + 15_000 + GRACE_MS)
+  expect(await status('A')).toBe('done')
+})
+
+test('pausing in the save window holds them; +30 then resume gives 30s', async () => {
+  await fresh('A', 'B')
+  await live('aa-A-xxxx')
+  const { entryId, deadline } = (await cur())!
+  let now = freeze(deadline! + 5_000)
   await q.pause(entryId)
-  expect((await cur())!.pausedLeft).toBe(0)
+  expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: null, pausedLeft: 0 })
+  await q.expire(deadline! + 60_000)
+  expect(await cur()).toMatchObject({ entryId, status: 'live', pausedLeft: 0 })
+  await q.adjust(entryId, 30)
+  expect((await cur())!.pausedLeft).toBe(30_000)
+  now = freeze(now + 60_000)
+  await q.resume(entryId)
+  expect(await cur()).toMatchObject({ deadline: now + 30_000, pausedLeft: null })
 })
 
 test('pause, resume and adjust on non-live or unknown entries are no-ops', async () => {
@@ -321,7 +366,7 @@ test('pause, resume and adjust on non-live or unknown entries are no-ops', async
     await q.pause(id)
     await q.resume(id)
     await q.adjust(id, 30)
-    await q.adjust(id, -30)
+    await q.adjust(id, 15)
   }
   expect(await q.snapshot()).toEqual(before)
 })
@@ -371,7 +416,7 @@ test('pausing one presenter never pauses the next one', async () => {
   await q.stop(a)
   await live('aa-B-xxxx')
   const { deadline } = (await cur())!
-  await q.expire(deadline!) // B's clock runs and ends on time
+  await q.expire(deadline! + GRACE_MS) // B's clock runs and ends on time
   expect(await status('B')).toBe('done')
 })
 
@@ -443,7 +488,7 @@ test('expire, end, stop advance to the first waiting person', async () => {
   await fresh('A', 'B', 'C', 'D')
   await live('aa-A-xxxx')
   const { deadline } = (await cur())!
-  await q.expire(deadline!)
+  await q.expire(deadline! + GRACE_MS)
   expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
   expect((await host()).queue.map((e) => e.name)).toEqual(['C', 'D'])
   await live('aa-B-xxxx')
@@ -482,7 +527,7 @@ test('concurrent finishes never leave two called/live entries', async () => {
   await live('aa-A-xxxx')
   const { deadline } = (await cur())!
   const a = (await cur())!.entryId
-  await Promise.all([q.stop(a), q.stop(a), q.expire(deadline!), q.end('aa-A-xxxx')])
+  await Promise.all([q.stop(a), q.stop(a), q.expire(deadline! + GRACE_MS), q.end('aa-A-xxxx')])
   expect(await calledOrLive()).toBe(1)
   expect((await cur())!.name).toBe('B') // the repeated stops of A never touch B
   await q.stop(a) // late click on someone already finished

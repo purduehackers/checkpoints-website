@@ -1,6 +1,6 @@
 // All SQL and every state transition lives here.
 import { db, ready } from './db'
-import { QUALITY, type Current, type QueueItem, type Role, type ShareState, type State } from '../shared/types'
+import { GRACE_MS, QUALITY, type Current, type QueueItem, type Role, type ShareState, type State } from '../shared/types'
 
 const DISCONNECTED_MS = 3 * 60_000 // US-2.4 grace period
 const BYE_GRACE_MS = 5_000 // closed tab -> out of the line; long enough for a refresh to reconnect
@@ -169,11 +169,16 @@ export const pause = (id: string) =>
   run(`UPDATE queue_entries SET paused_left = MAX(0, deadline - ?), deadline = NULL WHERE id = ? AND status = 'live' AND deadline IS NOT NULL`, [Date.now(), id])
 export const resume = (id: string) =>
   run(`UPDATE queue_entries SET deadline = ? + paused_left, paused_left = NULL WHERE id = ? AND status = 'live' AND paused_left IS NOT NULL`, [Date.now(), id])
-export const adjust = (id: string, deltaSec: number) =>
-  run(`UPDATE queue_entries SET
-    deadline = CASE WHEN deadline IS NOT NULL THEN MAX(?, deadline + ?) END,
-    paused_left = CASE WHEN paused_left IS NOT NULL THEN MAX(0, paused_left + ?) END
-    WHERE id = ? AND status = 'live'`, [Date.now(), deltaSec * 1000, deltaSec * 1000, id])
+// Only the organizer's +15 / +30 s buttons. Past the deadline (save window) the time restarts from now, not
+// from the stale deadline. Paused entries just gain paused_left; anything else is ignored.
+export const adjust = (id: string, deltaSec: number) => {
+  if (deltaSec !== 15 && deltaSec !== 30) return
+  const ms = deltaSec * 1000
+  return run(`UPDATE queue_entries SET
+    deadline = CASE WHEN deadline IS NOT NULL THEN MAX(?, deadline) + ? END,
+    paused_left = CASE WHEN paused_left IS NOT NULL THEN paused_left + ? END
+    WHERE id = ? AND status = 'live'`, [Date.now(), ms, ms, id])
+}
 
 // The hacker's own Ready needs a running share, so the clock never starts on a blank screen.
 // adminReady stays unconditional: the organizer's override (e.g. someone on the backup share).
@@ -241,7 +246,8 @@ export async function expire(now = Date.now()) {
   if (s && ((s.admin_seen_at != null && s.admin_seen_at <= now - ADMIN_GONE_MS) || (s.active_at != null && !s.live && s.active_at <= now - DORMANT_MS))) {
     return endSession()
   }
-  const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE status = 'live' AND deadline <= ?`, [now])
+  // Time up is not the end: they stay live for GRACE_MS so the organizer can add time. Paused rows have a NULL deadline.
+  const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE status = 'live' AND deadline <= ?`, [now - GRACE_MS])
   if (n) await advanceOpen()
   await sweepByes(now)
   await advanceOpen() // the invariant, last: covers every path above and slots finished elsewhere

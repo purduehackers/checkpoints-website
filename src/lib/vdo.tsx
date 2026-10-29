@@ -16,23 +16,23 @@ const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
 const noAudioBrowser = /firefox|^((?!chrome|android).)*safari/i.test(ua)
 const linux = /linux/i.test(ua) && !/android/i.test(ua)
 const mac = /macintosh/i.test(ua)
-const tabHint = linux ? ' Try sharing a browser tab instead, which avoids the system picker.' : ''
+const tabHint = linux ? ' Try sharing a browser tab.' : ''
 // getDisplayMedia failures, in plain words. The raw name stays so a screenshot tells us what broke.
 // A plain NotAllowedError is the hacker cancelling; "by system" is the OS refusing.
 function captureError(e: unknown): { msg: string; retry: boolean } {
   const name = String((e as Error)?.name ?? 'Error')
   const denied = name === 'NotAllowedError' && /system/i.test(String((e as Error)?.message))
   // On Linux a broken portal also surfaces as a plain NotAllowedError, so offer the fallbacks there.
-  if (name === 'NotAllowedError' && !denied) return { msg: `Sharing was cancelled or blocked.${tabHint} (${name})`, retry: linux }
+  if (name === 'NotAllowedError' && !denied) return { msg: `Sharing was cancelled.${tabHint} (${name})`, retry: linux }
   const msg = denied && mac ? 'Your Mac blocked screen sharing. Allow your browser in System Settings › Privacy & Security › Screen Recording, then restart it.'
-    : denied || name === 'NotReadableError' || name === 'AbortError' ? "Your computer couldn't start the screen capture." + tabHint
+    : denied || name === 'NotReadableError' || name === 'AbortError' ? 'Screen capture failed to start.' + tabHint
     : 'Screen share failed.'
   return { msg: `${msg} (${name})`, retry: true }
 }
 // getUserMedia failures, same idea as captureError.
 function cameraError(e: unknown): string {
   const name = String((e as Error)?.name ?? 'Error')
-  const msg = name === 'NotAllowedError' ? 'Camera access was blocked. Allow the camera for this site in your browser settings, then try again.'
+  const msg = name === 'NotAllowedError' ? 'Camera blocked. Allow it in your browser settings.'
     : name === 'NotFoundError' || name === 'OverconstrainedError' ? 'No camera found.'
     : 'Camera failed to start.'
   return `${msg} (${name})`
@@ -123,7 +123,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
         if (old && stream.current === old) { stop(); report('stopped') }
         return setError('Camera failed to start. (EmptyCapture)')
       }
-      return setError(`The screen capture produced no video.${tabHint} (EmptyCapture)`)
+      return setError(`No video from the capture.${tabHint} (EmptyCapture)`)
     }
     stop() // "Change window" / "Flip camera": replace the previous share. Claimed before any await, so a newer share() or stop() makes this one bail below.
     stream.current = s
@@ -192,18 +192,17 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
           </button>
         )}
       </div>
-      {backup && <p className="mt-2 rounded bg-neutral-800 p-2 text-sm">You’re using the backup share in another tab. Close it before sharing here. <button className="underline" onClick={() => setBackup(false)}>Share here instead</button></p>}
-      {state === 'stopped' && !backup && <p className="mt-2 rounded bg-red-900 p-2 text-sm">Your share stopped. Click “Share again”.</p>}
-      {state === 'not_shared' && !backup && camera && <p className="mt-2 text-sm text-neutral-400">On mobile you can only share your camera. Only the organizer sees it until you go live.</p>}
-      {state === 'not_shared' && !backup && !camera && <p className="mt-2 text-sm text-neutral-400">Pick “Entire screen”. For sound on the projector, share a browser tab instead and tick “Share audio”. Only the organizer sees it until you go live.{linux && ' On Linux, a browser tab is the most reliable choice.'}</p>}
+      {backup && <p className="mt-2 rounded bg-neutral-800 p-2 text-sm">Backup share is open in another tab. <button className="underline" onClick={() => setBackup(false)}>Share here instead</button></p>}
+      {state === 'stopped' && !backup && <p className="mt-2 rounded bg-red-900 p-2 text-sm">Your share stopped.</p>}
+      {state === 'not_shared' && !backup && <p className="mt-2 text-sm text-neutral-400">{camera ? 'On mobile you can only share your camera.' : 'Pick a screen to share.'}</p>}
       {state === 'sharing' && camera && (
         <p className="mt-2 text-sm"><span className="text-green-400">Sharing your camera.</span> <button className="underline" onClick={() => share(false, facing === 'user' ? 'environment' : 'user')}>Flip camera</button></p>
       )}
       {state === 'sharing' && !camera && (
         <p className="mt-2 text-sm">
-          {hasAudio ? <span className="text-green-400">Sharing with sound{live ? '' : ' (plays on the projector once you’re live)'}.</span>
-            : noAudioBrowser ? <span className="text-amber-400">This browser can’t share sound. Use Chrome or Edge if your demo needs audio.</span>
-            : <span className="text-neutral-400">No sound. To play sound, use “Change window”, share a browser tab and tick “Share audio”.</span>}{' '}
+          {hasAudio ? <span className="text-green-400">Sharing with sound</span>
+            : noAudioBrowser ? <span className="text-amber-400">This browser can’t share sound.</span>
+            : <span className="text-neutral-400">No sound. Share a tab to include sound.</span>}{' '}
           <button className="underline" onClick={() => share()}>Change window</button>
         </p>
       )}
@@ -211,7 +210,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
       {/* Fallback: vdo.ninja's own share page, publishing to the same stream the projector watches.
           Stop and disconnect ours first, so the stream ID is free and two publishers don't fight. The server sees "not sharing", so Ready goes through "Present without sharing". */}
       <a className="mt-3 block rounded-lg border border-neutral-600 px-4 py-3 text-center font-medium text-neutral-200 hover:bg-neutral-800" href={`https://vdo.ninja/?push=${streamId}${camera ? '' : '&screenshare'}`} target="_blank" rel="noopener noreferrer"
-        onClick={() => { stop(); sdk.current?.disconnect().catch(() => {}); sdk.current = null; setBackup(true); setError(''); report('not_shared') }}>Having trouble? Use backup {camera ? 'camera ' : ''}share, then press “Present without sharing”.</a>
+        onClick={() => { stop(); sdk.current?.disconnect().catch(() => {}); sdk.current = null; setBackup(true); setError(''); report('not_shared') }}>Having trouble? Use backup share.</a>
       {stats && <StatsOverlay history={history} title="Your stream" onClose={onCloseStats} />}
     </div>
   )

@@ -7,13 +7,36 @@ import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../li
 // The projector may be opened on an old/preview URL, so the shown address can be pinned (build-time var).
 const pinnedHost = import.meta.env.PUBLIC_JOIN_HOST
 
+const say = (text: string) => {
+  try {
+    const synth = window.speechSynthesis
+    if (!synth) return
+    synth.cancel() // don't stack announcements
+    const u = new SpeechSynthesisUtterance(text)
+    u.rate = 0.95
+    synth.speak(u)
+  } catch { /* speech is a nicety */ }
+}
+
 export default function Host() {
   const joinHost = pinnedHost || location.host
   const reactBox = useRef<HTMLDivElement>(null)
   const { state, online, now } = useLive('host', (counts) => spawn(reactBox.current, counts))
   const [idle, setIdle] = useState(false)
   const [hasVideo, setHasVideo] = useState<boolean | null>(null) // from the iframe (null: it hasn't answered); a backup share has video while shareState is not_shared
+  const [announce, setAnnounce] = useState(() => { try { return localStorage.getItem('cp-announce') !== '0' } catch { return true } })
+  const prevCalled = useRef<string | null | undefined>(undefined) // undefined: no state yet, so a refresh never announces
   useTick()
+
+  // Chrome blocks speech until a click, so the first button click speaks an empty utterance to unlock it.
+  const unlock = () => { try { window.speechSynthesis?.speak(new SpeechSynthesisUtterance('')) } catch { /* ignore */ } }
+  const toggleAnnounce = () => {
+    unlock()
+    const next = !announce
+    setAnnounce(next)
+    try { localStorage.setItem('cp-announce', next ? '1' : '0') } catch { /* private mode */ }
+    if (!next) try { window.speechSynthesis?.cancel() } catch { /* ignore */ }
+  }
 
   // Hide the cursor after 3s without movement.
   useEffect(() => {
@@ -32,8 +55,21 @@ export default function Host() {
   const inPerson = !!live && c!.shareState !== 'sharing' && hasVideo !== true // "Present without sharing": nothing to project
   // If vdo.ninja never answers, we can't rule out a backup share, so the frame shrinks to a corner instead of hiding.
   const pip = inPerson && hasVideo === null
-  const timer = left !== null && <div className={`rounded px-3 py-1 font-bold tabular-nums ${c?.pausedLeft != null ? 'bg-neutral-900/80 text-neutral-500' : left <= 30_000 ? 'bg-red-600' : 'bg-neutral-900/80'}`}>{c?.pausedLeft != null && '⏸ '}{fmt(left)}</div>
+  const timeUp = left !== null && left <= 0 && c?.pausedLeft == null // in the GRACE_MS save window the presenter is still live
+  const timer = left !== null && <div className={`rounded px-3 py-1 font-bold tabular-nums ${c?.pausedLeft != null ? 'bg-neutral-900/80 text-neutral-500' : left <= 30_000 ? 'bg-red-600' : 'bg-neutral-900/80'}`}>{c?.pausedLeft != null && '⏸ '}{timeUp ? "TIME'S UP" : fmt(left)}</div>
   const history = useRemoteStats(live ? c!.streamId! : null, stats.on)
+  const queue = state?.queue ?? []
+  const next = queue[0]
+
+  // Announce only on a transition into 'called' (not on load).
+  const calledKey = state ? (c?.status === 'called' ? `${c.entryId}` : null) : undefined
+  useEffect(() => {
+    if (calledKey === undefined) return
+    const prev = prevCalled.current
+    prevCalled.current = calledKey
+    if (prev === undefined || calledKey === null || calledKey === prev || !announce) return
+    say(`${c!.name} is next. ${c!.name}, please go to the podium.`)
+  }, [calledKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <main className={`relative flex h-screen flex-col ${idle ? 'cursor-none' : ''}`}>
@@ -44,7 +80,8 @@ export default function Host() {
       {live ? (
         <>
           <div className="flex items-center gap-4 bg-neutral-900 px-6 py-3 text-2xl"><b>{c!.name}</b><span className="text-neutral-400">{c!.project}</span>
-            {open && <span className="ml-auto text-xl">Join at <b className="text-amber-400">{joinHost}</b></span>}</div>
+            {next && <span className="ml-auto text-2xl">Up next: <b className="text-amber-400">{next.name}</b></span>}
+            {open && <span className={`text-xl ${next ? '' : 'ml-auto'}`}>Join at <b className="text-amber-400">{joinHost}</b></span>}</div>
           {/* The frame stays mounted behind the screen, so a backup share that starts later flips to video. */}
           <div className="relative flex grow flex-col">
             <ViewFrame streamId={c!.streamId!} className={pip ? 'absolute bottom-4 right-4 z-20 aspect-video w-96 overflow-hidden rounded-lg bg-black' : 'w-full grow bg-black'} muted={!audio} onVideo={setHasVideo} />
@@ -65,18 +102,20 @@ export default function Host() {
           {state && !state.session && <p className="text-2xl text-neutral-400">Waiting for an organizer to start</p>}
           {state?.session && !open && <p className="text-3xl">Checkpoints have ended. Thanks for coming!</p>}
           {open && <p className="text-4xl">Join at <b className="text-amber-400">{joinHost}</b></p>}
-          {c?.status === 'called' && <p className="max-w-4xl text-5xl leading-tight"><b className="text-green-400">{c.name}</b>, you're up!<br />Walk to the front and press <b>Start presenting</b> on your laptop.</p>}
-          {open && !c && state!.queue[0] && <p className="text-2xl">Up next: <b>{state!.queue[0].name}</b></p>}
-          {open && (
+          {c?.status === 'called' && <p className="max-w-4xl text-5xl leading-tight"><b className="text-green-400">{c.name}</b>, go to the podium</p>}
+          {open && next && <p className="text-4xl">Up next: <b className="text-amber-400">{next.name}</b></p>}
+          {open && queue.length > 0 && (
             <ol className="space-y-1 text-xl text-neutral-300">
-              {state!.queue.map((e, i) => <li key={e.id}>{i + 1}. {e.name} · <span className="text-neutral-500">{e.project}</span></li>)}
+              {queue.slice(0, 5).map((e, i) => <li key={e.id}>{i + 1}. {e.name} · <span className="text-neutral-500">{e.project}</span></li>)}
+              {queue.length > 5 && <li className="text-neutral-500">+{queue.length - 5} more</li>}
             </ol>
           )}
         </div>
       )}
       <div className="absolute bottom-3 right-3 flex gap-2 opacity-60 hover:opacity-100">
         <StatsButton onClick={stats.toggle} />
-        <button className="rounded bg-neutral-800 px-3 py-1" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>Fullscreen</button>
+        <button className="rounded bg-neutral-800 px-3 py-1" onClick={toggleAnnounce}>{announce ? '🔊' : '🔇'} Announce names</button>
+        <button className="rounded bg-neutral-800 px-3 py-1" onClick={() => { unlock(); document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen() }}>Fullscreen</button>
       </div>
     </main>
   )
