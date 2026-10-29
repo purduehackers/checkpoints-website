@@ -61,7 +61,7 @@ export default function Hacker() {
   const [form, setForm] = useState({ name: '', project: '' })
   const [shareState, setShareState] = useState<ShareState>('not_shared')
   const reported = useRef<ShareState>('not_shared')
-  const shareFn = useRef<(() => boolean) | null>(null) // ShareBox's share(), so Start presenting can open the picker (or camera)
+  const shareFn = useRef<(() => void) | null>(null) // ShareBox's share(), so Start presenting can open the picker (or camera)
   const autoReady = useRef(false) // /ready already sent for this call: a re-render or a share restart must not send it twice
   const stats = useStatsToggle()
   const [replay, setReplay] = useState(0) // "How it works" remounts the tour
@@ -102,8 +102,9 @@ export default function Hacker() {
   const start = () => {
     if (shareState === 'sharing') return act('/ready') // retry, if the automatic one failed
     // Opens the picker (or camera); the effect above goes live once it connects.
-    // No share possible here (unsupported browser, or the backup tab is publishing): start without one.
-    if (!canShare || shareFn.current?.() === false) act('/ready', { noShare: true })
+    // No share possible here (unsupported browser): start without one.
+    if (!canShare) act('/ready', { noShare: true })
+    else shareFn.current?.()
   }
 
   // Chime + notification on transitions only, not on a refresh that lands already in that state (prev is null until the first state).
@@ -118,6 +119,20 @@ export default function Hacker() {
     prevStatus.current = me?.status ?? ''
     prevPos.current = me?.status === 'waiting' ? me.position : null
   }, [!!state, me?.status, me?.position])
+
+  // Time warnings while live: "15 seconds left" and "Time's up!", once per crossing (adding time re-arms them).
+  // Compared with the last reading for this entry, so a load or refresh already past a line stays quiet; paused fires nothing.
+  const msTotal = cur?.pausedLeft ?? (cur?.deadline != null ? cur.deadline - now() : null)
+  const prevMs = useRef<{ id: string; ms: number } | null>(null)
+  useEffect(() => {
+    const live = me?.status === 'live' && cur?.pausedLeft == null && msTotal !== null
+    const prev = prevMs.current
+    if (live && prev?.id === me.entryId) {
+      if (prev.ms > 15_000 && msTotal <= 15_000 && msTotal > 0) notify('15 seconds left')
+      else if (prev.ms > 0 && msTotal <= 0) notify("Time's up!")
+    }
+    prevMs.current = live ? { id: me.entryId, ms: msTotal } : null
+  }, [msTotal !== null && Math.floor(msTotal / 250), me?.status, me?.entryId, cur?.pausedLeft])
 
   // US-4.1 / 4.2 alerts: tab title + the "up next" banner (browser notifications are above).
   const key = me ? `${me.status}:${me.position}` : ''
@@ -137,8 +152,6 @@ export default function Hacker() {
   }, [active, token])
 
   if (!state) return <Shell><Badge online={online} /><p className="flex items-center gap-3"><Spinner className="size-5" />Loading…</p></Shell>
-
-  const msTotal = cur?.pausedLeft ?? (cur?.deadline != null ? cur.deadline - now() : null)
 
   // The server keeps a presenter live for a save window (GRACE_MS) past the deadline: say so, keep sharing, end nothing here.
   const timeUp = me?.status === 'live' && cur?.pausedLeft == null && msTotal !== null && msTotal <= 0
@@ -200,7 +213,7 @@ export default function Hacker() {
         ) : (
           <p className="rounded bg-neutral-800 p-3 text-sm">{phone ? 'No camera access in this browser.' : 'Screen sharing needs Chrome or Edge.'}</p>
         )}
-        {/* Take the stage with no share from this page: talk-only, a phone, or the backup share. */}
+        {/* Take the stage with no share from this page: talk-only, or a browser that can't share. */}
         {/* Shown while waiting too, so people find it early; Ready only works once called. */}
         {me.status !== 'live' && shareState !== 'sharing' && (
           <button disabled={me.status !== 'called'} className="w-full rounded-lg border border-green-500 px-4 py-3 font-medium text-green-400 disabled:border-neutral-700 disabled:text-neutral-500"

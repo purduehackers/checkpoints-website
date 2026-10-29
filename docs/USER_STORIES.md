@@ -99,7 +99,7 @@ Identity for the MVP: a hacker is a random token stored in their browser (one qu
 - The flow is the same as on a laptop: join, wait, get called, **Start presenting**. iPads count as phones.
 - Start presenting opens the back camera. A "Flip camera" button switches to the front one.
 - No microphone sound is sent, so a phone near the speakers can't cause feedback.
-- The share box says "On mobile you can only share your camera." The backup link is `https://vdo.ninja/?push=<id>` (no `&screenshare`).
+- The share box says "On mobile you can only share your camera."
 
 ---
 
@@ -108,14 +108,14 @@ Identity for the MVP: a hacker is a random token stored in their browser (one qu
 ### ✅ US-4.1 Up-next alert (MVP, M)
 *As a hacker, I'm alerted when I'm next, so I don't miss my turn while I'm heads-down.*
 - When I become #1 in line, my page highlights itself (a full-page color pulse).
-- No browser notifications: the permission prompt at join confused people. A Discord ping may replace them later.
+- Browser notifications (permission asked from the Join click): 3rd in line, 2nd in line, up next, my turn, 15 seconds left, and time's up. They fail silently where unsupported (iOS Safari outside a home-screen app).
 - The tab title changes, for example "You're up next! · Checkpoints".
 
 ### ✅ US-4.2 Ready screen (MVP, M)
 *As a hacker, when the organizer calls me, my page dims and shows a big Ready button, so I can walk to the podium before my screen goes up.*
 - On "called", if I'm not sharing yet, my page asks me to share first. Once I'm sharing, it shows a full-screen dimmed overlay with a large **Ready** button. The server refuses my Ready until I'm sharing, so the clock never runs before my screen is up.
 - The projector shows "Up now: <name> · <project>" with a "getting ready" state. My screen is not on the projector yet.
-- The organizer can also press Ready for me (for example from the podium laptop, or when I'm using the backup share). This works even if I'm not sharing.
+- The organizer can also press Ready for me (for example from the podium laptop). This works even if I'm not sharing.
 
 ### ✅ US-4.3 Go live (MVP, M)
 *As the projector, I show the presenter's screen with their name and project above it once they press Ready.*

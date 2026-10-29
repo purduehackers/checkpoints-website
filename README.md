@@ -17,6 +17,7 @@ There are three pages:
 | `/` | Hackers: join the line and share a screen |
 | `/admin` | You: run the queue |
 | `/host` | The projector |
+| `/timer` | A big countdown for the speaker (optional second screen) |
 
 ## Before the night (5 minutes)
 
@@ -75,7 +76,7 @@ The row under each name shows whether that person is **sharing**, **not sharing*
 | A "reconnecting…" badge stays on | Check the network connection. The page reconnects by itself |
 | The line is full of fake names | Click **End checkpoints**, then **Start checkpoint**. This starts a fresh, empty line |
 | A hacker's share fails with an error name in brackets, like `(NotReadableError)` | Have them click **Try basic share**. If that fails too, share a browser tab. Screenshot the error and send it to the devs |
-| A share still won't work | Have them click **Use backup share** at the bottom of their page. It opens vdo.ninja's own screen share. Then they press **Present without sharing**, or you press **Start timer** for them. Last resort: plug their laptop into the projector over HDMI |
+| A share still won't work | Have them press **Present without sharing** to talk without a share, or you press **Start timer** for them. Last resort: plug their laptop into the projector over HDMI |
 | `/admin` says your account isn't an organizer | Ask an ID admin for the organizer role, then click **Sign out** and sign in again. Role changes apply at the next sign-in |
 
 ## Keeping it safe
