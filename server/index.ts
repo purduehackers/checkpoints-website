@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia'
+import { timingSafeEqual } from 'node:crypto'
 import * as q from './queue'
-import * as auth from './auth'
 import { QUALITY, REACTIONS, type Role, type State } from '../shared/types'
 
 // ?? Assumes Vercel Pro and ~1s latency. Each tick is a few Turso reads per socket-holding instance, however
@@ -12,7 +12,17 @@ const MAX_SUBS = 500 // sockets per instance; a hack night needs ~1 per person
 // machine from hogging the server, not a room. Bigger floods are for Vercel's firewall.
 const IP_SOCKETS = 100
 const IP_REQUESTS = 300, IP_WINDOW_MS = 10_000
+const LOGIN_TRIES = 10, LOGIN_WINDOW_MS = 15 * 60_000
 
+// TEMP for testing this branch: squid sign-in is off and the passcode is fixed at 123. Put squid back before merging.
+const passcode = () => '123'
+const adminToken = () => new Bun.CryptoHasher('sha256', passcode()).update('admin').digest('hex')
+// Constant-time; anything that isn't a string (from JSON over the socket) is simply wrong.
+const same = (a: unknown, b: string) => {
+  const x = Buffer.from(typeof a === 'string' ? a : ''), y = Buffer.from(b)
+  return x.length === y.length && timingSafeEqual(x, y)
+}
+const isAdmin = (t: unknown) => same(t, adminToken())
 const fail = (message: string, status: number) => Object.assign(new Error(message), { status })
 
 // Fixed-window counters, in memory per instance (Vercel may run a few). x-real-ip is set by Vercel.
@@ -133,10 +143,6 @@ export const app = new Elysia({
       set.status = 429
       return { error: 'Too many requests. Slow down.' }
     }
-    if (request.method !== 'GET' && !auth.sameOrigin(request.headers)) {
-      set.status = 403
-      return { error: 'Cross-site request refused' }
-    }
   })
   .onError(({ code, error, set }) => {
     if (code === 'NOT_FOUND') { set.status = 404; return { error: 'Not found' } }
@@ -149,12 +155,6 @@ export const app = new Elysia({
   })
   .get('/health', () => ({ ok: true }))
 
-  // sign-in with Purdue Hackers ID
-  .get('/auth/login', ({ request }) => auth.login(request))
-  .get('/auth/callback', ({ request }) => auth.callback(request))
-  .get('/auth/logout', ({ request }) => auth.logout(request))
-  .get('/me', ({ headers, set }) => (set.headers['cache-control'] = 'no-store', { user: auth.userOf(headers.cookie) }))
-
   // hacker
   .post('/join', async ({ body }) => (await q.join(body.token, body.name, body.project), reply('hacker', body.token)),
     { body: t.Object({ token: tok, name: t.String({ maxLength: 200 }), project: t.String({ maxLength: 200 }) }) })
@@ -166,12 +166,20 @@ export const app = new Elysia({
   .post('/share-state', async ({ body }) => (await q.setShare(body.token, body.state), reply('hacker', body.token)),
     { body: t.Object({ token: tok, state: t.Union([t.Literal('not_shared'), t.Literal('sharing'), t.Literal('stopped')]) }) })
 
-  // admin: the organizer role from ID (ID's admin role includes it)
+  // admin
+  .post('/admin/login', ({ body, request, server }) => {
+    // Every attempt counts, so guessing is slow; a long random passcode is still the real defence.
+    if (!allow('login:' + ipOf(request, server), LOGIN_TRIES, LOGIN_WINDOW_MS)) {
+      throw fail('Too many attempts. Try again in 15 minutes.', 429)
+    }
+    if (!same(body.passcode, passcode())) throw fail('Wrong passcode', 401)
+    return { token: adminToken() }
+  }, { body: t.Object({ passcode: t.String({ maxLength: 200 }) }) })
   .group('/admin', (g) =>
     g
       // transform runs before body validation, so unauthenticated callers learn nothing about the schema
       .onTransform(({ headers }) => {
-        if (!auth.userOf(headers.cookie)?.organizer) throw fail('Not authorized', 401)
+        if (!isAdmin(headers['x-admin-token'])) throw fail('Not authorized', 401)
       })
       .post('/session/start', async () => (await q.startSession(), reply('admin')))
       .post('/session/end', async () => (await q.endSession(), reply('admin')))
@@ -192,7 +200,7 @@ export const app = new Elysia({
   )
 
   .ws('/ws', {
-    // First message from the client: { role, token? }. An organizer is known by the session cookie sent with the upgrade.
+    // First message from the client: { role, token?, adminToken? }
     async message(ws, msg: any) {
       const id = String(ws.id)
       const known = subs.get(id)
@@ -200,11 +208,7 @@ export const app = new Elysia({
       const role = msg?.role, token = msg?.token
       if (!['hacker', 'admin', 'host'].includes(role)) return
       if (role === 'hacker' && !(typeof token === 'string' && token.length >= 8 && token.length <= 64)) return
-      // Browsers send cookies on cross-site socket upgrades, so another site must not ride an organizer's session.
-      const headers = new Headers(ws.data.headers as Record<string, string>)
-      if (role === 'admin' && !(auth.sameOrigin(headers) && auth.userOf(headers.get('cookie'))?.organizer)) {
-        ws.send(JSON.stringify({ error: 'Not authorized' })); return // returning send()'s byte count would echo it
-      }
+      if (role === 'admin' && !isAdmin(msg.adminToken)) { ws.send(JSON.stringify({ error: 'Not authorized' })); return } // returning send()'s byte count would echo it
       const ip = ws.data.headers['x-real-ip'] ?? ws.remoteAddress
       if (subs.size >= MAX_SUBS || (ipSockets.get(ip) ?? 0) >= IP_SOCKETS) { ws.close(1013, 'Server busy'); return } // the client retries with backoff
       const sub: Sub = { send: (s) => ws.send(s), role, token: role === 'hacker' ? token : undefined, ip }
