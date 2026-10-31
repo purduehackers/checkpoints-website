@@ -47,6 +47,14 @@ export default function Host() {
   const [announce, setAnnounce] = useState(() => { try { return localStorage.getItem('cp-announce') !== '0' } catch { return true } })
   const prevLeft = useRef<{ id: number | string, left: number } | null>(null) // last timer value per presenter, so a refresh never buzzes
   const prevCalled = useRef<string | null | undefined>(undefined) // undefined: no state yet, so a refresh never announces
+  // Chrome won't autoplay video with sound before a click on the page, and &cleanoutput hides vdo.ninja's play button,
+  // so the projector stayed blank. The stream starts muted (always allowed) and unmutes on the first click or key.
+  const [clicked, setClicked] = useState(false)
+  useEffect(() => {
+    const on = () => setClicked(true)
+    addEventListener('pointerdown', on, { once: true }); addEventListener('keydown', on, { once: true })
+    return () => { removeEventListener('pointerdown', on); removeEventListener('keydown', on) }
+  }, [])
   useTick()
 
   // Chrome blocks speech until a click, so the first button click speaks an empty utterance to unlock it.
@@ -119,7 +127,7 @@ export default function Host() {
             {open && <span className={`text-xl ${next ? '' : 'ml-auto'}`}>Join at <b className="text-amber-400">{joinHost}</b></span>}</div>
           {/* The frame stays mounted behind the screen, so a share that starts after going live flips to video. */}
           <div className="relative flex grow flex-col">
-            <ViewFrame streamId={c!.streamId!} className="w-full grow bg-black" muted={!audio} />
+            <ViewFrame streamId={c!.streamId!} className="w-full grow bg-black" muted={!audio || !clicked} />
             {inPerson && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-8 bg-neutral-950 p-8 text-center">
                 <p className="text-4xl text-neutral-400">{c!.project}</p>
@@ -148,6 +156,7 @@ export default function Host() {
         </div>
       )}
       <div className="absolute bottom-3 right-3 flex gap-2 opacity-60 hover:opacity-100">
+        {audio && !clicked && <span className="rounded bg-amber-500 px-3 py-1 text-black">Click anywhere for sound</span>}
         <StatsButton onClick={stats.toggle} />
         <button className="rounded bg-neutral-800 px-3 py-1" onClick={toggleAnnounce}>{announce ? '🔊' : '🔇'} Sounds</button>
         <button className="rounded bg-neutral-800 px-3 py-1" onClick={() => { unlock(); document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen() }}>Fullscreen</button>
