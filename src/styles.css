@@ -27,3 +27,10 @@ button:disabled { cursor: not-allowed; }
 /* "Disconnected..." with dots that count up. */
 .dots::after { content: ''; animation: dots 1.2s steps(1) infinite; }
 @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+
+/* /timer alarm: full-screen red/white strobe (steps(1) = hard flips, no fade) plus a jitter, for the last seconds. */
+.strobe { animation: strobe 0.25s steps(1) infinite; }
+@keyframes strobe { 0% { background: #ff0000; color: #fff; } 50% { background: #fff; color: #ff0000; } }
+.shake { animation: shake 0.15s linear infinite; }
+@keyframes shake { 0%, 100% { transform: translate(0, 0) rotate(0); } 25% { transform: translate(-1.5vw, 1vw) rotate(-2deg); } 75% { transform: translate(1.5vw, -1vw) rotate(2deg); } }
+@media (prefers-reduced-motion: reduce) { .shake { animation: none; } }
