@@ -42,8 +42,8 @@ function cameraError(e: unknown): string {
 const FPS_CAP: MediaTrackConstraints = { frameRate: { ideal: 30, max: 30 } }
 
 // Hacker's share with its own preview. Unmounting it ends the share.
-export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState, shareRef, hideShare, camera }: {
-  streamId: string; label: string; live: boolean; quality: Quality; stats: boolean; onCloseStats: () => void; onState: (s: ShareState) => void
+export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState, onPublished, shareRef, hideShare, camera }: {
+  streamId: string; label: string; live: boolean; quality: Quality; stats: boolean; onCloseStats: () => void; onState: (s: ShareState) => void; onPublished?: () => void // every successful publish, incl. Change window / Flip camera
   shareRef?: { current: (() => void) | null }; hideShare?: boolean // the parent's own button starts the share (one click instead of two)
   camera?: boolean // phones share the camera, not a screen. No mic: it would feed back through the projector speakers
 }) {
@@ -149,6 +149,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
       await sdk.current.publish(s, { streamID: streamId, media: { video: { maxBitrate: QUALITY[quality].kbps }, audio: { maxBitrate: AUDIO_KBPS } } })
       setConnecting(false)
       report('sharing')
+      onPublished?.()
     } catch (e) {
       stop()
       report('stopped')

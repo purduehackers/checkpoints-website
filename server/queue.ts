@@ -133,7 +133,9 @@ export async function leave(token: string) {
   if (n) return advanceOpen()
   await mutate(`status = 'left'`, `= 'waiting'`, token)
 }
-export const setShare = (token: string, state: ShareState) => mutate(`share_state = ?`, ACTIVE, token, [state])
+// Every 'sharing' report bumps the epoch, even a repeat: the projector remounts its viewer on a republish.
+export const setShare = (token: string, state: ShareState) =>
+  mutate(`share_state = ?${state === 'sharing' ? ', share_epoch = share_epoch + 1' : ''}`, ACTIVE, token, [state])
 export async function end(token: string) {
   const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE client_token = ? AND ${OPEN} AND status = 'live'`, [token])
   if (n) await advanceOpen()
@@ -276,12 +278,12 @@ export function view({ s, rows }: Snapshot, role: Role, token?: string): State {
   const waiting = s.status === 'open' ? rows.filter((r) => r.status === 'waiting') : [] // a closed session has no line
   const current: Current | null = !cur ? null : {
     entryId: cur.id, name: cur.name, project: cur.project, status: cur.status,
-    deadline: cur.deadline == null ? null : Number(cur.deadline) - GRACE_MS, pausedLeft: cur.paused_left, shareState: cur.share_state,
+    deadline: cur.deadline == null ? null : Number(cur.deadline) - GRACE_MS, pausedLeft: cur.paused_left, shareState: cur.share_state, shareEpoch: Number(cur.share_epoch ?? 0),
     ...(role !== 'hacker' && { away: cur.bye_at != null }),
     ...((admin || (role === 'host' && cur.status === 'live')) && { streamId: cur.stream_id }),
   }
   const queue: QueueItem[] = waiting.map((r) => ({
-    id: r.id, name: r.name, project: r.project, shareState: r.share_state,
+    id: r.id, name: r.name, project: r.project, shareState: r.share_state, shareEpoch: Number(r.share_epoch ?? 0),
     connected: serverNow - r.last_seen_at < DISCONNECTED_MS && r.bye_at == null,
     ...(admin && { streamId: r.stream_id }),
   }))

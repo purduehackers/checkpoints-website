@@ -7,17 +7,6 @@ import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../li
 // The projector may be opened on an old/preview URL, so the shown address can be pinned (build-time var).
 const pinnedHost = import.meta.env.PUBLIC_JOIN_HOST
 
-const say = (text: string) => {
-  try {
-    const synth = window.speechSynthesis
-    if (!synth) return
-    synth.cancel() // don't stack announcements
-    const u = new SpeechSynthesisUtterance(text)
-    u.rate = 0.95
-    synth.speak(u)
-  } catch { /* speech is a nicety */ }
-}
-
 // One shared AudioContext, created on the first click so Chrome lets the time's-up buzzer play later without one.
 let audioCtx: AudioContext | null = null
 const buzz = () => {
@@ -46,20 +35,18 @@ export default function Host() {
   const [idle, setIdle] = useState(false)
   const [announce, setAnnounce] = useState(() => { try { return localStorage.getItem('cp-announce') !== '0' } catch { return true } })
   const prevLeft = useRef<{ id: number | string, left: number } | null>(null) // last timer value per presenter, so a refresh never buzzes
-  const prevCalled = useRef<string | null | undefined>(undefined) // undefined: no state yet, so a refresh never announces
   // Chrome won't autoplay video with sound before a click on the page, and &cleanoutput hides vdo.ninja's play button,
   // so the projector stayed blank. The stream starts muted (always allowed) and unmutes on the first click or key.
   const [clicked, setClicked] = useState(false)
   useEffect(() => {
-    const on = () => { setClicked(true); unlock() } // the same first click also unlocks the name announcements and the buzzer
+    const on = () => { setClicked(true); unlock() } // the same first click also unlocks the buzzer
     addEventListener('pointerdown', on, { once: true }); addEventListener('keydown', on, { once: true })
     return () => { removeEventListener('pointerdown', on); removeEventListener('keydown', on) }
   }, [])
   useTick()
 
-  // Chrome blocks speech until a click, so the first button click speaks an empty utterance to unlock it.
+  // Chrome blocks audio until a click, so the first click creates (or resumes) the buzzer's AudioContext.
   const unlock = () => {
-    try { window.speechSynthesis?.speak(new SpeechSynthesisUtterance('')) } catch { /* ignore */ }
     try {
       audioCtx ??= new AudioContext()
       if (audioCtx.state === 'suspended') void audioCtx.resume()
@@ -104,15 +91,7 @@ export default function Host() {
     } catch { /* ignore */ }
   })
 
-  // Announce only on a transition into 'called' (not on load).
-  const calledKey = state ? (c?.status === 'called' ? `${c.entryId}` : null) : undefined
-  useEffect(() => {
-    if (calledKey === undefined) return
-    const prev = prevCalled.current
-    prevCalled.current = calledKey
-    if (prev === undefined || calledKey === null || calledKey === prev || !announce) return
-    say(`${c!.name} is next. ${c!.name}, please go to the podium.`)
-  }, [calledKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Name announcements moved to /admin (loud, no projector click needed); speaking here too would double them.
 
   return (
     <main className={`relative flex h-screen flex-col ${idle ? 'cursor-none' : ''}`}>
@@ -127,7 +106,7 @@ export default function Host() {
             {open && <span className={`text-xl ${next ? '' : 'ml-auto'}`}>Join at <b className="text-amber-400">{joinHost}</b></span>}</div>
           {/* The frame stays mounted behind the screen, so a share that starts after going live flips to video. */}
           <div className="relative flex grow flex-col">
-            <ViewFrame streamId={c!.streamId!} className="w-full grow bg-black" muted={!audio || !clicked} />
+            <ViewFrame key={`${c!.streamId}:${c!.shareEpoch}`} streamId={c!.streamId!} className="w-full grow bg-black" muted={!audio || !clicked} />
             {inPerson && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-8 bg-neutral-950 p-8 text-center">
                 <p className="text-4xl text-neutral-400">{c!.project}</p>

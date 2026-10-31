@@ -6,7 +6,7 @@ const now = 1_000_000
 const state = (current: Partial<Current> | null, limitSec = 120): State => ({
   serverNow: now, queue: [],
   session: { status: 'open', limitSec, quality: '1080p', audio: true, reactions: true },
-  current: current && { entryId: 'x', name: 'X', project: 'P', status: 'live', deadline: null, pausedLeft: null, shareState: 'sharing', ...current },
+  current: current && { entryId: 'x', name: 'X', project: 'P', status: 'live', deadline: null, pausedLeft: null, shareState: 'sharing', shareEpoch: 1, ...current },
 })
 
 test('wait: every person ahead counts as a full slot', () => {

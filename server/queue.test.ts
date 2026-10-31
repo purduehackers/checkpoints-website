@@ -141,6 +141,25 @@ test('share state is recorded for the admin and the current slot', async () => {
   expect((await host()).current).toMatchObject({ name: 'Fay', shareState: 'sharing' })
 })
 
+test('share epoch bumps on every sharing report, even a repeat; other states leave it alone', async () => {
+  const epoch = async () => (await host()).current!.shareEpoch
+  const e0 = await epoch()
+  await q.setShare('tok-ffffffff', 'sharing')
+  await q.setShare('tok-ffffffff', 'sharing') // Change window: still sharing, new publish
+  expect(await epoch()).toBe(e0 + 2)
+  await q.setShare('tok-ffffffff', 'stopped')
+  expect(await epoch()).toBe(e0 + 2)
+  await q.setShare('tok-ffffffff', 'sharing')
+  expect(await epoch()).toBe(e0 + 3)
+})
+
+test('a row from before share_epoch reads as 0', async () => {
+  await q.join('tok-epoch0000', 'Old', 'Row')
+  await db.execute(`UPDATE queue_entries SET share_epoch = 0 WHERE client_token = 'tok-epoch0000'`)
+  expect((await host()).queue.find((e) => e.name === 'Old')).toMatchObject({ shareEpoch: 0 })
+  await q.leave('tok-epoch0000')
+})
+
 test('only a live presenter can end early; ready on a waiting entry does nothing', async () => {
   await q.end('tok-ffffffff') // still `called`, so ignored
   expect((await host()).current?.status).toBe('called')
