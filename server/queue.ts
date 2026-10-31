@@ -157,27 +157,31 @@ export async function sweepByes(now = Date.now()) {
   if (n) await advanceOpen()
 }
 
+// The deadline column is the HARD END: the visible deadline + GRACE_MS. Older deployments share this DB and end
+// live rows at `deadline <= now` with no grace, so storing the end keeps the save window for them too.
+// view() hands clients the visible deadline (column - GRACE_MS); everything that writes it adds GRACE_MS back.
+
 // Ready gate: called -> live, and the server fixes the deadline.
 export async function adminReady(entryId: string) {
   const s = await openSession()
   if (!s) return
   const now = Date.now()
-  await run(`UPDATE queue_entries SET status = 'live', deadline = ?, paused_left = NULL WHERE session_id = ? AND status = 'called' AND id = ?`, [now + s.limit_sec * 1000, s.id, entryId])
+  await run(`UPDATE queue_entries SET status = 'live', deadline = ?, paused_left = NULL WHERE session_id = ? AND status = 'called' AND id = ?`, [now + s.limit_sec * 1000 + GRACE_MS, s.id, entryId])
 }
 
 export const pause = (id: string) =>
-  run(`UPDATE queue_entries SET paused_left = MAX(0, deadline - ?), deadline = NULL WHERE id = ? AND status = 'live' AND deadline IS NOT NULL`, [Date.now(), id])
+  run(`UPDATE queue_entries SET paused_left = MAX(0, deadline - ? - ?), deadline = NULL WHERE id = ? AND status = 'live' AND deadline IS NOT NULL`, [GRACE_MS, Date.now(), id])
 export const resume = (id: string) =>
-  run(`UPDATE queue_entries SET deadline = ? + paused_left, paused_left = NULL WHERE id = ? AND status = 'live' AND paused_left IS NOT NULL`, [Date.now(), id])
-// Only the organizer's +15 / +30 s buttons. Past the deadline (save window) the time restarts from now, not
-// from the stale deadline. Paused entries just gain paused_left; anything else is ignored.
+  run(`UPDATE queue_entries SET deadline = ? + paused_left, paused_left = NULL WHERE id = ? AND status = 'live' AND paused_left IS NOT NULL`, [Date.now() + GRACE_MS, id])
+// Only the organizer's +15 / +30 s buttons. Past the visible deadline (save window) the time restarts from now,
+// not from the stale deadline: column = max(now + GRACE_MS, column) + delta. Paused entries just gain paused_left; anything else is ignored.
 export const adjust = (id: string, deltaSec: number) => {
   if (deltaSec !== 15 && deltaSec !== 30) return
   const ms = deltaSec * 1000
   return run(`UPDATE queue_entries SET
     deadline = CASE WHEN deadline IS NOT NULL THEN MAX(?, deadline) + ? END,
     paused_left = CASE WHEN paused_left IS NOT NULL THEN paused_left + ? END
-    WHERE id = ? AND status = 'live'`, [Date.now(), ms, ms, id])
+    WHERE id = ? AND status = 'live'`, [Date.now() + GRACE_MS, ms, ms, id])
 }
 
 // The hacker's own Ready needs a running share, so the clock never starts on a blank screen.
@@ -246,8 +250,9 @@ export async function expire(now = Date.now()) {
   if (s && ((s.admin_seen_at != null && s.admin_seen_at <= now - ADMIN_GONE_MS) || (s.active_at != null && !s.live && s.active_at <= now - DORMANT_MS))) {
     return endSession()
   }
-  // Time up is not the end: they stay live for GRACE_MS so the organizer can add time. Paused rows have a NULL deadline.
-  const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE status = 'live' AND deadline <= ?`, [now - GRACE_MS])
+  // The column already includes the GRACE_MS save window, so this is the same SQL as older deployments run.
+  // Paused rows have a NULL deadline.
+  const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE status = 'live' AND deadline <= ?`, [now])
   if (n) await advanceOpen()
   await sweepByes(now)
   await advanceOpen() // the invariant, last: covers every path above and slots finished elsewhere
@@ -271,7 +276,7 @@ export function view({ s, rows }: Snapshot, role: Role, token?: string): State {
   const waiting = s.status === 'open' ? rows.filter((r) => r.status === 'waiting') : [] // a closed session has no line
   const current: Current | null = !cur ? null : {
     entryId: cur.id, name: cur.name, project: cur.project, status: cur.status,
-    deadline: cur.deadline, pausedLeft: cur.paused_left, shareState: cur.share_state,
+    deadline: cur.deadline == null ? null : Number(cur.deadline) - GRACE_MS, pausedLeft: cur.paused_left, shareState: cur.share_state,
     ...(role !== 'hacker' && { away: cur.bye_at != null }),
     ...((admin || (role === 'host' && cur.status === 'live')) && { streamId: cur.stream_id }),
   }
