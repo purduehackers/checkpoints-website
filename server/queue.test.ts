@@ -329,6 +329,16 @@ test('save window: live at deadline+10s, done at deadline+15s; the next person i
   expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
 })
 
+test('older deployments (no grace in expire) still respect the save window', async () => {
+  await fresh('A', 'B')
+  await live('aa-A-xxxx')
+  const { entryId, deadline } = (await cur())!
+  // What a pre-grace deployment sharing this DB runs on every tick, 5s after the visible deadline.
+  await db.execute({ sql: `UPDATE queue_entries SET status = 'done' WHERE status = 'live' AND deadline <= ?`, args: [deadline! + 5_000] })
+  expect(await cur()).toMatchObject({ entryId, status: 'live', deadline })
+  expect(await status('B')).toBe('waiting')
+})
+
 test('+15 in the save window brings them back with 15s from now', async () => {
   await fresh('A', 'B')
   await live('aa-A-xxxx')
