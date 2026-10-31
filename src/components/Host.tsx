@@ -51,7 +51,7 @@ export default function Host() {
   // so the projector stayed blank. The stream starts muted (always allowed) and unmutes on the first click or key.
   const [clicked, setClicked] = useState(false)
   useEffect(() => {
-    const on = () => setClicked(true)
+    const on = () => { setClicked(true); unlock() } // the same first click also unlocks the name announcements and the buzzer
     addEventListener('pointerdown', on, { once: true }); addEventListener('keydown', on, { once: true })
     return () => { removeEventListener('pointerdown', on); removeEventListener('keydown', on) }
   }, [])
