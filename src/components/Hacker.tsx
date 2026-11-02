@@ -91,6 +91,9 @@ export default function Hacker() {
   useEffect(() => {
     if (active && shareState !== reported.current) { reported.current = shareState; act('/share-state', { state: shareState }) }
   }, [shareState, active])
+  // Each publish (incl. Change window / Flip camera, where the state stays 'sharing') bumps the server's share epoch so the
+  // projector remounts its viewer. Marks 'sharing' as reported so the effect above doesn't send it twice; still ahead of auto-Ready in the chain.
+  const published = () => { reported.current = 'sharing'; act('/share-state', { state: 'sharing' }) }
   useEffect(() => { if (!active) { reported.current = 'not_shared'; setShareState('not_shared') } }, [active])
   // Called while sharing (or the moment the share connects after the big button): go live, no extra click.
   // After the share-state report above (requests run in click order), so the server has seen 'sharing' before Ready.
@@ -209,7 +212,7 @@ export default function Hacker() {
         )}
         {me.status === 'waiting' && state.session!.reactions && <ReactionPanel react={react} notice={notice} />}
         {canShare ? (
-          <div data-tour="share"><ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} shareRef={shareFn} hideShare={me.status === 'called'} camera={phone} /></div>
+          <div data-tour="share"><ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} onPublished={published} shareRef={shareFn} hideShare={me.status === 'called'} camera={phone} /></div>
         ) : (
           <p className="rounded bg-neutral-800 p-3 text-sm">{phone ? 'No camera access in this browser.' : 'Screen sharing needs Chrome or Edge.'}</p>
         )}

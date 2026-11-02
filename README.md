@@ -79,6 +79,16 @@ The row under each name shows whether that person is **sharing**, **not sharing*
 | A share still won't work | Have them press **Present without sharing** to talk without a share, or you press **Start timer** for them. Last resort: plug their laptop into the projector over HDMI |
 | `/admin` says your account isn't an organizer | Ask an ID admin for the organizer role, then click **Sign out** and sign in again. Role changes apply at the next sign-in |
 
+## For other sites and bots
+
+Want to know if a checkpoint is on? `GET /api/info` is public and returns `{"active": true}` while a checkpoint is open (an organizer started one and it hasn't ended or ended by itself), otherwise `{"active": false}`:
+
+```
+curl https://checkpoints.purduehackers.com/api/info
+```
+
+Any site can call it (CORS is open) and the answer is never cached. It is rate-limited per IP like the rest of the site, so polling every 10–30 seconds is fine. It shows nothing else: no names, no line.
+
 ## Keeping it safe
 
 - **Only organizers in Purdue Hackers ID can run the queue.** Taking the role away in ID applies at that person's next sign-in. Sessions last 12 hours.

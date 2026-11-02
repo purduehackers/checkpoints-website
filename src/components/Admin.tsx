@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Badge, Spinner, aboutMin, api, fmt, signInUrl, signOutUrl, useLive, useTick, useUser, waitMs } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
@@ -42,6 +42,52 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
   useEffect(() => { if (!undo) return; const t = setTimeout(() => setUndo(null), 10_000); return () => clearTimeout(t) }, [undo])
   useTick(1000)
 
+  // Spoken announcements: the organizer's page speaks, so it never depends on the projector being open or clicked.
+  const [announce, setAnnounce] = useState(() => { try { return localStorage.getItem('cp-admin-announce') !== '0' } catch { return true } })
+  const voice = useRef<SpeechSynthesisVoice | null>(null)
+  const prevCalled = useRef<string | null | undefined>(undefined) // undefined: no state yet, so a refresh never announces
+  useEffect(() => {
+    const pick = () => { try { voice.current = window.speechSynthesis.getVoices().find((v) => v.lang.toLowerCase().startsWith('en')) ?? null } catch { /* ignore */ } }
+    pick()
+    try { window.speechSynthesis?.addEventListener('voiceschanged', pick) } catch { /* ignore */ }
+    // Chrome blocks speech until the page has been used, so the first click or key speaks an empty utterance to unlock it.
+    const unlock = () => { try { window.speechSynthesis?.speak(new SpeechSynthesisUtterance('')) } catch { /* ignore */ } }
+    addEventListener('pointerdown', unlock, { once: true }); addEventListener('keydown', unlock, { once: true })
+    return () => {
+      try { window.speechSynthesis?.removeEventListener('voiceschanged', pick) } catch { /* ignore */ }
+      removeEventListener('pointerdown', unlock); removeEventListener('keydown', unlock)
+    }
+  }, [])
+  const say = (text: string) => {
+    try {
+      const synth = window.speechSynthesis
+      if (!synth) return
+      synth.cancel() // don't stack announcements
+      const u = new SpeechSynthesisUtterance(text)
+      u.volume = 1 // the maximum
+      u.rate = 0.9
+      u.pitch = 1
+      if (voice.current) { u.voice = voice.current; u.lang = voice.current.lang }
+      synth.speak(u)
+    } catch { /* speech is a nicety */ }
+  }
+  const toggleAnnounce = () => {
+    const next = !announce
+    setAnnounce(next)
+    try { localStorage.setItem('cp-admin-announce', next ? '1' : '0') } catch { /* private mode */ }
+    if (!next) try { window.speechSynthesis?.cancel() } catch { /* ignore */ }
+  }
+  // Announce only on a transition into 'called' (not on load).
+  const cur = state?.current
+  const calledKey = state ? (cur?.status === 'called' ? `${cur.entryId}` : null) : undefined
+  useEffect(() => {
+    if (calledKey === undefined) return
+    const prev = prevCalled.current
+    prevCalled.current = calledKey
+    if (prev === undefined || calledKey === null || calledKey === prev || !announce) return
+    say(`${cur!.name} is next. ${cur!.name}, please go to the podium.`)
+  }, [calledKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const act = (path: string, body?: object) => {
     setBusy(true)
     return api('/admin' + path, body)
@@ -81,6 +127,8 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
           {open && <button className={`rounded px-3 py-1 text-sm ${state.session!.reactions ? 'bg-neutral-700' : 'bg-red-800'}`} onClick={() => act('/reactions', { on: !state.session!.reactions })}>
             Reactions: {state.session!.reactions ? 'On' : 'Off'}
           </button>}
+          <button className={`rounded px-3 py-1 text-sm ${announce ? 'bg-neutral-700' : 'bg-red-800'}`} onClick={toggleAnnounce}>{announce ? '🔊' : '🔇'} Announce names</button>
+          <button className="rounded bg-neutral-700 px-3 py-1 text-sm" onClick={() => say('Announcements are on.')}>Test</button>
         </div>
         {open && <p className="text-xs text-neutral-500">Ends by itself after 10 minutes with nothing happening, or 5 minutes with no organizer page open.</p>}
         {!state.session && <p className="text-neutral-400">No session yet.</p>}
@@ -134,7 +182,7 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
       <aside>
         <h2 className="mb-2 text-sm text-neutral-400">Preview{pinned && <button className="ml-2 underline" onClick={() => setPinned(false)}>follow next</button>}</h2>
         <StatsButton onClick={stats.toggle} className="mb-2" />
-        {preview ? <ViewFrame streamId={preview} className="aspect-video w-full rounded bg-black" /> : <div className="aspect-video rounded bg-neutral-900" />}
+        {preview ? <ViewFrame key={`${preview}:${[state.current, ...state.queue].find((e) => e?.streamId === preview)?.shareEpoch ?? 0}`} streamId={preview} className="aspect-video w-full rounded bg-black" /> : <div className="aspect-video rounded bg-neutral-900" />}
       </aside>
     </main>
   )

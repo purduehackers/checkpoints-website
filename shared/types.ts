@@ -19,6 +19,7 @@ export interface QueueItem {
   name: string
   project: string
   shareState: ShareState
+  shareEpoch: number // bumps on every publish: key the viewer by it
   connected: boolean
   streamId?: string // admin only
 }
@@ -32,6 +33,7 @@ export interface Current {
   pausedLeft: number | null
   away?: boolean // admin/host: tab closed, about to be dropped unless they come back
   shareState: ShareState
+  shareEpoch: number // bumps on every publish: key the viewer by it
   streamId?: string // admin always; host only while live
 }
 

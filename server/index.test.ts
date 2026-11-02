@@ -241,6 +241,21 @@ test('an organizer coming back after a timeout finds it ended, not revived', asy
   expect(fresh.session.status).toBe('open')
 })
 
+test('/info says whether a checkpoint is active, and nothing else', async () => {
+  await as('/session/end')
+  const off = await get('/info', { ...ip, origin: 'https://other.example' })
+  expect(await off.json()).toEqual({ active: false })
+  expect(off.headers.get('cache-control')).toBe('no-store')
+  expect(off.headers.get('access-control-allow-origin')).toBe('*')
+  await as('/session/start')
+  expect(await (await get('/info', ip)).json()).toEqual({ active: true })
+  await as('/session/end')
+  expect(await (await get('/info', ip)).json()).toEqual({ active: false })
+  // A dormant night (no organizer for 5 minutes) reads as ended even though nothing ticked.
+  await as('/session/start')
+  expect(await at(6 * MIN, async () => (await get('/info', ip)).json())).toEqual({ active: false })
+})
+
 // sendBeacon posts a Blob with its own content-type; the reply is never read.
 test('/bye accepts a beacon-style JSON body and rejects a bad one', async () => {
   const ok = await fetch(base + '/bye', { method: 'POST', headers: { 'content-type': 'application/json' }, body: new Blob([JSON.stringify({ token: 'bye-token-1234' })], { type: 'application/json' }) })

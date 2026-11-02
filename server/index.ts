@@ -148,6 +148,13 @@ export const app = new Elysia({
     return { error: 'Server error' }
   })
   .get('/health', () => ({ ok: true }))
+  // Public, for other sites and bots to poll. Only a boolean, so a wide-open CORS header is safe.
+  .get('/info', async ({ set }) => {
+    await q.expire() // first: a dormant checkpoint must not read as active
+    set.headers['cache-control'] = 'no-store'
+    set.headers['access-control-allow-origin'] = '*'
+    return { active: await q.isActive() }
+  })
 
   // sign-in with Purdue Hackers ID
   .get('/auth/login', ({ request }) => auth.login(request))
