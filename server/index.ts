@@ -1,10 +1,12 @@
 import { Elysia, t } from 'elysia'
+import { RedisClient } from 'bun'
 import * as q from './queue'
 import * as auth from './auth'
 import { QUALITY, REACTIONS, type Role, type State } from '../shared/types'
 
 // ?? Assumes Vercel Pro and ~1s latency. Each tick is a few Turso reads per socket-holding instance, however
-// ?? many sockets it holds; if 1s feels slow, move cross-instance sync to Redis pub/sub and tick only for expire().
+// ?? many sockets it holds; if 1s feels slow, move the rest of the cross-instance sync to Redis and tick only for expire().
+// (Reactions already go over Redis pub/sub.)
 const TICK_MS = 1000
 const TOUCH_EVERY = 20 // ticks between last_seen refreshes
 const MAX_SUBS = 500 // sockets per instance; a hack night needs ~1 per person
@@ -45,12 +47,13 @@ function push(sub: Sub, snap: q.Snapshot, force = false) {
   const key = JSON.stringify(rest) // only send when something changed
   if (force || key !== sub.last) { sub.last = key; sub.send(JSON.stringify(state)) }
 }
-// Reactions are counted in memory and written as one {emoji: n} row per window. The host's socket can be on another
-// Vercel instance, so delivery is through the DB: an instance holding hosts polls for new rows every REACT_POLL_MS
-// (only while it has a host) and sends them as one message. Tap to screen is about 0.1–0.3s.
-const REACT_BATCH_MS = 100, REACT_POLL_MS = 150, REACT_COOLDOWN_MS = 200 // cooldown is per socket
-let tally: Record<string, number> = {}, flushing = false, reactAfter: number | null = null, relaying = false
-let relayTimer: ReturnType<typeof setInterval> | undefined
+// Reactions are counted in memory and published as one {emoji: n} message per window. The host's socket can be on another
+// Vercel instance, so delivery is Redis pub/sub: an instance holding hosts subscribes (only while it has a host) and
+// forwards each message to them. Nothing is stored. Previews and production share one Redis, so the channel carries the env.
+const CHANNEL = 'checkpoints:reactions:' + (process.env.VERCEL_ENV ?? 'development')
+const REACT_BATCH_MS = 100, REACT_COOLDOWN_MS = 200 // cooldown is per socket
+let tally: Record<string, number> = {}, flushing = false
+let pub: RedisClient | undefined, redis: RedisClient | undefined, connecting = false
 // Spam, Discord-style: STRIKES taps inside the cooldown within STRIKE_MS is an offense. The first gets a warning;
 // a repeat within OFFENSE_MS gets slow mode (one reaction per SLOW_MS for SLOW_FOR_MS). Taps are never queued.
 const STRIKES = 8, STRIKE_MS = 3000, OFFENSE_MS = 120_000, SLOW_MS = 2000, SLOW_FOR_MS = 30_000
@@ -66,7 +69,7 @@ function spam(sub: Sub, now: number) {
 }
 function react(sub: Sub, emoji: unknown) {
   const now = Date.now()
-  if (!sub.canReact || !(REACTIONS as readonly unknown[]).includes(emoji)) return
+  if (!pub || !sub.canReact || !(REACTIONS as readonly unknown[]).includes(emoji)) return
   if (now - (sub.lastReact ?? 0) < ((sub.slowUntil ?? 0) > now ? SLOW_MS : REACT_COOLDOWN_MS)) return spam(sub, now)
   sub.lastReact = now
   tally[emoji as string] = (tally[emoji as string] ?? 0) + 1
@@ -75,18 +78,27 @@ function react(sub: Sub, emoji: unknown) {
   setTimeout(() => {
     const counts = tally
     tally = {}; flushing = false
-    q.addReactions(counts).catch(console.error)
+    pub!.publish(CHANNEL, JSON.stringify(counts)).catch(console.error) // taps are ephemeral: a failed publish is just lost
   }, REACT_BATCH_MS)
 }
-async function relayReactions() {
-  if (relaying) return // a slow read must not overlap the next one and send its rows twice
-  relaying = true
+// Hosts here get every batch published by any instance. Bun's auto-reconnect comes back without the subscription, so the
+// subscriber doesn't reconnect: a drop just closes it, and tick() (every second) subscribes afresh while a host is here.
+const hasHost = () => [...subs.values()].some((s) => s.role === 'host')
+async function subscribe() {
+  if (!pub || redis || connecting) return
+  connecting = true
+  const r = new RedisClient(process.env.REDIS_URL, { autoReconnect: false })
+  r.onclose = () => { if (redis === r) redis = undefined }
   try {
-    const { last, counts } = await q.newReactions(reactAfter)
-    reactAfter = last
-    if (Object.keys(counts).length) { const msg = JSON.stringify({ reactions: counts }); for (const s of subs.values()) if (s.role === 'host') s.send(msg) }
-  } finally { relaying = false }
+    await r.subscribe(CHANNEL, (msg) => {
+      const out = `{"reactions":${msg}}`
+      for (const s of subs.values()) if (s.role === 'host') s.send(out)
+    })
+    if (hasHost()) redis = r
+    else r.close() // the last host left while this was connecting
+  } catch (e) { r.close(); throw e } finally { connecting = false }
 }
+function unsubscribe() { redis?.close(); redis = undefined }
 
 // At most one broadcast in flight plus one queued, so a burst of requests can't multiply DB reads.
 let pushing = false, again = false
@@ -106,8 +118,8 @@ async function tick() {
   if (++ticks % TOUCH_EVERY === 0) {
     await q.touch(tokens)
     if ([...subs.values()].some((s) => s.role === 'admin')) await q.adminSeen()
-    await q.pruneReactions()
   }
+  if (hasHost()) subscribe().catch(console.error)
   await pushAll()
 }
 
@@ -122,6 +134,9 @@ const reply = async (role: Role, token?: string): Promise<State> => {
 
 const tok = t.String({ minLength: 8, maxLength: 64 })
 const hackerBody = t.Object({ token: tok })
+
+if (process.env.REDIS_URL) pub = new RedisClient(process.env.REDIS_URL)
+else console.warn('REDIS_URL not set: live reactions are off')
 
 export const app = new Elysia({
   prefix: '/api',
@@ -211,7 +226,7 @@ export const app = new Elysia({
       subs.set(id, sub)
       ipSockets.set(ip, (ipSockets.get(ip) ?? 0) + 1)
       timer ??= setInterval(() => tick().catch(console.error), TICK_MS)
-      if (role === 'host') relayTimer ??= setInterval(() => relayReactions().catch(console.error), REACT_POLL_MS)
+      if (role === 'host') subscribe().catch(console.error)
       if (sub.token) await q.back(sub.token) // a refresh or reconnect cancels a pending bye
       await q.expire() // first message must not show a slot whose deadline passed while nobody was connected
       if (role === 'admin') await q.adminSeen() // after expire: an organizer arriving late doesn't revive a timed-out night
@@ -222,7 +237,6 @@ export const app = new Elysia({
       if (sub) { const n = (ipSockets.get(sub.ip) ?? 1) - 1; n > 0 ? ipSockets.set(sub.ip, n) : ipSockets.delete(sub.ip) }
       subs.delete(String(ws.id))
       if (!subs.size) { clearInterval(timer); timer = undefined }
-      // Last host gone: stop polling. One arriving later starts from the newest row, not with a backlog.
-      if (![...subs.values()].some((s) => s.role === 'host')) { clearInterval(relayTimer); relayTimer = undefined; reactAfter = null }
+      if (!hasHost()) unsubscribe() // last host gone; one arriving later starts clean, with no backlog
     },
   })
