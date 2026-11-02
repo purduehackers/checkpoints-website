@@ -55,6 +55,9 @@ export const adminSeen = (now = Date.now()) => run(`UPDATE sessions SET admin_se
 // Someone did something (any request but the tab-close beacon). Heartbeat for the dormant auto-end.
 export const activity = (now = Date.now()) => run(`UPDATE sessions SET active_at = ? WHERE status = 'open'`, [now])
 
+// For GET /api/info: is a checkpoint open right now? (Callers run expire() first.)
+export const isActive = async () => !!(await openSession())
+
 const finishCurrent = (sid: string) => changes(`UPDATE queue_entries SET status = 'done' WHERE session_id = ? AND status IN ('called','live')`, [sid])
 
 export async function endSession() {
