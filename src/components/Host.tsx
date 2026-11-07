@@ -57,7 +57,6 @@ export default function Host() {
     const next = !announce
     setAnnounce(next)
     try { localStorage.setItem('cp-announce', next ? '1' : '0') } catch { /* private mode */ }
-    if (!next) try { window.speechSynthesis?.cancel() } catch { /* ignore */ }
   }
 
   // Hide the cursor after 3s without movement.
@@ -76,7 +75,8 @@ export default function Host() {
   const stats = useStatsToggle()
   const inPerson = !!live && c!.shareState !== 'sharing' // "Present without sharing": nothing to project
   const timeUp = left !== null && left <= 0 && c?.pausedLeft == null // in the GRACE_MS save window the presenter is still live
-  const timer = left !== null && <div className={`rounded px-3 py-1 font-bold tabular-nums ${c?.pausedLeft != null ? 'bg-neutral-900/80 text-neutral-500' : left <= 30_000 ? 'bg-red-600' : 'bg-neutral-900/80'}`}>{c?.pausedLeft != null && '⏸ '}{timeUp ? "TIME'S UP" : fmt(left)}</div>
+  // Only the last 10 seconds (and TIME'S UP) show on the big screen; the speaker has /timer for the full countdown.
+  const timer = left !== null && left <= 10_000 && <div className={`rounded px-3 py-1 font-bold tabular-nums ${c?.pausedLeft != null ? 'bg-neutral-900/80 text-neutral-500' : left <= 30_000 ? 'bg-red-600' : 'bg-neutral-900/80'}`}>{c?.pausedLeft != null && '⏸ '}{timeUp ? "TIME'S UP" : fmt(left)}</div>
   const history = useRemoteStats(live ? c!.streamId! : null, stats.on)
   const queue = state?.queue ?? []
   const next = queue[0]
@@ -91,7 +91,6 @@ export default function Host() {
     } catch { /* ignore */ }
   })
 
-  // Name announcements moved to /admin (loud, no projector click needed); speaking here too would double them.
 
   return (
     <main className={`relative flex h-screen flex-col ${idle ? 'cursor-none' : ''}`}>
@@ -112,10 +111,10 @@ export default function Host() {
                 <p className="text-4xl text-neutral-400">{c!.project}</p>
                 <h1 className="text-7xl font-bold leading-tight">Watch <b className="text-green-400">{c!.name}</b> in person</h1>
                 {timer && <div className="text-8xl [&>div]:px-8 [&>div]:py-2">{timer}</div>}
-                <div className="animate-bounce text-[10rem] leading-none text-amber-400">⬇</div>
+                <div className="animate-pulse text-[10rem] leading-none text-amber-400">⬅</div>
               </div>
             )}
-            {!inPerson && left !== null && <div className="absolute left-4 top-4 text-3xl">{timer}</div>}
+            {!inPerson && timer && <div className="absolute left-4 top-4 text-3xl">{timer}</div>}
           </div>
         </>
       ) : (

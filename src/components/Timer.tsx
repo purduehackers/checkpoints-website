@@ -21,12 +21,10 @@ export default function Timer() {
   const paused = live && c.pausedLeft != null
   const left = live ? c.pausedLeft ?? (c.deadline != null ? c.deadline - now() : null) : null
   // The whole screen does the shouting, so the speaker sees it from the corner of their eye:
-  // amber at <=60s, solid red at <=30s, a red/white strobe for ~1.5s as it hits 15 and 10, nonstop from 5 and at time's up.
-  const burst = left !== null && ((left <= 15_000 && left > 13_500) || (left <= 10_000 && left > 8_500))
+  // solid red with white text from 0:30, then a red/white flash from 0:10 through TIME'S UP.
   const screen = !live || paused || left === null ? ''
-    : left <= 5_000 || burst ? 'strobe'
-    : left <= 30_000 ? 'bg-red-600 text-white'
-    : left <= 60_000 ? 'bg-amber-400 text-black' : ''
+    : left <= 10_000 ? 'strobe'
+    : left <= 30_000 ? 'bg-red-600 text-white' : ''
   const sub = screen ? '' : 'text-neutral-400' // grey captions vanish on a colored screen
   const color = paused ? 'text-neutral-500' : ''
 
