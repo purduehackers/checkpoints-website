@@ -102,9 +102,55 @@ test('signing in sets a session; /me reports the ID name and organizer role', as
   const done = await signIn(member, '/admin')
   expect(done.status).toBe(302)
   expect(done.headers.get('location')).toBe('/admin')
-  expect(await (await get('/me', { cookie: cookies(done) })).json()).toEqual({ user: { sub: 'user-ada', name: 'Ada Lovelace', organizer: false } })
+  expect(await (await get('/me', { cookie: cookies(done) })).json()).toEqual({ user: { sub: 'user-ada', name: 'Ada Lovelace', organizer: false }, authMode: 'oidc' })
   expect((await (await get('/me', await session(organizer))).json()).user.organizer).toBe(true)
-  expect(await (await get('/me')).json()).toEqual({ user: null })
+  expect(await (await get('/me')).json()).toEqual({ user: null, authMode: 'oidc' })
+})
+
+test('password sign-in is disabled when an OIDC issuer is configured', async () => {
+  const r = await post('/auth/password', { password: '123456' })
+  expect(r.status).toBe(403)
+  expect(r.headers.getSetCookie()).toEqual([])
+})
+
+test('without an issuer, password sign-in grants an organizer session and logout clears it', async () => {
+  const issuer = process.env.ID_ISSUER, clientId = process.env.ID_CLIENT_ID
+  const oidcCookie = cookies(await signIn(organizer))
+  let passwordCookie = ''
+  delete process.env.ID_ISSUER
+  delete process.env.ID_CLIENT_ID
+  try {
+    expect(await (await get('/me')).json()).toEqual({ user: null, authMode: 'password' })
+    expect((await get('/auth/login')).headers.get('location')).toBe('/admin')
+    expect((await get('/auth/callback')).status).toBe(403)
+    expect((await (await get('/me', { cookie: oidcCookie })).json()).user).toBeNull()
+    const wrong = await post('/auth/password', { password: 'wrong' })
+    expect(wrong.status).toBe(401)
+    expect(wrong.headers.getSetCookie()).toEqual([])
+    expect((await post('/auth/password', { password: '123456' }, { origin: 'https://evil.example' })).status).toBe(403)
+    const login = await post('/auth/password', { password: '123456' }, { 'x-forwarded-proto': 'https' })
+    expect(login.status).toBe(200)
+    const cookie = login.headers.getSetCookie()[0]!
+    for (const flag of ['HttpOnly', 'SameSite=Lax', 'Secure', 'Max-Age=43200']) expect(cookie).toContain(flag)
+    passwordCookie = cookies(login)
+    const headers = { cookie: passwordCookie }
+    expect((await (await get('/me', headers)).json()).user).toMatchObject({ organizer: true, name: 'Preview organizer' })
+    expect((await post('/admin/stop', { id: 'x' }, headers)).status).toBe(200)
+    expect((await socket([{ role: 'admin' }], 100, headers)).got[0].serverNow).toBeNumber()
+    const logout = await get('/auth/logout?next=/admin', headers)
+    expect(logout.headers.get('location')).toBe('/admin')
+    expect(logout.headers.getSetCookie()[0]).toContain('Max-Age=0')
+    expect((await (await get('/me', { cookie: cookies(logout) })).json()).user).toBeNull()
+    setSystemTime(Date.now() + 13 * 3600_000)
+    expect((await (await get('/me', headers)).json()).user).toBeNull()
+  } finally {
+    setSystemTime()
+    process.env.ID_ISSUER = issuer
+    process.env.ID_CLIENT_ID = clientId
+  }
+  // Enabling OIDC invalidates preview password sessions, even with the same signing secret.
+  expect((await (await get('/me', { cookie: passwordCookie })).json()).user).toBeNull()
+  expect((await post('/admin/stop', { id: 'x' }, { cookie: passwordCookie })).status).toBe(401)
 })
 
 test('a callback without the matching sign-in cookie or state fails', async () => {

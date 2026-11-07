@@ -19,6 +19,8 @@ There are three pages:
 | `/host` | The projector |
 | `/timer` | A big countdown for the speaker (optional second screen) |
 
+Preview deployments with `ID_ISSUER` unset show a password form on `/admin`; use **123456**.
+
 ## Before the night (5 minutes)
 
 1. **On the projector laptop, open `/host`.** Click **Fullscreen**. The click also lets the page play sound.
@@ -91,5 +93,5 @@ Any site can call it (CORS is open) and the answer is never cached. It is rate-l
 
 ## Keeping it safe
 
-- **Only organizers in Purdue Hackers ID can run the queue.** Taking the role away in ID applies at that person's next sign-in. Sessions last 12 hours.
+- **Production uses Purdue Hackers ID organizers to run the queue.** Taking the role away in ID applies at that person's next sign-in. Sessions last 12 hours.
 - **Anyone can join the line from a new browser.** Hackers don't sign in. Use **Remove** for anyone who shouldn't be there.

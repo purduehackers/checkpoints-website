@@ -7,9 +7,10 @@ import { GRACE_MS, QUALITY, type Quality } from '../../shared/types'
 const SHARE_LABEL = { sharing: 'sharing', not_shared: 'not sharing', stopped: 'stopped' }
 
 export default function Admin() {
-  const user = useUser()
+  const auth = useUser()
   const [denied, setDenied] = useState(false)
-  if (user === undefined) return <main className="p-6">Loading…</main>
+  if (auth === undefined) return <main className="p-6">Loading…</main>
+  const { user, authMode } = auth
   if (!user?.organizer || denied) {
     return (
       <main className="mx-auto max-w-sm space-y-3 p-6">
@@ -22,13 +23,44 @@ export default function Admin() {
         ) : (
           <>
             {denied && <p className="text-neutral-300">Your session ended. Sign in again.</p>}
-            <a href={signInUrl()} className="block w-full rounded bg-amber-500 p-3 text-center font-semibold text-black">Sign in with Purdue Hackers</a>
+            {authMode === 'password' ? <PasswordSignIn /> :
+              <a href={signInUrl()} className="block w-full rounded bg-amber-500 p-3 text-center font-semibold text-black">Sign in with Purdue Hackers</a>}
           </>
         )}
       </main>
     )
   }
   return <Panel name={user.name} onDenied={() => setDenied(true)} />
+}
+
+function PasswordSignIn() {
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  return (
+    <form className="space-y-3" onSubmit={async (e) => {
+      e.preventDefault()
+      setBusy(true)
+      setError('')
+      try {
+        await api('/auth/password', { password })
+        location.reload()
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Sign-in failed')
+        setBusy(false)
+      }
+    }}>
+      <label className="block space-y-1">
+        <span>Password</span>
+        <input type="password" autoComplete="current-password" required value={password}
+          onChange={(e) => setPassword(e.target.value)} className="block w-full border border-neutral-600 bg-neutral-800 p-3" />
+      </label>
+      {error && <p role="alert" className="text-red-400">{error}</p>}
+      <button type="submit" disabled={busy} className="w-full bg-amber-500 p-3 text-center font-semibold text-black active:scale-[0.97] disabled:opacity-50">
+        {busy ? 'Signing in…' : 'Sign in'}
+      </button>
+    </form>
+  )
 }
 
 function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
