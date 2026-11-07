@@ -91,7 +91,6 @@ export default function Host() {
     } catch { /* ignore */ }
   })
 
-
   return (
     <main className={`relative flex h-screen flex-col ${idle ? 'cursor-none' : ''}`}>
       <Badge online={online} />

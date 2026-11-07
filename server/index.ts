@@ -40,6 +40,7 @@ let ticks = 0
 
 function push(sub: Sub, snap: q.Snapshot, force = false) {
   const state = q.view(snap, sub.role, sub.token)
+  if (!pub && state.session) state.session.reactions = false // no Redis: reactions are off, so the UI must say so
   const { serverNow, ...rest } = state
   // Refreshed with every snapshot (about 1s), so the admin toggle and leaving the queue take effect quickly.
   // Waiting only: the person on stage is presenting, not reacting.
