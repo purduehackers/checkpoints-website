@@ -88,7 +88,7 @@ export function useStatsToggle() {
 }
 
 export function StatsButton({ onClick, className = '' }: { onClick: () => void; className?: string }) {
-  return <button className={`z-40 rounded bg-neutral-800/80 px-2 py-1 text-xs text-neutral-300 hover:text-white ${className}`} onClick={onClick}>Stats for nerds</button>
+  return <button className={`z-40 ph-subheadline border border-border bg-black px-2 py-1 text-xs text-white transition-transform active:scale-[0.97] hover:text-ph-yellow ${className}`} onClick={onClick}>Stats for nerds</button>
 }
 
 function Spark({ label, values, unit, max }: { label: string; values: (number | null)[]; unit: string; max?: number }) {
@@ -99,7 +99,7 @@ function Spark({ label, values, unit, max }: { label: string; values: (number | 
   return (
     <div className="flex items-center gap-2">
       <span className="w-14 text-neutral-400">{label}</span>
-      <svg viewBox="0 0 120 28" className="h-7 w-32 rounded bg-white/5"><polyline points={pts} fill="none" stroke="currentColor" strokeWidth="1.5" className="text-green-400" /></svg>
+      <svg viewBox="0 0 120 28" className="h-7 w-32 border border-border"><polyline points={pts} fill="none" stroke="currentColor" strokeWidth="1.5" className="text-green-400" /></svg>
       <span className="w-20 text-right tabular-nums">{last == null ? '–' : `${Math.round(last)} ${unit}`}</span>
     </div>
   )
@@ -108,7 +108,7 @@ function Spark({ label, values, unit, max }: { label: string; values: (number | 
 export function StatsOverlay({ history, title, onClose }: { history: Sample[]; title: string; onClose: () => void }) {
   const s = history[history.length - 1]
   return (
-    <div className="fixed bottom-12 left-3 z-50 space-y-1 rounded-lg bg-black/80 p-3 font-mono text-xs text-neutral-100 backdrop-blur">
+    <div className="fixed bottom-12 left-3 z-50 space-y-1 border border-border bg-black p-3 font-mono text-xs text-white">
       <div className="flex items-center justify-between gap-4"><b>{title}</b><button className="text-neutral-400 hover:text-white" onClick={onClose} aria-label="Close stats">✕</button></div>
       {!s ? <p className="text-neutral-400">No stream stats yet.</p> : (
         <>
@@ -120,9 +120,9 @@ export function StatsOverlay({ history, title, onClose }: { history: Sample[]; t
           <div className="grid grid-cols-[auto_1fr] gap-x-3 pt-1 text-neutral-300">
             <span className="text-neutral-400">res</span><span>{s.w}×{s.h}</span>
             <span className="text-neutral-400">codec</span><span>{s.codec}</span>
-            <span className="text-neutral-400">limited by</span><span className={s.limit === 'none' ? '' : 'text-amber-400'}>{s.limit}</span>
+            <span className="text-neutral-400">limited by</span><span className={s.limit === 'none' ? '' : 'text-ph-pink'}>{s.limit}</span>
             <span className="text-neutral-400">path</span><span>{s.path}</span>
-            <span className="text-neutral-400">viewers</span><span className={s.viewers > 2 ? 'text-amber-400' : ''}>{s.viewers}</span>
+            <span className="text-neutral-400">viewers</span><span className={s.viewers > 2 ? 'text-ph-pink' : ''}>{s.viewers}</span>
           </div>
         </>
       )}

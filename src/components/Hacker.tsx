@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Badge, Spinner, aboutMin, api, fmt, hackerToken, ordinal, span, useLive, useTick, waitMs } from '../lib/live'
+import { Badge, Spinner, aboutMinutes, aheadName, api, fmt, hackerToken, ordinal, span, useLive, useTick, waitMs } from '../lib/live'
 import { ShareBox } from '../lib/vdo'
 import { StatsButton, useStatsToggle } from '../lib/stats'
-import { ICONS, Tour, seen, type Step } from '../lib/tour'
+import { DitheredSoup } from './DitheredSoup'
 import { ReactionPanel } from '../lib/reactions'
 import type { ShareState } from '../../shared/types'
 
@@ -45,16 +45,6 @@ function notify(body: string) {
   } catch {}
 }
 
-// First-time tour, one part per page state (the elements only exist then).
-const SHARE_TEXT = phone ? 'Share your camera early.' : 'Share your screen early.'
-const TOUR: Record<'wait' | 'turn', Step[]> = {
-  wait: [
-    { target: 'status', icon: ICONS.hourglass, text: "Your spot in line." },
-    { target: 'share', icon: ICONS.screen, text: SHARE_TEXT },
-  ],
-  turn: [{ target: 'start', icon: ICONS.play, text: 'Press to go live.' }],
-}
-
 export default function Hacker() {
   const { state, online, apply, now, react, notice } = useLive('hacker')
   const [error, setError] = useState('')
@@ -64,7 +54,6 @@ export default function Hacker() {
   const shareFn = useRef<(() => void) | null>(null) // ShareBox's share(), so Start presenting can open the picker (or camera)
   const autoReady = useRef(false) // /ready already sent for this call: a re-render or a share restart must not send it twice
   const stats = useStatsToggle()
-  const [replay, setReplay] = useState(0) // "How it works" remounts the tour
   useTick()
 
   const token = hackerToken()
@@ -154,96 +143,107 @@ export default function Hacker() {
     return () => { removeEventListener('beforeunload', ask); removeEventListener('pagehide', bye) }
   }, [active, token])
 
-  if (!state) return <Shell><Badge online={online} /><p className="flex items-center gap-3"><Spinner className="size-5" />Loading…</p></Shell>
+  if (!state) return <Shell><Badge online={online} /><p className="flex items-center justify-center gap-3 text-xl"><Spinner className="size-5" />Loading…</p></Shell>
 
   // The server keeps a presenter live for a save window (GRACE_MS) past the deadline: say so, keep sharing, end nothing here.
   const timeUp = me?.status === 'live' && cur?.pausedLeft == null && msTotal !== null && msTotal <= 0
 
-  let body, tour: keyof typeof TOUR | null = null
-  if (!state.session) body = <p className="text-xl">No checkpoint is running.</p>
-  else if (!open) body = <p className="text-xl">This checkpoint has ended.</p>
-  else if (me?.status === 'removed') body = <p className="text-xl">You were removed from the queue.</p>
+  const plain = (text: string) => <h1 className="text-center text-[36px] leading-[normal] [text-shadow:0_1px_2px_rgba(0,0,0,.35)]">{text}</h1>
+  const link = 'text-xs text-[#929292] underline'
+  let body, fg = '#2e2e2e', green = false, top = 'pt-[155px]'
+  if (!state.session) body = plain('No checkpoint is running.')
+  else if (!open) body = plain('This checkpoint has ended.')
+  else if (me?.status === 'removed') body = plain('You were removed from the queue.')
   else if (me?.status === 'done' && presentedHere.current && !thanked) {
     body = (
-      <div className="space-y-4">
-        <h1 className="text-3xl font-semibold">Thanks for presenting!</h1>
-        <button className="rounded bg-amber-500 px-4 py-2 font-semibold text-black" onClick={() => setThanked(true)}>Join again</button>
+      <div className="space-y-6">
+        {plain('Thanks for presenting!')}
+        <button className={`${BTN} w-full bg-white text-black`} onClick={() => setThanked(true)}>Join again</button>
       </div>
     )
   }
   else if (!active) {
+    fg = '#8837ff'; top = 'pt-[210px]'
     body = (
-      <form className="space-y-3" onSubmit={(e) => {
+      <form className="flex flex-col gap-6" onSubmit={(e) => {
         e.preventDefault(); setError('')
         act('/join', form)
       }}>
-        <h1 className="text-2xl font-semibold">Join the checkpoint</h1>
-        <p className="text-sm text-neutral-400">You get {span(state.session!.limitSec)}.</p>
-        <input required maxLength={60} placeholder="Your name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full rounded bg-neutral-800 p-3" />
-        <input required maxLength={80} placeholder="Project name" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} className="w-full rounded bg-neutral-800 p-3" />
-        <button disabled={pending > 0} className="flex w-full items-center justify-center gap-2 rounded bg-amber-500 p-3 font-semibold text-black disabled:opacity-70">{pending > 0 && <Spinner />}Join queue</button>
+        {plain('Join the Checkpoint')}
+        <div className="flex flex-col gap-4">
+          <input required maxLength={60} placeholder="Your Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={INPUT} />
+          <input required maxLength={80} placeholder="Project Name" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} className={INPUT} />
+        </div>
+        <div className="flex flex-col gap-2.5">
+          <button disabled={pending > 0} className={`${BTN} w-full gap-2 bg-white text-black disabled:opacity-70`}>{pending > 0 && <Spinner />}Present</button>
+          <p className="text-xs text-[#929292]">Note: You get {span(state.session!.limitSec)} to present</p>
+        </div>
       </form>
     )
   } else {
-    tour = me.status === 'waiting' ? 'wait' : me.status === 'called' ? 'turn' : null
+    const sharing = shareState === 'sharing'
+    const called = me.status === 'called', live = me.status === 'live'
+    if (live) fg = '#8837ff'
+    if (called) green = true
+    const what = phone ? 'camera' : 'screen'
+    const title = live ? 'You’re live' : called ? 'It’s your turn!' : me.position === 1 ? 'You’re up next!' : sharing ? `You’re ${ordinal(me.position)} in line` : `Share your ${what}`
+    const ahead = me.status === 'waiting' ? aheadName(state, me.position) : ''
+    const sub = live ? (msTotal === null ? '' : timeUp ? 'Time’s up' : `${fmt(msTotal).replace(/^0/, '')} left`)
+      : me.status === 'waiting' ? (sharing || me.position === 1 ? `Up in ${aboutMinutes(waitMs(state, me.position - 1, now()))}${ahead ? ` ⊹ You’re after ${ahead}` : ''}` : `Join the queue by sharing your ${what}`) : ''
+    const big = called || live
+    const btn = `${BTN} w-full ${big ? 'h-[50px] text-[20.971px] tracking-[-1.0486px]' : ''}`
     body = (
-      <div className="space-y-4">
-        {me.status === 'waiting' && (
-          <div data-tour="status" className={me.position === 1 ? 'rounded-lg bg-amber-400 p-4 text-black' : ''}>
-            <h1 className="text-3xl font-semibold">{me.position === 1 ? "You're up next!" : `You're ${ordinal(me.position)} in line`}</h1>
-            <p className={me.position === 1 ? '' : 'text-neutral-400'}>{shareState === 'sharing' ? "You're all set." : `Up in ${aboutMin(waitMs(state, me.position - 1, now()))}.`}</p>
-          </div>
-        )}
-        {/* Inline, not a full-page cover: the first in line is called automatically while still at their seat,
-            so Change window and Leave queue must stay reachable. Already sharing: goes live by itself. Otherwise one button shares and goes live. */}
-        {me.status === 'called' && (
-          <div className="space-y-3 rounded-lg bg-green-500 p-4 text-black">
-            <h1 className="text-3xl font-semibold">It's your turn!</h1>
-            <button data-tour="start" disabled={pending > 0} className="flex w-full items-center justify-center gap-3 rounded-lg bg-black px-6 py-4 text-2xl font-bold text-green-400 disabled:opacity-70" onClick={start}>{pending > 0 && <Spinner className="size-5" />}{shareState === 'sharing' || !canShare ? 'Start presenting' : phone ? 'Share camera & start' : 'Share screen & start'}</button>
-          </div>
-        )}
-        {me.status === 'live' && (
-          <div>
-            <h1 className="text-3xl font-semibold">You're live</h1>
-            {msTotal !== null && <p className="text-neutral-400">{timeUp ? "Time's up" : `${fmt(msTotal)} left`}</p>}
-          </div>
-        )}
-        {me.status === 'waiting' && state.session!.reactions && <ReactionPanel react={react} notice={notice} />}
+      <div className="flex flex-col items-center gap-6">
+        <div className="flex w-full flex-col items-center gap-2">
+          <h1 className={`w-full text-center text-[36px] leading-[normal] ${live ? '[text-shadow:0_4px_4px_rgba(0,0,0,.5)]' : '[text-shadow:0_1px_2px_rgba(0,0,0,.35)]'}`}>{title}</h1>
+          {sub && <p className="text-xl leading-[normal] text-[#a4a4a4]">{sub}</p>}
+        </div>
         {canShare ? (
-          <div data-tour="share"><ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} onPublished={published} shareRef={shareFn} hideShare={me.status === 'called'} camera={phone} /></div>
+          <ShareBox streamId={me.streamId} label={me.name} live={live} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} onPublished={published} shareRef={shareFn} hideShare={called} camera={phone} />
         ) : (
-          <p className="rounded bg-neutral-800 p-3 text-sm">{phone ? 'No camera access in this browser.' : 'Screen sharing needs Chrome or Edge.'}</p>
+          <p className="w-full border border-[#4d4d4d] bg-black p-3 text-center text-xs text-[#ff9300]">{phone ? 'No camera access in this browser.' : 'Screen sharing needs Chrome or Edge.'}</p>
         )}
-        {/* Take the stage with no share from this page: talk-only, or a browser that can't share. */}
-        {/* Shown while waiting too, so people find it early; Ready only works once called. */}
-        {me.status !== 'live' && shareState !== 'sharing' && (
-          <button disabled={me.status !== 'called'} className="w-full rounded-lg border border-green-500 px-4 py-3 font-medium text-green-400 disabled:border-neutral-700 disabled:text-neutral-500"
-            onClick={() => confirm('Start your time without sharing here?') && act('/ready', { noShare: true })}>
-            Present without sharing{me.status !== 'called' && ' (when it’s your turn)'}
-          </button>
-        )}
-        {me.status === 'live' && <button className="rounded bg-red-600 px-4 py-2" onClick={() => act('/end')}>End my checkpoint</button>}
-        {me.status !== 'live' && <button className="text-sm text-neutral-400 underline" onClick={() => confirm('Leave the queue?') && act('/leave')}>Leave queue</button>}
+        <div className="flex w-full flex-col items-center gap-3">
+          {called && <button disabled={pending > 0} className={`${btn} gap-3 bg-[#a5e209] text-black disabled:opacity-70`} onClick={start}>{pending > 0 && <Spinner className="size-5" />}Start Presenting</button>}
+          {/* Take the stage with no share from this page: talk-only, or a browser that can't share. Ready only works once called. */}
+          {!live && !sharing && <button disabled={!called} className={`${btn} border ${called ? 'border-[#a5e209] text-[#a5e209]' : 'border-white text-white disabled:opacity-50'}`}
+            onClick={() => confirm('Start your time without sharing here?') && act('/ready', { noShare: true })}>Present without sharing</button>}
+          {!live && sharing && !called && <button className={`${btn} border border-white text-white`} onClick={() => shareFn.current?.()}>Change {phone ? 'Camera' : 'Screen'}</button>}
+          {live && <button className={`${btn} bg-[#ff9300] text-black`} onClick={() => act('/end')}>End checkpoint</button>}
+          {!live && <button className={`${link} self-start`} style={sharing || called ? undefined : { alignSelf: 'center' }} onClick={() => confirm('Leave the queue?') && act('/leave')}>{sharing || called ? 'Leave queue' : 'Exit'}</button>}
+        </div>
+        {me.status === 'waiting' && state.session!.reactions && <div className="w-full"><ReactionPanel react={react} notice={notice} /></div>}
       </div>
     )
   }
 
   return (
-    <Shell>
+    <Shell fg={fg} green={green} top={top}>
       <Badge online={online} />
       {active && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
-      {me?.status === 'live' && msTotal !== null && <div className={`fixed left-3 top-3 z-40 rounded px-3 py-1 text-xl font-bold tabular-nums ${cur?.pausedLeft != null ? 'bg-neutral-800 text-neutral-500' : msTotal <= 30_000 ? 'bg-red-600' : 'bg-neutral-800'}`}>{cur?.pausedLeft != null && '⏸ '}{timeUp ? "Time's up" : fmt(msTotal)}</div>}
-      {me?.status === 'waiting' && me.position === 1 && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-amber-400/25" />}
-      {me?.status === 'called' && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-green-400/25" />}
       {pending > 0 && <div className="late fixed bottom-3 right-3 z-50 flex items-center gap-2 rounded bg-neutral-800 px-3 py-1 text-sm"><Spinner />Working…</div>}
       {body}
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
-      {tour && <Tour key={tour + replay} part={tour} steps={TOUR[tour]} />}
-      {tour && <button className="mt-6 text-xs text-neutral-500 underline" onClick={() => { seen.clear(); setReplay((n) => n + 1) }}>How it works</button>}
+      {error && <p className="mt-3 text-center text-sm text-red-400">{error}</p>}
     </Shell>
   )
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
-  return <main className="min-h-screen p-6"><div className="mx-auto max-w-2xl">{children}</div></main>
+const BTN = "flex items-center justify-center px-3 py-2.5 font-['Inconsolata',ui-monospace,monospace] text-base font-semibold tracking-[-0.8px] disabled:cursor-not-allowed"
+const INPUT = 'w-full border border-[#4d4d4d] bg-black px-3 py-2.5 text-base text-white placeholder:text-[#929292] focus:border-white focus:outline-none'
+
+function Shell({ children, fg = '#2e2e2e', green = false, top = 'pt-[155px]' }: { children: React.ReactNode; fg?: string; green?: boolean; top?: string }) {
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-black text-white">
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <DitheredSoup fgColor={fg} />
+        <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(0deg, #000 50%, rgba(102,102,102,0) 100%)' }} />
+        {green && <div className="absolute inset-0 bg-[rgba(165,226,9,0.5)] mix-blend-color-dodge" />}
+      </div>
+      <div className="absolute left-6 top-6 z-10 flex items-center gap-2.5 [filter:drop-shadow(0_1px_2px_rgba(0,0,0,.35))]">
+        <img src="/glider.svg" alt="" width={24} height={24} />
+        <p className="font-pixel text-[19px] whitespace-nowrap"><i className="font-sans text-[20px]">H</i>ACK N<i className="font-sans text-[20px]">I</i>GHT Checkpoints</p>
+      </div>
+      <div className={`relative mx-auto w-[506px] max-w-full px-4 pb-10 sm:px-0 ${top}`}>{children}</div>
+    </main>
+  )
 }
