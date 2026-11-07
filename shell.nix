@@ -10,6 +10,7 @@ pkgs.mkShell {
   nativeBuildInputs = with pkgs.buildPackages; [
     nodejs_22
     bun
+    redis # redis-server for the reaction tests
     vercel
   ];
 }

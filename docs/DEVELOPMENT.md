@@ -4,7 +4,7 @@ How to run, test and deploy Checkpoints. For running a checkpoint night, see the
 
 ## Run it
 
-Needs [Bun](https://bun.sh) (or `direnv allow` with Nix). Copy `.env.example` to `.env` and fill it in. Leave the Turso vars unset to use a local `local.db` file.
+Needs [Bun](https://bun.sh) (or `direnv allow` with Nix). Copy `.env.example` to `.env` and fill it in. Leave the Turso vars unset to use a local `local.db` file. Set `REDIS_URL` (a `rediss://` URL) for live reactions; without it they are off and the server logs a warning. `bun test` starts its own throwaway `redis-server` for the reaction tests (skipped if it isn't installed) and never touches the Redis in `.env`.
 
 Set `SESSION_SECRET` in all environments. When `ID_ISSUER` is unset or blank, `/admin` accepts password **123456** without needing ID client credentials.
 
@@ -29,7 +29,7 @@ Browsers only allow screen sharing, camera access and notifications on `localhos
 - `src/lib/vdo.tsx` holds VDO.Ninja sharing and viewing. Hackers capture their screen on our page (`getDisplayMedia`, so we know exactly when sharing starts and stops) and publish it with the [VDO.Ninja SDK](https://github.com/steveseguin/ninjasdk) (`@vdoninja/sdk`, MPL-2.0), which handles signalling, peer connections and TURN. Admin preview and projector watch plain `vdo.ninja/?view=<id>` iframes. The server only hands out private stream IDs (to the admin, and to /host while someone is live).
 - Quality is set on the sender: the SDK publisher ignores vdo.ninja viewer params like `&bitrate`/`&scale`, so the presenter's browser caps the capture (`applyConstraints`, `crop-and-scale`) and the encoder bitrate from the organizer's preset. Audio is captured raw (no echo cancel/denoise/auto gain), sent at 128 kbps, and muted until the presenter is live; the projector's `&stereo` makes it stereo.
 - `src/lib/stats.tsx` is "Stats for nerds": the presenter measures its own send stats and pipes them over the VDO.Ninja data channel; `/host` and `/admin` listen with a data-only viewer.
-- Live reactions (`src/lib/reactions.tsx`): queued hackers send `{react: emoji}` over their socket; the server checks the allowlist, a 200ms per-socket cooldown and the organizer's Reactions toggle (`sessions.reactions`), counts them in memory and sends hosts one `{reactions: {emoji: n}}` message per 250ms. Spam guard: 8 taps inside the cooldown within 3s is an offense; the first shows the hacker a warning, a repeat within 2 minutes starts 30s of slow mode (one reaction per 2s). Nothing is stored, and counts are per instance, so a host on another instance won't see them (fine for a room this size). The projector animates with plain DOM + Web Animations, capped at 80 emojis in flight.
+- Live reactions (`src/lib/reactions.tsx`): queued hackers send `{react: emoji}` over their socket; the server checks the allowlist, a 200ms per-socket cooldown and the organizer's Reactions toggle (`sessions.reactions`), counts them in memory, and publishes one `{emoji: n}` batch per 100ms to the Redis channel `checkpoints:reactions:<VERCEL_ENV>` (`development` locally, `test` under `bun test`, so previews never reach the production projector). An instance holding a host socket subscribes (Bun's built-in `RedisClient`, no extra dependency; Bun's auto-reconnect comes back without the subscription, so the subscriber doesn't reconnect: a drop closes it and `tick()` subscribes afresh within a second) and forwards each batch to its hosts as `{reactions: {emoji: n}}`, so the tapper and the projector can be on different instances. Spam guard: 8 taps inside the cooldown within 3s is an offense; the first shows the hacker a warning, a repeat within 2 minutes starts 30s of slow mode (one reaction per 2s). Nothing is stored; a projector that connects late sees only new taps. The projector animates with plain DOM + Web Animations, capped at 80 emojis in flight.
 - With `ID_ISSUER` unset, organizers sign in with password `123456` through `POST /api/auth/password`. Setting `ID_ISSUER` disables this endpoint and invalidates password sessions. Both modes use the same signed cookie, expiry, logout and organizer authorization checks.
 - When `ID_ISSUER` is set, organizers sign in with Purdue Hackers ID over OIDC (`server/auth.ts`, using [`openid-client`](https://github.com/panva/openid-client)): `/api/auth/login` → ID → `/api/auth/callback` (code flow, PKCE, state and nonce, ID token signature check), then userinfo for `name` and `roles`. The result is a stateless HMAC-signed HttpOnly cookie `{ sub, name, organizer }` that lasts 12 hours, so any instance can read it and Turso stores nothing about users. Role changes in ID apply at the next sign-in.
 - OIDC organizer actions and the admin socket need `roles` to include `organizer` (ID's `admin` role grants it). Hackers don't sign in: their identity is a random token in `localStorage`. `/host` stays public.
@@ -38,7 +38,7 @@ Browsers only allow screen sharing, camera access and notifications on `localhos
 
 ## Deploy (Vercel Pro)
 
-One project: Astro static build plus `api/server.ts` as a Bun function with native WebSockets (Fluid compute, public beta). Set `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` and `SESSION_SECRET` for both Production and Preview.
+One project: Astro static build plus `api/server.ts` as a Bun function with native WebSockets (Fluid compute, public beta). Set `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `REDIS_URL` and `SESSION_SECRET` for both Production and Preview.
 
 - **Production:** set `ID_ISSUER=https://id.purduehackers.com/api/auth`, `ID_CLIENT_ID` and `ID_CLIENT_SECRET` (if confidential). Register `https://<domain>/api/auth/callback` in the ID application.
 - **Preview:** leave `ID_ISSUER` unset to use password `123456` on `/admin`; no ID application or callback registration is needed. Use a different `SESSION_SECRET` from Production.
@@ -60,6 +60,7 @@ Names are cleaned of control and invisible characters. Stats from a presenter's 
 
 - **VDO.Ninja on real laptops and campus Wi-Fi.** It has been tested end to end in automated Chrome with a fake tab share, but not yet across two real laptops or on campus Wi-Fi. Open Stats for nerds and watch `limited by` and `path` (relay = TURN).
 - **Vercel deploy.** WebSocket routing through the `/api/:path*` rewrite is untested. The socket closes at max duration; the client reconnects on its own.
+- **Redis pub/sub in a Vercel Fluid function.** Tested locally against the shared Redis, not yet deployed; check that a tap on one instance reaches a projector on another.
 - **Poll cost.** `TICK_MS` is 1s (marked `??` in `server/index.ts`). Each tick is a constant few Turso reads per instance, not per socket.
 
 Post-MVP: Recording, mic picker, moderation. The old prototype (recording, mic finder, designs) is in git history.
