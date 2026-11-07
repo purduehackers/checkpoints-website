@@ -31,9 +31,10 @@ function Shell({ children, title }: { children: React.ReactNode; title?: string 
 const SHARE_LABEL = { sharing: 'sharing', not_shared: 'not sharing', stopped: 'stopped' }
 
 export default function Admin() {
-  const user = useUser()
+  const auth = useUser()
   const [denied, setDenied] = useState(false)
-  if (user === undefined) return <Shell>Loading…</Shell>
+  if (auth === undefined) return <Shell>Loading…</Shell>
+  const { user, authMode } = auth
   if (!user?.organizer || denied) {
     return (
       <Shell>
@@ -47,7 +48,8 @@ export default function Admin() {
           ) : (
             <>
               {denied && <p className="text-[#ccc]">Your session ended. Sign in again.</p>}
-              <a href={signInUrl()} className="block w-full bg-white px-3 py-[10px] text-center font-mono text-base font-semibold tracking-[-0.8px] text-black">Sign in with Purdue Hackers</a>
+              {authMode === 'password' ? <PasswordSignIn /> :
+                <a href={signInUrl()} className="block w-full bg-white px-3 py-[10px] text-center font-mono text-base font-semibold tracking-[-0.8px] text-black">Sign in with Purdue Hackers</a>}
             </>
           )}
         </div>
@@ -55,6 +57,36 @@ export default function Admin() {
     )
   }
   return <Panel name={user.name} onDenied={() => setDenied(true)} />
+}
+
+function PasswordSignIn() {
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  return (
+    <form className="w-full space-y-3" onSubmit={async (e) => {
+      e.preventDefault()
+      setBusy(true)
+      setError('')
+      try {
+        await api('/auth/password', { password })
+        location.reload()
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Sign-in failed')
+        setBusy(false)
+      }
+    }}>
+      <label className="block space-y-1">
+        <span>Password</span>
+        <input type="password" autoComplete="current-password" required value={password}
+          onChange={(e) => setPassword(e.target.value)} className="block w-full border border-[#555] bg-black p-3 font-sans text-white" />
+      </label>
+      {error && <p role="alert" className="text-ph-pink">{error}</p>}
+      <button type="submit" disabled={busy} className="w-full bg-white px-3 py-[10px] text-center font-mono text-base font-semibold tracking-[-0.8px] text-black active:scale-[0.97] disabled:opacity-50">
+        {busy ? 'Signing in…' : 'Sign in'}
+      </button>
+    </form>
+  )
 }
 
 function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {

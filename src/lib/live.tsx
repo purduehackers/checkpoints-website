@@ -12,12 +12,13 @@ export const hackerToken = () => {
   } catch { return (window as any).__cpTok ??= uuid() }
 }
 
-// The organizer signed in with Purdue Hackers ID. The session is an HttpOnly cookie, so the page asks the server.
+// The session is an HttpOnly cookie; the server also tells us which sign-in form to show.
 export type User = { sub: string; name: string; organizer: boolean }
+type Auth = { user: User | null; authMode: 'oidc' | 'password' }
 export function useUser() {
-  const [user, setUser] = useState<User | null | undefined>(undefined) // undefined while loading
-  useEffect(() => { fetch('/api/me').then((r) => r.json()).then((j) => setUser(j.user ?? null), () => setUser(null)) }, [])
-  return user
+  const [auth, setAuth] = useState<Auth>() // undefined while loading
+  useEffect(() => { fetch('/api/me').then((r) => r.json()).then(setAuth, () => setAuth({ user: null, authMode: 'oidc' })) }, [])
+  return auth
 }
 export const signInUrl = (next = location.pathname) => `/api/auth/login?next=${encodeURIComponent(next)}`
 export const signOutUrl = (next = location.pathname) => `/api/auth/logout?next=${encodeURIComponent(next)}`

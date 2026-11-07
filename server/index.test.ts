@@ -1,5 +1,6 @@
 // HTTP and WebSocket abuse: the server must stay up and cheap under hostile clients.
 import { afterAll, expect, setSystemTime, test } from 'bun:test'
+import { RedisClient } from 'bun'
 
 // A fake Purdue Hackers ID: discovery, authorize, token (checks PKCE), userinfo and JWKS, with EdDSA ID tokens like the real one.
 const keys = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']) as CryptoKeyPair
@@ -45,11 +46,24 @@ process.env.TURSO_DATABASE_URL = ':memory:'
 process.env.ID_ISSUER = `http://localhost:${id.port}`
 process.env.ID_CLIENT_ID = 'checkpoints-test'
 process.env.SESSION_SECRET = 'test-session-secret'
+process.env.VERCEL_ENV = 'test' // reactions use their own Redis channel, never dev's or prod's
+// Reactions get a throwaway local Redis, never the shared one in .env; their tests skip where redis-server isn't installed.
+const REDIS_PORT = 20000 + Math.floor(Math.random() * 10000), REDIS_URL = `redis://localhost:${REDIS_PORT}`
+const CH = 'checkpoints:reactions:test'
+const startRedis = async () => {
+  const p = Bun.spawn(['redis-server', '--port', String(REDIS_PORT), '--save', '', '--appendonly', 'no'], { stdout: 'ignore' })
+  const c = new RedisClient(REDIS_URL)
+  for (let i = 0; i < 50; i++) { if (await c.ping().then(() => true, () => false)) break; await Bun.sleep(50) }
+  c.close()
+  return p
+}
+let redisProc = Bun.which('redis-server') ? await startRedis() : undefined
+process.env.REDIS_URL = redisProc ? REDIS_URL : ''
 const { app } = await import('./index')
 app.listen(0)
 const base = `http://localhost:${app.server!.port}/api`
 const wsUrl = base.replace('http', 'ws') + '/ws'
-afterAll(() => { app.stop(); id.stop() })
+afterAll(() => { app.stop(); id.stop(); redisProc?.kill() })
 
 const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
   fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) })
@@ -88,9 +102,55 @@ test('signing in sets a session; /me reports the ID name and organizer role', as
   const done = await signIn(member, '/admin')
   expect(done.status).toBe(302)
   expect(done.headers.get('location')).toBe('/admin')
-  expect(await (await get('/me', { cookie: cookies(done) })).json()).toEqual({ user: { sub: 'user-ada', name: 'Ada Lovelace', organizer: false } })
+  expect(await (await get('/me', { cookie: cookies(done) })).json()).toEqual({ user: { sub: 'user-ada', name: 'Ada Lovelace', organizer: false }, authMode: 'oidc' })
   expect((await (await get('/me', await session(organizer))).json()).user.organizer).toBe(true)
-  expect(await (await get('/me')).json()).toEqual({ user: null })
+  expect(await (await get('/me')).json()).toEqual({ user: null, authMode: 'oidc' })
+})
+
+test('password sign-in is disabled when an OIDC issuer is configured', async () => {
+  const r = await post('/auth/password', { password: '123456' })
+  expect(r.status).toBe(403)
+  expect(r.headers.getSetCookie()).toEqual([])
+})
+
+test('without an issuer, password sign-in grants an organizer session and logout clears it', async () => {
+  const issuer = process.env.ID_ISSUER, clientId = process.env.ID_CLIENT_ID
+  const oidcCookie = cookies(await signIn(organizer))
+  let passwordCookie = ''
+  delete process.env.ID_ISSUER
+  delete process.env.ID_CLIENT_ID
+  try {
+    expect(await (await get('/me')).json()).toEqual({ user: null, authMode: 'password' })
+    expect((await get('/auth/login')).headers.get('location')).toBe('/admin')
+    expect((await get('/auth/callback')).status).toBe(403)
+    expect((await (await get('/me', { cookie: oidcCookie })).json()).user).toBeNull()
+    const wrong = await post('/auth/password', { password: 'wrong' })
+    expect(wrong.status).toBe(401)
+    expect(wrong.headers.getSetCookie()).toEqual([])
+    expect((await post('/auth/password', { password: '123456' }, { origin: 'https://evil.example' })).status).toBe(403)
+    const login = await post('/auth/password', { password: '123456' }, { 'x-forwarded-proto': 'https' })
+    expect(login.status).toBe(200)
+    const cookie = login.headers.getSetCookie()[0]!
+    for (const flag of ['HttpOnly', 'SameSite=Lax', 'Secure', 'Max-Age=43200']) expect(cookie).toContain(flag)
+    passwordCookie = cookies(login)
+    const headers = { cookie: passwordCookie }
+    expect((await (await get('/me', headers)).json()).user).toMatchObject({ organizer: true, name: 'Preview organizer' })
+    expect((await post('/admin/stop', { id: 'x' }, headers)).status).toBe(200)
+    expect((await socket([{ role: 'admin' }], 100, headers)).got[0].serverNow).toBeNumber()
+    const logout = await get('/auth/logout?next=/admin', headers)
+    expect(logout.headers.get('location')).toBe('/admin')
+    expect(logout.headers.getSetCookie()[0]).toContain('Max-Age=0')
+    expect((await (await get('/me', { cookie: cookies(logout) })).json()).user).toBeNull()
+    setSystemTime(Date.now() + 13 * 3600_000)
+    expect((await (await get('/me', headers)).json()).user).toBeNull()
+  } finally {
+    setSystemTime()
+    process.env.ID_ISSUER = issuer
+    process.env.ID_CLIENT_ID = clientId
+  }
+  // Enabling OIDC invalidates preview password sessions, even with the same signing secret.
+  expect((await (await get('/me', { cookie: passwordCookie })).json()).user).toBeNull()
+  expect((await post('/admin/stop', { id: 'x' }, { cookie: passwordCookie })).status).toBe(401)
 })
 
 test('a callback without the matching sign-in cookie or state fails', async () => {
@@ -271,12 +331,13 @@ test('one IP is rate limited across all routes', async () => {
 })
 
 // Reaction sockets use their own IPs: earlier tests used up the shared request window.
-// Hosts get reactions through the DB (polled every 150ms), so the host's socket can be on any instance.
+// Hosts get reactions over Redis pub/sub, so the host's socket can be on any instance.
+const reacts = test.skipIf(!redisProc)
 const batches = (s: { got: any[] }) => s.got.filter((m) => m.reactions)
 const settle = () => Bun.sleep(1100) // one tick: snapshot pushes (canReact, the toggle) reach sockets
-const delivered = () => Bun.sleep(400) // the 100ms batch, then the next 150ms poll: a tap is on screen this fast
+const delivered = () => Bun.sleep(400) // the 100ms batch plus a Redis round-trip
 
-test('reactions: waiting hackers only, cooldown, allowlist, one batch to hosts, admin toggle', async () => {
+reacts('reactions: waiting hackers only, cooldown, allowlist, one batch to hosts, admin toggle', async () => {
   await as('/session/end'); await as('/session/start')
   await hacker('/join', 'react-stage-0', { name: 'Sam', project: 'P' }) // first in: called to the stage
   await hacker('/join', 'react-queued-1', { name: 'Ann', project: 'P' })
@@ -303,7 +364,7 @@ test('reactions: waiting hackers only, cooldown, allowlist, one batch to hosts, 
   ;[host, sam, ann, ben, outsider].forEach((s) => s.ws.close())
 }, 20000)
 
-test('reactions: spamming gets a warning, then slow mode that really slows', async () => {
+reacts('reactions: spamming gets a warning, then slow mode that really slows', async () => {
   await hacker('/join', 'react-spammer-1', { name: 'Bo', project: 'P' }) // Sam still holds the stage
   const host = await connect([{ role: 'host' }], '10.9.9.8')
   const bo = await connect([{ role: 'hacker', token: 'react-spammer-1' }], '10.9.9.8')
@@ -320,15 +381,47 @@ test('reactions: spamming gets a warning, then slow mode that really slows', asy
 }, 15000)
 
 // The bug this relay fixes: on Vercel the tapper and the projector are often on different instances.
-test('reactions written by another instance reach a host here, without replaying older ones', async () => {
-  const { db } = await import('./db')
-  const add = (counts: object) => db.execute({ sql: 'INSERT INTO reactions (at, counts) VALUES (?, ?)', args: [Date.now(), JSON.stringify(counts)] })
-  await Bun.sleep(200) // earlier hosts' sockets finish closing, so this one is a fresh reader
-  await add({ '👍': 9 }) // tapped while no projector was up: stale by the time one is
-  const host = await connect([{ role: 'host' }], '10.9.9.7')
+reacts('a batch published by another instance reaches every host here; other envs never do', async () => {
+  const other = new RedisClient(REDIS_URL)
+  const a = await connect([{ role: 'host' }], '10.9.9.7'), b = await connect([{ role: 'host' }], '10.9.9.7')
   await settle()
-  await add({ '🔥': 3 })
+  await other.publish('checkpoints:reactions:production', JSON.stringify({ '👍': 1 })) // a prod tap never reaches a test/preview projector
+  await other.publish(CH, JSON.stringify({ '🔥': 3 }))
   await delivered()
-  expect(batches(host)).toEqual([{ reactions: { '🔥': 3 } }]) // earlier tests' rows are still in the table
-  host.ws.close()
+  for (const h of [a, b]) expect(batches(h)).toEqual([{ reactions: { '🔥': 3 } }])
+  ;[a, b].forEach((s) => s.ws.close()); other.close()
 }, 10000)
+
+reacts('the last host leaving drops the subscription, even mid-subscribe; the next host gets only newer batches', async () => {
+  const other = new RedisClient(REDIS_URL)
+  const listeners = async () => Number((await other.send('PUBSUB', ['NUMSUB', CH]))[1])
+  await Bun.sleep(200) // earlier hosts' sockets finish closing
+  const a = await connect([{ role: 'host' }], '10.9.9.6')
+  await settle()
+  expect(await listeners()).toBe(1)
+  a.ws.close(); await Bun.sleep(300)
+  expect(await listeners()).toBe(0)
+  const quick = await connect([{ role: 'host' }], '10.9.9.6'); quick.ws.close() // gone before its subscribe finishes
+  await Bun.sleep(1500) // a tick included
+  expect(await listeners()).toBe(0)
+  await other.publish(CH, JSON.stringify({ '👍': 9 })) // nobody watching: gone, not replayed later
+  const b = await connect([{ role: 'host' }], '10.9.9.6')
+  await settle()
+  await other.publish(CH, JSON.stringify({ '🔥': 1 }))
+  await delivered()
+  expect(batches(b)).toEqual([{ reactions: { '🔥': 1 } }])
+  b.ws.close(); other.close()
+}, 15000)
+
+reacts('taps reach the projector again after Redis restarts', async () => {
+  await hacker('/join', 'react-restart-1', { name: 'Cy', project: 'P' }) // Sam still holds the stage
+  const host = await connect([{ role: 'host' }], '10.9.9.5')
+  const cy = await connect([{ role: 'hacker', token: 'react-restart-1' }], '10.9.9.5')
+  await settle()
+  redisProc!.kill(); await redisProc!.exited
+  redisProc = await startRedis()
+  // Tap every 300ms until one lands: the publisher and the host's subscription both have to come back.
+  for (const end = Date.now() + 8000; !batches(host).length && Date.now() < end;) { cy.react('❤️'); await Bun.sleep(300) }
+  expect(batches(host).length).toBeGreaterThan(0)
+  ;[host, cy].forEach((s) => s.ws.close())
+}, 15000)

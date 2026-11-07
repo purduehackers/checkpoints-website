@@ -3,7 +3,9 @@ import { timingSafeEqual } from 'node:crypto'
 
 // Sign-in with Purdue Hackers ID (OIDC code flow + PKCE). After the callback we keep only a signed,
 // stateless cookie, so any Vercel instance can read it and nothing about users is stored in Turso.
-const ISSUER = process.env.ID_ISSUER ?? 'https://id.purduehackers.com/api/auth'
+// No issuer means password sign-in for previews; production explicitly sets ID_ISSUER.
+export const authMode = () => process.env.ID_ISSUER?.trim() ? 'oidc' : 'password'
+const issuer = () => env('ID_ISSUER').trim()
 const SCOPE = 'openid profile roles'
 const SESSION = 'cp_session', FLOW = 'cp_oauth'
 const SESSION_MS = 12 * 3600_000 // one hack night; role changes in ID apply at the next sign-in
@@ -19,11 +21,11 @@ const env = (name: string) => {
 // Discovery runs once per instance; a failed fetch is retried on the next sign-in.
 let config: Promise<oidc.Configuration> | undefined
 const client = () => (config ??= oidc.discovery(
-  new URL(ISSUER),
+  new URL(issuer()),
   env('ID_CLIENT_ID'),
   undefined,
   process.env.ID_CLIENT_SECRET ? oidc.ClientSecretBasic(process.env.ID_CLIENT_SECRET) : oidc.None(),
-  ISSUER.startsWith('http:') ? { execute: [oidc.allowInsecureRequests] } : undefined, // a local ID in dev
+  issuer().startsWith('http:') ? { execute: [oidc.allowInsecureRequests] } : undefined, // a local ID in dev
 ).catch((e) => { config = undefined; throw e }))
 
 // ---- signed cookies: base64url(json).hmac. The cookie name is part of the MAC, so a flow cookie can't pass as a session.
@@ -51,8 +53,8 @@ const setCookie = (name: string, value: string, ms: number, secure: boolean) =>
 
 /** The signed-in user from a Cookie header, or null. */
 export function userOf(cookie: string | null | undefined): User | null {
-  const s = unseal<User>(SESSION, cookieOf(cookie, SESSION))
-  return s && { sub: s.sub, name: s.name, organizer: s.organizer }
+  const s = unseal<User & { authMode?: string }>(SESSION, cookieOf(cookie, SESSION))
+  return s && (s.authMode ?? 'oidc') === authMode() ? { sub: s.sub, name: s.name, organizer: s.organizer } : null
 }
 
 // Public origin of this site: the redirect URI registered in ID must be `${origin}/api/auth/callback`.
@@ -79,7 +81,18 @@ const redirect = (location: string, ...cookies: string[]) => {
   return new Response(null, { status: 302, headers })
 }
 
+/** Password sessions use the same signed, HttpOnly cookie as OIDC sessions. */
+export function passwordLogin(request: Request, password: string) {
+  if (authMode() !== 'password') return Response.json({ error: 'Password sign-in is disabled' }, { status: 403 })
+  if (password !== '123456') return Response.json({ error: 'Incorrect password' }, { status: 401 })
+  return Response.json({ ok: true }, { headers: {
+    'cache-control': 'no-store',
+    'set-cookie': setCookie(SESSION, seal(SESSION, { sub: 'preview-organizer', name: 'Preview organizer', organizer: true, authMode: 'password' }, SESSION_MS), SESSION_MS, originOf(request).startsWith('https:')),
+  } })
+}
+
 export async function login(request: Request) {
+  if (authMode() === 'password') return redirect('/admin')
   const origin = originOf(request), secure = origin.startsWith('https:')
   const verifier = oidc.randomPKCECodeVerifier(), state = oidc.randomState(), nonce = oidc.randomNonce()
   const next = local(new URL(request.url).searchParams.get('next'))
@@ -95,6 +108,7 @@ export async function login(request: Request) {
 }
 
 export async function callback(request: Request) {
+  if (authMode() !== 'oidc') return new Response('OIDC sign-in is disabled', { status: 403 })
   const origin = originOf(request), secure = origin.startsWith('https:')
   const clear = setCookie(FLOW, '', 0, secure)
   const flow = unseal<{ verifier: string; state: string; nonce: string; next: string }>(FLOW, cookieOf(request.headers.get('cookie'), FLOW))
