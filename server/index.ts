@@ -156,11 +156,13 @@ export const app = new Elysia({
     return { active: await q.isActive() }
   })
 
-  // sign-in with Purdue Hackers ID
+  // Sign-in mode is selected at runtime so Vercel previews can use a password.
   .get('/auth/login', ({ request }) => auth.login(request))
+  .post('/auth/password', ({ request, body }) => auth.passwordLogin(request, body.password),
+    { body: t.Object({ password: t.String({ maxLength: 200 }) }) })
   .get('/auth/callback', ({ request }) => auth.callback(request))
   .get('/auth/logout', ({ request }) => auth.logout(request))
-  .get('/me', ({ headers, set }) => (set.headers['cache-control'] = 'no-store', { user: auth.userOf(headers.cookie) }))
+  .get('/me', ({ headers, set }) => (set.headers['cache-control'] = 'no-store', { user: auth.userOf(headers.cookie), authMode: auth.authMode() }))
 
   // hacker
   .post('/join', async ({ body }) => (await q.join(body.token, body.name, body.project), reply('hacker', body.token)),
