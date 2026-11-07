@@ -180,31 +180,30 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     return () => { clearInterval(i); setHistory([]) }
   }, [state])
 
+  const mono = "font-['Inconsolata',ui-monospace,monospace] font-semibold tracking-[-0.8px]"
+  const note = 'flex w-full flex-wrap items-center justify-center gap-x-1 border border-[#4d4d4d] py-2 text-xs'
+  const change = (text: string, onClick: () => void) => <button className="text-white underline" onClick={onClick}>{text}</button>
   return (
-    <div>
-      <div className="relative aspect-video w-full overflow-hidden rounded bg-neutral-900">
+    <div className="flex w-full flex-col gap-2">
+      <div className="relative h-[314px] w-full overflow-hidden border border-[#4d4d4d] bg-black">
         <video ref={video} autoPlay muted playsInline className={`h-full w-full object-contain ${camera && facing === 'user' ? '-scale-x-100' : ''}`} />
-        {connecting && <div className="absolute inset-0 flex items-center justify-center gap-3 bg-neutral-900/80 text-lg"><Spinner className="size-6" />Connecting…</div>}
+        {connecting && <div className="absolute inset-0 flex items-center justify-center gap-3 bg-black/80 text-lg"><Spinner className="size-6" />Connecting…</div>}
         {state !== 'sharing' && !hideShare && !connecting && (
-          <button onClick={() => share()} className="absolute inset-0 m-auto h-fit w-fit rounded-lg bg-amber-500 px-6 py-3 text-lg font-semibold text-black">
-            {state === 'stopped' ? 'Share again' : camera ? 'Share your camera' : 'Share your screen'}
+          <button onClick={() => share()} className={`${mono} absolute inset-0 m-auto h-fit w-fit border border-white bg-white px-5 py-2.5 text-base text-black`}>
+            {state === 'stopped' ? 'Share again' : camera ? 'Pick a camera to share' : 'Pick a screen to share'}
           </button>
         )}
       </div>
-      {state === 'stopped' && <p className="mt-2 rounded bg-red-900 p-2 text-sm">Your share stopped.</p>}
-      {state === 'not_shared' && <p className="mt-2 text-sm text-neutral-400">{camera ? 'On mobile you can only share your camera.' : 'Pick a screen to share.'}</p>}
+      {state === 'stopped' && <p className={`${note} text-red-400`}>Your share stopped.</p>}
       {state === 'sharing' && camera && (
-        <p className="mt-2 text-sm"><span className="text-green-400">Sharing your camera.</span> <button className="underline" onClick={() => share(false, facing === 'user' ? 'environment' : 'user')}>Flip camera</button></p>
+        <p className={`${note} text-[#a5e209]`}>Sharing your camera. {change('Flip camera', () => share(false, facing === 'user' ? 'environment' : 'user'))}</p>
       )}
-      {state === 'sharing' && !camera && (
-        <p className="mt-2 text-sm">
-          {hasAudio ? <span className="text-green-400">Sharing with sound</span>
-            : noAudioBrowser ? <span className="text-amber-400">This browser can’t share sound.</span>
-            : <span className="text-neutral-400">No sound. Share a tab to include sound.</span>}{' '}
-          <button className="underline" onClick={() => share()}>Change window</button>
+      {state === 'sharing' && !camera && live && (
+        <p className={`${note} ${hasAudio ? 'text-[#a5e209]' : noAudioBrowser ? 'text-[#ff9300]' : 'text-[#929292]'}`}>
+          {hasAudio ? 'Sharing with sound.' : noAudioBrowser ? 'This browser can’t share sound.' : 'No sound. Share a tab to include sound.'} {change('Change window.', () => share())}
         </p>
       )}
-      {error && <p className="mt-2 text-sm text-red-400">{error}{retry && !camera && <> <button className="underline" onClick={() => share(true)}>Try basic share</button></>}</p>}
+      {error && <p className="text-center text-xs text-red-400">{error}{retry && !camera && <> <button className="underline" onClick={() => share(true)}>Try basic share</button></>}</p>}
       {stats && <StatsOverlay history={history} title="Your stream" onClose={onCloseStats} />}
     </div>
   )

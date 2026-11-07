@@ -3,6 +3,7 @@ import { Badge, fmt, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { spawn } from '../lib/reactions'
 import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
+import { DitheredSoup } from './DitheredSoup'
 
 // The projector may be opened on an old/preview URL, so the shown address can be pinned (build-time var).
 const pinnedHost = import.meta.env.PUBLIC_JOIN_HOST
@@ -44,6 +45,12 @@ export default function Host() {
     return () => { removeEventListener('pointerdown', on); removeEventListener('keydown', on) }
   }, [])
   useTick()
+  const [scale, setScale] = useState(1) // the 1920x1080 Figma frame is scaled to fit any screen
+  useEffect(() => {
+    const fit = () => setScale(Math.min(innerWidth / 1920, innerHeight / 1080))
+    fit(); addEventListener('resize', fit)
+    return () => removeEventListener('resize', fit)
+  }, [])
 
   // Chrome blocks audio until a click, so the first click creates (or resumes) the buzzer's AudioContext.
   const unlock = () => {
@@ -52,6 +59,7 @@ export default function Host() {
       if (audioCtx.state === 'suspended') void audioCtx.resume()
     } catch { /* ignore */ }
   }
+
   const toggleAnnounce = () => {
     unlock()
     const next = !announce
@@ -76,10 +84,9 @@ export default function Host() {
   const inPerson = !!live && c!.shareState !== 'sharing' // "Present without sharing": nothing to project
   const timeUp = left !== null && left <= 0 && c?.pausedLeft == null // in the GRACE_MS save window the presenter is still live
   // Only the last 10 seconds (and TIME'S UP) show on the big screen; the speaker has /timer for the full countdown.
-  const timer = left !== null && left <= 10_000 && <div className={`rounded px-3 py-1 font-bold tabular-nums ${c?.pausedLeft != null ? 'bg-neutral-900/80 text-neutral-500' : left <= 30_000 ? 'bg-red-600' : 'bg-neutral-900/80'}`}>{c?.pausedLeft != null && '⏸ '}{timeUp ? "TIME'S UP" : fmt(left)}</div>
+  const timer = left !== null && left <= 10_000 && <div className={`px-3 py-1 font-bold tabular-nums ${c?.pausedLeft != null ? 'bg-neutral-900/80 text-neutral-500' : left <= 30_000 ? 'bg-red-600' : 'bg-neutral-900/80'}`}>{c?.pausedLeft != null && '⏸ '}{timeUp ? "TIME'S UP" : fmt(left)}</div>
   const history = useRemoteStats(live ? c!.streamId! : null, stats.on)
   const queue = state?.queue ?? []
-  const next = queue[0]
 
   // Buzz once when a running (not paused) presenter's time crosses from >0 to <=0; adding time and running out again buzzes again.
   useEffect(() => {
@@ -91,21 +98,31 @@ export default function Host() {
     } catch { /* ignore */ }
   })
 
+  const cards = [
+    { bg: '#ff9300', rot: -3.22, left: 34.2, top: 115.9, shadow: true },
+    { bg: '#0084ff', rot: 2.5, left: 24.1, top: 302.8, shadow: true },
+    { bg: '#fcd202', rot: -1.8, left: 41, top: 470.8, shadow: false },
+  ]
+  const wide = open && queue.length > 0 // "In Line" panel shrinks the idle screen's left pane
+  const poly = { fontFamily: 'var(--font-sans)' }
+  const pixel = { fontFamily: 'var(--font-pixel)' }
+  const avatar = (i: number) => i === 0
+    ? <img alt="" src="/host/avatar-1.png" className="absolute" style={{ left: 326.4, top: 6.75, width: 174, height: 174, mixBlendMode: 'color-burn', transform: 'rotate(3.22deg)', objectFit: 'cover' }} />
+    : i === 1
+      ? <img alt="" src="/host/avatar-2.png" className="absolute" style={{ left: 318, top: -4, width: 176, height: 207, mixBlendMode: 'color-burn', transform: 'rotate(-2.5deg)', objectFit: 'cover' }} />
+      : <img alt="" src="/host/avatar-3.png" className="absolute" style={{ left: 337.5, top: 13.2, width: 157.2, height: 202.6, opacity: 0.32, objectFit: 'cover', objectPosition: 'bottom' }} />
 
   return (
-    <main className={`relative flex h-screen flex-col ${idle ? 'cursor-none' : ''}`}>
-      <Badge online={online} />
-      {c?.away && <div className="absolute left-1/2 top-20 z-30 -translate-x-1/2 rounded-lg bg-amber-500 px-6 py-3 text-3xl font-bold text-black"><span className="dots">{c.name} disconnected</span></div>}
-      <div ref={reactBox} className="pointer-events-none absolute bottom-0 right-0 top-0 z-20 w-40 overflow-hidden" />
+    <main className={`relative h-screen w-screen overflow-hidden bg-black ${idle ? 'cursor-none' : ''}`}>
       {stats.on && <StatsOverlay history={history} title={live ? `Live: ${c!.name}` : 'Nobody live'} onClose={stats.toggle} />}
-      {live ? (
-        <>
-          <div className="flex items-center gap-4 bg-neutral-900 px-6 py-3 text-2xl"><b>{c!.name}</b><span className="text-neutral-400">{c!.project}</span>
-            {next && <span className="ml-auto text-2xl">Up next: <b className="text-amber-400">{next.name}</b></span>}
-            {open && <span className={`text-xl ${next ? '' : 'ml-auto'}`}>Join at <b className="text-amber-400">{joinHost}</b></span>}</div>
-          {/* The frame stays mounted behind the screen, so a share that starts after going live flips to video. */}
-          <div className="relative flex grow flex-col">
-            <ViewFrame key={`${c!.streamId}:${c!.shareEpoch}`} streamId={c!.streamId!} className="w-full grow bg-black" muted={!audio || !clicked} />
+      <div className="absolute left-0 top-0 origin-top-left bg-black" style={{ width: 1920, height: 1080, transform: `translate(${(innerWidth - 1920 * scale) / 2}px, ${(innerHeight - 1080 * scale) / 2}px) scale(${scale})` }}>
+        <Badge online={online} />
+        {c?.away && <div className="absolute left-1/2 top-20 z-30 -translate-x-1/2 bg-amber-500 px-6 py-3 text-3xl font-bold text-black"><span className="dots">{c.name} disconnected</span></div>}
+        <div ref={reactBox} className="pointer-events-none absolute bottom-0 right-0 top-0 z-20 w-40 overflow-hidden" />
+        {live ? (
+          <div className="absolute overflow-hidden border border-white" style={{ left: 36, top: 36, width: 1848, height: 1008 }}>
+            {/* The frame stays mounted behind the screen, so a share that starts after going live flips to video. */}
+            <ViewFrame key={`${c!.streamId}:${c!.shareEpoch}`} streamId={c!.streamId!} className="absolute inset-0 h-full w-full bg-black" muted={!audio || !clicked} />
             {inPerson && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-8 bg-neutral-950 p-8 text-center">
                 <p className="text-4xl text-neutral-400">{c!.project}</p>
@@ -114,30 +131,51 @@ export default function Host() {
                 <div className="animate-pulse text-[10rem] leading-none text-amber-400">⬅</div>
               </div>
             )}
-            {!inPerson && timer && <div className="absolute left-4 top-4 text-3xl">{timer}</div>}
+            {!inPerson && timer && <div className="absolute left-4 top-20 z-10 text-3xl">{timer}</div>}
+            <div className="absolute z-10 overflow-hidden border border-white bg-black" style={{ left: -1, top: -1, width: 1848, height: 59 }}>
+              <DitheredSoup fgColor="#2e2e2e" />
+              <div className="absolute flex items-center gap-[10px] whitespace-nowrap text-[24px]" style={{ ...poly, left: 15, top: 15 }}>
+                <span className="text-white">{c!.project}</span><span style={{ color: '#8f8f8f' }}>{c!.name}</span>
+              </div>
+              {open && <p className="absolute whitespace-nowrap text-[24px] text-white" style={{ ...pixel, right: 15, top: 15 }}>Join at <span style={{ color: '#fcd202' }}>{joinHost}</span></p>}
+            </div>
           </div>
-        </>
-      ) : (
-        <div className="flex grow flex-col items-center justify-center gap-6 p-8 text-center">
-          <h1 className="text-5xl font-bold">Purdue Hackers · Checkpoints</h1>
-          {state && !state.session && <p className="text-2xl text-neutral-400">Waiting for an organizer to start</p>}
-          {state?.session && !open && <p className="text-3xl">Checkpoints have ended. Thanks for coming!</p>}
-          {open && <p className="text-4xl">Join at <b className="text-amber-400">{joinHost}</b></p>}
-          {c?.status === 'called' && <p className="max-w-4xl text-5xl leading-tight"><b className="text-green-400">{c.name}</b>, go to the podium</p>}
-          {open && next && <p className="text-4xl">Up next: <b className="text-amber-400">{next.name}</b></p>}
-          {open && queue.length > 0 && (
-            <ol className="space-y-1 text-xl text-neutral-300">
-              {queue.slice(0, 5).map((e, i) => <li key={e.id}>{i + 1}. {e.name} · <span className="text-neutral-500">{e.project}</span></li>)}
-              {queue.length > 5 && <li className="text-neutral-500">+{queue.length - 5} more</li>}
-            </ol>
-          )}
-        </div>
-      )}
-      <div className="absolute bottom-3 right-3 flex gap-2 opacity-60 hover:opacity-100">
-        {audio && !clicked && <span className="rounded bg-amber-500 px-3 py-1 text-black">Click anywhere for sound</span>}
+        ) : (
+          <>
+            <div className="absolute overflow-hidden border bg-[#d9d9d9]" style={{ left: 36, top: 36, width: wide ? 1276 : 1848, height: 1008, borderColor: '#b6b6b6' }}>
+              <DitheredSoup fgColor="#2e2e2e" />
+            </div>
+            <div className="absolute flex flex-col items-center text-center text-white" style={{ ...pixel, left: wide ? 169 : 466, top: 151, width: 989, gap: 20 }}>
+              <p className="w-full text-[96px] leading-[normal]">Checkpoints</p>
+              {state && !state.session && <p className="w-full text-[40px]">Waiting for an organizer to start</p>}
+              {state?.session && !open && <p className="w-full text-[40px]">Checkpoints have ended. Thanks for coming!</p>}
+              {open && <p className="w-full text-[64px] leading-[normal]">Join at <span style={{ color: '#fcd202' }}>phack.rs/checkpoints</span></p>}
+              {c?.status === 'called' && <p className="w-full text-[48px]"><span style={{ color: '#fcd202' }}>{c.name}</span>, go to the podium</p>}
+            </div>
+            {open && <img alt="QR code: join at phack.rs/checkpoints" src="/host/qr.png" className="absolute" style={{ left: wide ? 405 : 702, top: 411, width: 517, height: 517 }} />}
+            {wide && (
+              <div className="absolute overflow-hidden border bg-black" style={{ left: 1311, top: 36, width: 573, height: 1008, borderColor: '#b6b6b6', ...poly }}>
+                <p className="absolute whitespace-nowrap text-[48px] leading-[normal] text-white" style={{ left: 31, top: 47 }}>In Line</p>
+                {cards.map((k, i) => { const e = queue[i]; return e && (
+                  <div key={e.id} className="absolute overflow-hidden" style={{ left: k.left, top: k.top, width: 501, height: 200, background: k.bg, transform: `rotate(${k.rot}deg)`, boxShadow: k.shadow ? '0 2px 4px rgba(0,0,0,.25)' : undefined }}>
+                    <div className="absolute flex flex-col leading-[normal] text-black" style={{ left: 25, top: 27, width: 277 }}>
+                      <p className="truncate text-[48px]">#{i + 1}</p>
+                      <p className="truncate text-[48px]">{e.name}</p>
+                      <p className="truncate text-[32px]" style={{ color: 'rgba(0,0,0,.5)' }}>{e.project}</p>
+                    </div>
+                    {avatar(i)}
+                  </div>
+                ) })}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      <div className="absolute bottom-3 right-3 z-40 flex gap-2 opacity-60 transition-opacity hover:opacity-100">
+        {audio && !clicked && <span className="ph-subheadline border border-border bg-ph-yellow px-3 py-1 text-xs text-black">Click anywhere for sound</span>}
         <StatsButton onClick={stats.toggle} />
-        <button className="rounded bg-neutral-800 px-3 py-1" onClick={toggleAnnounce}>{announce ? '🔊' : '🔇'} Sounds</button>
-        <button className="rounded bg-neutral-800 px-3 py-1" onClick={() => { unlock(); document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen() }}>Fullscreen</button>
+        <button className="ph-subheadline border border-border bg-black px-3 py-1 text-xs text-white transition-transform active:scale-[0.97] hover:text-ph-yellow" onClick={toggleAnnounce}>{announce ? '🔊' : '🔇'} Sounds</button>
+        <button className="ph-subheadline border border-border bg-black px-3 py-1 text-xs text-white transition-transform active:scale-[0.97] hover:text-ph-yellow" onClick={() => { unlock(); document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen() }}>Fullscreen</button>
       </div>
     </main>
   )

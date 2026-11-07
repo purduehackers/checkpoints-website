@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { aboutMin, fmt, ordinal, span, waitMs } from './live'
+import { aboutMin, aboutMinutes, aheadName, fmt, ordinal, span, waitMs } from './live'
 import type { Current, State } from '../../shared/types'
 
 const now = 1_000_000
@@ -47,4 +47,16 @@ test('place in line reads as an English ordinal, teens included', () => {
 
 test('time limit reads in minutes when whole, else seconds', () => {
   expect([60, 120, 3600, 90, 30, 10].map(span)).toEqual(['1 minute', '2 minutes', '60 minutes', '90 seconds', '30 seconds', '10 seconds'])
+})
+
+test('participant wait copy: full word, and who is ahead', () => {
+  expect(aboutMinutes(30_000)).toBe('under a minute')
+  expect(aboutMinutes(60_000)).toBe('about 1 minute')
+  expect(aboutMinutes(301_000)).toBe('about 6 minutes')
+  const q = (name: string) => ({ id: name, name }) as any
+  const s = { ...state({ name: 'Cur' }), queue: [q('Ann'), q('Bo'), q('Me')] }
+  expect(aheadName(s, 1)).toBe('Cur')
+  expect(aheadName(s, 2)).toBe('Ann')
+  expect(aheadName(s, 3)).toBe('Bo')
+  expect(aheadName({ ...s, current: null }, 1)).toBe('')
 })

@@ -89,6 +89,9 @@ export function waitMs(s: State, ahead: number, now: number) {
   return cur + ahead * limit
 }
 export const aboutMin = (ms: number) => ms < 60_000 ? 'under a minute' : `about ${Math.ceil(ms / 60_000)} min`
+export const aboutMinutes = (ms: number) => ms < 60_000 ? 'under a minute' : `about ${Math.ceil(ms / 60_000)} minute${ms <= 60_000 ? '' : 's'}`
+// Who is directly ahead of the waiting person at 1-based `position`: the one presenting, or the previous in the queue.
+export const aheadName = (s: State, position: number) => (position > 1 ? s.queue[position - 2]?.name : s.current?.name) ?? ''
 export const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`
 export const span = (sec: number) => sec % 60 ? `${sec} seconds` : `${sec / 60} minute${sec === 60 ? '' : 's'}`
 
