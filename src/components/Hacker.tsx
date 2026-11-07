@@ -175,8 +175,6 @@ export default function Hacker() {
     body = (
       <form className="space-y-3" onSubmit={(e) => {
         e.preventDefault(); setError('')
-        // Ask from this click (a user gesture), but never make joining wait on the answer.
-        try { if ('Notification' in window && Notification.permission === 'default') Promise.resolve(Notification.requestPermission()).catch(() => {}) } catch {}
         act('/join', form)
       }}>
         <h1 className="text-2xl font-semibold">Join the checkpoint</h1>
