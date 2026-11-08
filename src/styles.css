@@ -20,7 +20,7 @@ button:disabled { cursor: not-allowed; }
 .dots::after { content: ''; animation: dots 1.2s steps(1) infinite; }
 @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
 
-/* /timer alarm, last 10 seconds: the red slowly breathes darker. Slow and low-amplitude on purpose: no hard flashing. */
+/* /timer alarm, last 10 seconds: the red frame border slowly breathes. Slow and low-amplitude on purpose: no hard flashing. */
 .alarm-pulse { animation: alarm-pulse 2s var(--ph-ease) infinite alternate; }
-@keyframes alarm-pulse { to { background-color: #b91c1c; } }
+@keyframes alarm-pulse { to { opacity: 0.6; } }
 @media (prefers-reduced-motion: reduce) { .alarm-pulse { animation: none; } }

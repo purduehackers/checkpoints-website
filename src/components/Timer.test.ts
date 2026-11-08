@@ -1,24 +1,36 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
-import { alarm } from './Timer'
+import { frameBorder } from './Timer'
 
-test('alarm: nothing while paused, idle or with time to spare', () => {
-  expect(alarm(null, false)).toBe('')
-  expect(alarm(5_000, true)).toBe('')
-  expect(alarm(60_000, false)).toBe('')
+const HAIRLINE = 'border border-border'
+
+test('frameBorder: hairline while paused, idle or with time to spare', () => {
+  expect(frameBorder(null, false)).toBe(HAIRLINE)
+  expect(frameBorder(5_000, true)).toBe(HAIRLINE)
+  expect(frameBorder(-1_000, true)).toBe(HAIRLINE)
+  expect(frameBorder(60_000, false)).toBe(HAIRLINE)
 })
 
-test('alarm: solid red from 0:30, a gentle pulse (never a strobe) from 0:10', () => {
-  expect(alarm(30_000, false)).toBe('bg-red-600 text-white')
-  for (const left of [10_000, 3_000, 0, -2_000]) {
-    expect(alarm(left, false)).toContain('alarm-pulse')
-    expect(alarm(left, false)).not.toContain('strobe')
+test('frameBorder: only the border turns red, never the background', () => {
+  for (const left of [30_000, 10_000, 3_000, 0, -2_000]) {
+    expect(frameBorder(left, false)).toContain('border-[red]')
+    expect(frameBorder(left, false)).not.toMatch(/\bbg-|text-/)
   }
 })
 
-test('css: no strobe/shake, and the pulse stops under reduced motion', () => {
+test('frameBorder: thicker red from 0:30, gentle pulse from 0:10, thick steady red when expired', () => {
+  expect(frameBorder(30_000, false)).toBe('border-[1.5vw] border-[red]')
+  expect(frameBorder(10_000, false)).toBe('border-[1.5vw] border-[red] alarm-pulse')
+  expect(frameBorder(1, false)).toContain('alarm-pulse')
+  expect(frameBorder(0, false)).toBe('border-[4.6875vw] border-[red]')
+  expect(frameBorder(-2_000, false)).toBe('border-[4.6875vw] border-[red]')
+})
+
+test('css: pulse is a slow border breathe (no background), no strobe, off under reduced motion', () => {
   const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8')
   expect(css).not.toContain('strobe')
   expect(css).not.toContain('.shake')
+  expect(css).toMatch(/@keyframes alarm-pulse\s*\{[^}]*\{[^}]*opacity/)
+  expect(css).not.toMatch(/@keyframes alarm-pulse\s*\{[^}]*background/)
   expect(css).toMatch(/prefers-reduced-motion: reduce\)\s*\{[^}]*\.alarm-pulse/)
 })
