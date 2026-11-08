@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Badge, fmt, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { spawn } from '../lib/reactions'
-import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
 import { DitheredSoup } from './DitheredSoup'
 
 // The projector may be opened on an old/preview URL, so the shown address can be pinned (build-time var).
@@ -34,7 +33,6 @@ export default function Host() {
   const reactBox = useRef<HTMLDivElement>(null)
   const { state, online, now } = useLive('host', (counts) => spawn(reactBox.current, counts))
   const [idle, setIdle] = useState(false)
-  const [announce, setAnnounce] = useState(() => { try { return localStorage.getItem('cp-announce') !== '0' } catch { return true } })
   const prevLeft = useRef<{ id: number | string, left: number } | null>(null) // last timer value per presenter, so a refresh never buzzes
   // Chrome won't autoplay video with sound before a click on the page, and &cleanoutput hides vdo.ninja's play button,
   // so the projector stayed blank. The stream starts muted (always allowed) and unmutes on the first click or key.
@@ -60,13 +58,6 @@ export default function Host() {
     } catch { /* ignore */ }
   }
 
-  const toggleAnnounce = () => {
-    unlock()
-    const next = !announce
-    setAnnounce(next)
-    try { localStorage.setItem('cp-announce', next ? '1' : '0') } catch { /* private mode */ }
-  }
-
   // Hide the cursor after 3s without movement.
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>
@@ -80,12 +71,10 @@ export default function Host() {
   const left = c?.pausedLeft ?? (c?.deadline != null ? c.deadline - now() : null)
   const open = state?.session?.status === 'open'
   const audio = state?.session?.audio ?? true
-  const stats = useStatsToggle()
   const inPerson = !!live && c!.shareState !== 'sharing' // "Present without sharing": nothing to project
   const timeUp = left !== null && left <= 0 && c?.pausedLeft == null // in the GRACE_MS save window the presenter is still live
   // Only the last 10 seconds (and TIME'S UP) show on the big screen; the speaker has /timer for the full countdown.
-  const timer = left !== null && left <= 10_000 && <div className={`px-3 py-1 font-bold tabular-nums ${c?.pausedLeft != null ? 'bg-neutral-900/80 text-neutral-500' : left <= 30_000 ? 'bg-red-600' : 'bg-neutral-900/80'}`}>{c?.pausedLeft != null && '⏸ '}{timeUp ? "TIME'S UP" : fmt(left)}</div>
-  const history = useRemoteStats(live ? c!.streamId! : null, stats.on)
+  const timer = left !== null && left <= 10_000 && <div className={`px-[0.4em] font-bold tabular-nums ${c?.pausedLeft != null ? 'border border-border bg-black text-ph-yellow' : 'bg-red-600 text-white'}`}>{c?.pausedLeft != null && '⏸ '}{timeUp ? "TIME'S UP" : fmt(left)}</div>
   const queue = state?.queue ?? []
 
   // Buzz once when a running (not paused) presenter's time crosses from >0 to <=0; adding time and running out again buzzes again.
@@ -94,7 +83,7 @@ export default function Host() {
       if (!c || left === null) { prevLeft.current = null; return }
       const prev = prevLeft.current
       prevLeft.current = { id: c.entryId, left }
-      if (prev && prev.id === c.entryId && prev.left > 0 && left <= 0 && c.status === 'live' && c.pausedLeft == null && announce) buzz()
+      if (prev && prev.id === c.entryId && prev.left > 0 && left <= 0 && c.status === 'live' && c.pausedLeft == null) buzz()
     } catch { /* ignore */ }
   })
 
@@ -114,69 +103,68 @@ export default function Host() {
 
   return (
     <main className={`relative h-screen w-screen overflow-hidden bg-black ${idle ? 'cursor-none' : ''}`}>
-      {stats.on && <StatsOverlay history={history} title={live ? `Live: ${c!.name}` : 'Nobody live'} onClose={stats.toggle} />}
-      <div className="absolute left-0 top-0 origin-top-left bg-black" style={{ width: 1920, height: 1080, transform: `translate(${(innerWidth - 1920 * scale) / 2}px, ${(innerHeight - 1080 * scale) / 2}px) scale(${scale})` }}>
-        <Badge online={online} />
-        {c?.away && <div className="absolute left-1/2 top-20 z-30 -translate-x-1/2 bg-amber-500 px-6 py-3 text-3xl font-bold text-black"><span className="dots">{c.name} disconnected</span></div>}
-        <div ref={reactBox} className="pointer-events-none absolute bottom-0 right-0 top-0 z-20 w-40 overflow-hidden" />
-        {live ? (
-          <div className="absolute overflow-hidden border border-white" style={{ left: 36, top: 36, width: 1848, height: 1008 }}>
+      <Badge online={online} />
+      {c?.away && <div className="absolute left-1/2 top-[8vh] z-30 -translate-x-1/2 bg-ph-orange px-[1.2vw] py-[0.6vw] text-[2vw] font-bold text-black"><span className="dots">{c.name} disconnected</span></div>}
+      <div ref={reactBox} className="pointer-events-none absolute bottom-0 right-0 top-0 z-20 w-40 overflow-hidden" />
+      {live ? (
+        // Edge to edge so the share is as big as the screen allows; the bar sits above the video, never over it.
+        <div className="absolute inset-0 flex flex-col">
+          <div className="relative flex shrink-0 items-center justify-between gap-[2vw] overflow-hidden border-b border-border px-[0.8vw] py-[0.6vw] text-[max(16px,1.25vw)] text-white">
+            <DitheredSoup fgColor="#2e2e2e" />
+            <p className="relative flex min-w-0 items-baseline gap-[0.6em] whitespace-nowrap"><span className="truncate font-medium">{c!.project}</span><span className="ph-subheadline text-ph-pink">{c!.name}</span></p>
+            {open && <p className="ph-headline relative whitespace-nowrap">Join at <span className="text-ph-yellow">{joinHost}</span></p>}
+          </div>
+          <div className="relative min-h-0 flex-1">
             {/* The frame stays mounted behind the screen, so a share that starts after going live flips to video. */}
             <ViewFrame key={`${c!.streamId}:${c!.shareEpoch}`} streamId={c!.streamId!} className="absolute inset-0 h-full w-full bg-black" muted={!audio || !clicked} />
             {inPerson && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-8 bg-neutral-950 p-8 text-center">
-                <p className="text-4xl text-neutral-400">{c!.project}</p>
-                <h1 className="text-7xl font-bold leading-tight">Watch <b className="text-green-400">{c!.name}</b> in person</h1>
-                {timer && <div className="text-8xl [&>div]:px-8 [&>div]:py-2">{timer}</div>}
-                <div className="animate-pulse text-[10rem] leading-none text-amber-400">⬅</div>
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-[2vw] bg-black p-[2vw] text-center text-white">
+                <p className="ph-subheadline text-[2vw]">{c!.project}</p>
+                <h1 className="ph-headline text-[3.75vw]">Watch <span className="text-ph-yellow">{c!.name}</span> in person</h1>
+                {timer && <div className="text-[5vw]">{timer}</div>}
+                <div className="text-[8vw] leading-none text-ph-yellow motion-safe:animate-pulse">⬅</div>
               </div>
             )}
-            {!inPerson && timer && <div className="absolute left-4 top-20 z-10 text-3xl">{timer}</div>}
-            <div className="absolute z-10 overflow-hidden border border-white bg-black" style={{ left: -1, top: -1, width: 1848, height: 59 }}>
-              <DitheredSoup fgColor="#2e2e2e" />
-              <div className="absolute flex items-center gap-[10px] whitespace-nowrap text-[24px]" style={{ ...poly, left: 15, top: 15 }}>
-                <span className="text-white">{c!.project}</span><span style={{ color: '#8f8f8f' }}>{c!.name}</span>
+            {!inPerson && timer && <div className="absolute left-[1vw] top-[1vw] z-10 text-[2.5vw]">{timer}</div>}
+          </div>
+        </div>
+      ) : (
+        // Edge to edge: the soup fills the viewport and "In Line" hugs the right edge. Their contents keep the
+        // Figma 1920x1080 sizes, scaled by `scale`; the text + QR column stays centered in the left pane.
+        <div className="absolute inset-0 flex">
+          <div className="relative flex min-w-0 flex-1 items-center justify-center overflow-hidden">
+            <DitheredSoup fgColor="#2e2e2e" />
+            <div className="relative shrink-0" style={{ width: 989, height: 1080, transform: `scale(${scale})` }}>
+              <div className="absolute inset-x-0 flex flex-col items-center text-center text-white" style={{ ...pixel, top: 151, gap: 20 }}>
+                <p className="w-full text-[96px] leading-[normal]">Checkpoints</p>
+                {state && !state.session && <p className="w-full text-[40px]">Waiting for an organizer to start</p>}
+                {state?.session && !open && <p className="w-full text-[40px]">Checkpoints have ended. Thanks for coming!</p>}
+                {open && <p className="w-full text-[64px] leading-[normal]">Join at <span className="text-ph-yellow">phack.rs/checkpoints</span></p>}
+                {c?.status === 'called' && <p className="w-full text-[48px]"><span className="text-ph-yellow">{c.name}</span>, go to the podium</p>}
               </div>
-              {open && <p className="absolute whitespace-nowrap text-[24px] text-white" style={{ ...pixel, right: 15, top: 15 }}>Join at <span style={{ color: '#fcd202' }}>{joinHost}</span></p>}
+              {open && <img alt="QR code: join at phack.rs/checkpoints" src="/host/qr.png" className="absolute" style={{ left: 236, top: 411, width: 517, height: 517 }} />}
             </div>
           </div>
-        ) : (
-          <>
-            <div className="absolute overflow-hidden border bg-[#d9d9d9]" style={{ left: 36, top: 36, width: wide ? 1276 : 1848, height: 1008, borderColor: '#b6b6b6' }}>
-              <DitheredSoup fgColor="#2e2e2e" />
-            </div>
-            <div className="absolute flex flex-col items-center text-center text-white" style={{ ...pixel, left: wide ? 169 : 466, top: 151, width: 989, gap: 20 }}>
-              <p className="w-full text-[96px] leading-[normal]">Checkpoints</p>
-              {state && !state.session && <p className="w-full text-[40px]">Waiting for an organizer to start</p>}
-              {state?.session && !open && <p className="w-full text-[40px]">Checkpoints have ended. Thanks for coming!</p>}
-              {open && <p className="w-full text-[64px] leading-[normal]">Join at <span style={{ color: '#fcd202' }}>phack.rs/checkpoints</span></p>}
-              {c?.status === 'called' && <p className="w-full text-[48px]"><span style={{ color: '#fcd202' }}>{c.name}</span>, go to the podium</p>}
-            </div>
-            {open && <img alt="QR code: join at phack.rs/checkpoints" src="/host/qr.png" className="absolute" style={{ left: wide ? 405 : 702, top: 411, width: 517, height: 517 }} />}
-            {wide && (
-              <div className="absolute overflow-hidden border bg-black" style={{ left: 1311, top: 36, width: 573, height: 1008, borderColor: '#b6b6b6', ...poly }}>
-                <p className="absolute whitespace-nowrap text-[48px] leading-[normal] text-white" style={{ left: 31, top: 47 }}>In Line</p>
-                {cards.map((k, i) => { const e = queue[i]; return e && (
-                  <div key={e.id} className="absolute overflow-hidden" style={{ left: k.left, top: k.top, width: 501, height: 200, background: k.bg, transform: `rotate(${k.rot}deg)`, boxShadow: k.shadow ? '0 2px 4px rgba(0,0,0,.25)' : undefined }}>
-                    <div className="absolute flex flex-col leading-[normal] text-black" style={{ left: 25, top: 27, width: 277 }}>
-                      <p className="truncate text-[48px]">#{i + 1}</p>
-                      <p className="truncate text-[48px]">{e.name}</p>
-                      <p className="truncate text-[32px]" style={{ color: 'rgba(0,0,0,.5)' }}>{e.project}</p>
-                    </div>
-                    {avatar(i)}
+          {wide && (
+            <div className="relative shrink-0 overflow-hidden border-l border-border bg-black" style={{ width: 573 * scale }}>
+            <div className="absolute left-0 top-0 origin-top-left" style={{ width: 573, height: 1080, transform: `scale(${scale})`, ...poly }}>
+              <p className="absolute whitespace-nowrap text-[48px] leading-[normal] text-white" style={{ left: 31, top: 47 }}>In Line</p>
+              {cards.map((k, i) => { const e = queue[i]; return e && (
+                <div key={e.id} className="absolute overflow-hidden" style={{ left: k.left, top: k.top, width: 501, height: 200, background: k.bg, transform: `rotate(${k.rot}deg)`, boxShadow: k.shadow ? '0 2px 4px rgba(0,0,0,.25)' : undefined }}>
+                  <div className="absolute flex flex-col leading-[normal] text-black" style={{ left: 25, top: 27, width: 277 }}>
+                    <p className="truncate text-[48px]">#{i + 1}</p>
+                    <p className="truncate text-[48px]">{e.name}</p>
+                    <p className="truncate text-[32px]">{e.project}</p>
                   </div>
-                ) })}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-      <div className="absolute bottom-3 right-3 z-40 flex gap-2 opacity-60 transition-opacity hover:opacity-100">
-        {audio && !clicked && <span className="ph-subheadline border border-border bg-ph-yellow px-3 py-1 text-xs text-black">Click anywhere for sound</span>}
-        <StatsButton onClick={stats.toggle} />
-        <button className="ph-subheadline border border-border bg-black px-3 py-1 text-xs text-white transition-transform active:scale-[0.97] hover:text-ph-yellow" onClick={toggleAnnounce}>{announce ? '🔊' : '🔇'} Sounds</button>
-        <button className="ph-subheadline border border-border bg-black px-3 py-1 text-xs text-white transition-transform active:scale-[0.97] hover:text-ph-yellow" onClick={() => { unlock(); document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen() }}>Fullscreen</button>
-      </div>
+                  {avatar(i)}
+                </div>
+              ) })}
+            </div>
+            </div>
+          )}
+        </div>
+      )}
+      {audio && !clicked && <span className="ph-subheadline absolute bottom-3 right-3 z-40 border border-border bg-ph-yellow px-3 py-1 text-xs text-black">Click anywhere for sound</span>}
     </main>
   )
 }

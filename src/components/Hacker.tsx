@@ -52,7 +52,7 @@ export default function Hacker() {
   const [shareState, setShareState] = useState<ShareState>('not_shared')
   const reported = useRef<ShareState>('not_shared')
   const shareFn = useRef<(() => void) | null>(null) // ShareBox's share(), so Start presenting can open the picker (or camera)
-  const autoReady = useRef(false) // /ready already sent for this call: a re-render or a share restart must not send it twice
+  const wantReady = useRef(false) // Start Presenting opened the picker: go live once that share connects. Never set by sharing alone.
   const stats = useStatsToggle()
   useTick()
 
@@ -81,22 +81,22 @@ export default function Hacker() {
     if (active && shareState !== reported.current) { reported.current = shareState; act('/share-state', { state: shareState }) }
   }, [shareState, active])
   // Each publish (incl. Change window / Flip camera, where the state stays 'sharing') bumps the server's share epoch so the
-  // projector remounts its viewer. Marks 'sharing' as reported so the effect above doesn't send it twice; still ahead of auto-Ready in the chain.
+  // projector remounts its viewer. Marks 'sharing' as reported so the effect above doesn't send it twice; still ahead of Ready in the chain.
   const published = () => { reported.current = 'sharing'; act('/share-state', { state: 'sharing' }) }
   useEffect(() => { if (!active) { reported.current = 'not_shared'; setShareState('not_shared') } }, [active])
-  // Called while sharing (or the moment the share connects after the big button): go live, no extra click.
-  // After the share-state report above (requests run in click order), so the server has seen 'sharing' before Ready.
-  // The ref clears when the share stops or the call ends, so nothing stale is left waiting.
+  // Being called never starts the clock by itself: walking up takes a while, so the presenter presses Start Presenting.
+  // Only when that press opened the picker do we go live as the share connects, after the share-state report above
+  // (requests run in click order), so the server has seen 'sharing' before Ready. Cleared when the call ends.
   useEffect(() => {
-    if (me?.status !== 'called' || shareState !== 'sharing') autoReady.current = false
-    else if (!autoReady.current) { autoReady.current = true; act('/ready') }
+    if (me?.status !== 'called') wantReady.current = false
+    else if (wantReady.current && shareState === 'sharing') { wantReady.current = false; act('/ready') }
   }, [shareState, me?.status])
   const start = () => {
-    if (shareState === 'sharing') return act('/ready') // retry, if the automatic one failed
+    if (shareState === 'sharing') return act('/ready')
     // Opens the picker (or camera); the effect above goes live once it connects.
     // No share possible here (unsupported browser): start without one.
     if (!canShare) act('/ready', { noShare: true })
-    else shareFn.current?.()
+    else { wantReady.current = true; shareFn.current?.() }
   }
 
   // Chime + notification on transitions only, not on a refresh that lands already in that state (prev is null until the first state).
@@ -239,10 +239,7 @@ function Shell({ children, fg = '#2e2e2e', green = false, top = 'pt-[155px]' }: 
         <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(0deg, #000 50%, rgba(102,102,102,0) 100%)' }} />
         {green && <div className="absolute inset-0 bg-[rgba(165,226,9,0.5)] mix-blend-color-dodge" />}
       </div>
-      <div className="absolute left-6 top-6 z-10 flex items-center gap-2.5 [filter:drop-shadow(0_1px_2px_rgba(0,0,0,.35))]">
-        <img src="/glider.svg" alt="" width={24} height={24} />
-        <p className="font-pixel text-[19px] whitespace-nowrap"><i className="font-sans text-[20px]">H</i>ACK N<i className="font-sans text-[20px]">I</i>GHT Checkpoints</p>
-      </div>
+      <a href="/" aria-label="Checkpoints home" className="absolute left-6 top-6 z-10 block transition-transform active:scale-[0.97]"><img src="/glider.svg" alt="" width={24} height={24} /></a>
       <div className={`relative mx-auto w-[506px] max-w-full px-4 pb-10 sm:px-0 ${top}`}>{children}</div>
     </main>
   )
