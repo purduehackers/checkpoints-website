@@ -1,4 +1,5 @@
 import { Badge as StatusBadge } from './ph/badge'
+import { Icon } from './ph/icon'
 import { useEffect, useRef, useState } from 'react'
 import { Badge, fmt, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
@@ -120,7 +121,8 @@ export default function Host() {
                 <p className="ph-subheadline text-[2vw]">{c!.project}</p>
                 <h1 className="ph-headline text-[3.75vw]">Watch <span className="text-ph-yellow">{c!.name}</span> in person</h1>
                 {timer && <div className="text-[5vw]">{timer}</div>}
-                <div className="text-[8vw] leading-none text-ph-yellow motion-safe:animate-pulse">⬅</div>
+                {/* Inline size: Icon's base size-4 would tie with a size utility (cn() has no tailwind-merge). */}
+                <Icon name="arrow-left" className="text-ph-yellow motion-safe:animate-pulse" style={{ width: '8vw', height: '8vw' }} />
               </div>
             )}
             {!inPerson && timer && <div className="absolute left-[1vw] top-[1vw] z-10 text-[2.5vw]">{timer}</div>}
