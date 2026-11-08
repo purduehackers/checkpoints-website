@@ -88,7 +88,7 @@ export function useStatsToggle() {
 }
 
 export function StatsButton({ onClick, className = '' }: { onClick: () => void; className?: string }) {
-  return <button className={`z-40 ph-subheadline border border-border bg-black px-2 py-1 text-xs text-white transition-transform active:scale-[0.97] hover:text-ph-yellow ${className}`} onClick={onClick}>Stats for nerds</button>
+  return <button className={`z-40 ph-subheadline border border-border bg-black px-2 py-1 text-xs text-white transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none hover:text-ph-yellow ${className}`} onClick={onClick}>Stats for nerds</button>
 }
 
 function Spark({ label, values, unit, max }: { label: string; values: (number | null)[]; unit: string; max?: number }) {
@@ -98,8 +98,8 @@ function Spark({ label, values, unit, max }: { label: string; values: (number | 
   const last = values[values.length - 1]
   return (
     <div className="flex items-center gap-2">
-      <span className="w-14 text-neutral-400">{label}</span>
-      <svg viewBox="0 0 120 28" className="h-7 w-32 border border-border"><polyline points={pts} fill="none" stroke="currentColor" strokeWidth="1.5" className="text-green-400" /></svg>
+      <span className="w-14 text-white">{label}</span>
+      <svg viewBox="0 0 120 28" className="h-7 w-32 border border-border"><polyline points={pts} fill="none" stroke="currentColor" strokeWidth="1.5" className="text-ph-lime" /></svg>
       <span className="w-20 text-right tabular-nums">{last == null ? '–' : `${Math.round(last)} ${unit}`}</span>
     </div>
   )
@@ -109,20 +109,20 @@ export function StatsOverlay({ history, title, onClose }: { history: Sample[]; t
   const s = history[history.length - 1]
   return (
     <div className="fixed bottom-12 left-3 z-50 space-y-1 border border-border bg-black p-3 font-mono text-xs text-white">
-      <div className="flex items-center justify-between gap-4"><b>{title}</b><button className="text-neutral-400 hover:text-white" onClick={onClose} aria-label="Close stats">✕</button></div>
-      {!s ? <p className="text-neutral-400">No stream stats yet.</p> : (
+      <div className="flex items-center justify-between gap-4"><b>{title}</b><button className="text-white hover:text-ph-yellow transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none" onClick={onClose} aria-label="Close stats">✕</button></div>
+      {!s ? <p className="text-white">No stream stats yet.</p> : (
         <>
           <Spark label="fps" values={history.map((h) => h.fps)} unit="" max={30} />
           <Spark label="video" values={history.map((h) => h.vKbps)} unit="kbps" />
           <Spark label="audio" values={history.map((h) => h.aKbps)} unit="kbps" />
           <Spark label="rtt" values={history.map((h) => h.rtt)} unit="ms" />
           <Spark label="loss" values={history.map((h) => h.loss)} unit="%" max={5} />
-          <div className="grid grid-cols-[auto_1fr] gap-x-3 pt-1 text-neutral-300">
-            <span className="text-neutral-400">res</span><span>{s.w}×{s.h}</span>
-            <span className="text-neutral-400">codec</span><span>{s.codec}</span>
-            <span className="text-neutral-400">limited by</span><span className={s.limit === 'none' ? '' : 'text-ph-pink'}>{s.limit}</span>
-            <span className="text-neutral-400">path</span><span>{s.path}</span>
-            <span className="text-neutral-400">viewers</span><span className={s.viewers > 2 ? 'text-ph-pink' : ''}>{s.viewers}</span>
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 pt-1 text-white">
+            <span className="text-white">res</span><span>{s.w}×{s.h}</span>
+            <span className="text-white">codec</span><span>{s.codec}</span>
+            <span className="text-white">limited by</span><span className={s.limit === 'none' ? '' : 'text-ph-pink'}>{s.limit}</span>
+            <span className="text-white">path</span><span>{s.path}</span>
+            <span className="text-white">viewers</span><span className={s.viewers > 2 ? 'text-ph-pink' : ''}>{s.viewers}</span>
           </div>
         </>
       )}

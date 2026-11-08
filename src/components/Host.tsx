@@ -3,6 +3,10 @@ import { Badge, fmt, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { spawn } from '../lib/reactions'
 import { DitheredSoup } from './DitheredSoup'
+import { DOODLES, moreLine, stickers } from './host/stickers'
+
+// Per-slot tilt + nudge so the stack reads as hand-placed sticky notes (Figma 38:9); the look itself follows the person.
+const SLOTS = [{ rot: -3.22, x: 5 }, { rot: 2.5, x: -5 }, { rot: -1.8, x: 12 }, { rot: 2.2, x: 0 }]
 
 // The projector may be opened on an old/preview URL, so the shown address can be pinned (build-time var).
 const pinnedHost = import.meta.env.PUBLIC_JOIN_HOST
@@ -87,19 +91,12 @@ export default function Host() {
     } catch { /* ignore */ }
   })
 
-  const cards = [
-    { bg: '#ff9300', rot: -3.22, left: 34.2, top: 115.9, shadow: true },
-    { bg: '#0084ff', rot: 2.5, left: 24.1, top: 302.8, shadow: true },
-    { bg: '#fcd202', rot: -1.8, left: 41, top: 470.8, shadow: false },
-  ]
   const wide = open && queue.length > 0 // "In Line" panel shrinks the idle screen's left pane
-  const poly = { fontFamily: 'var(--font-sans)' }
+  const called = c?.status === 'called' // Figma "Waiting for Next": the call replaces the title + QR
+  const shown = queue.slice(0, 4)
+  const looks = stickers(shown.map((e) => e.id))
+  const more = moreLine(queue.slice(4).map((e) => e.name))
   const pixel = { fontFamily: 'var(--font-pixel)' }
-  const avatar = (i: number) => i === 0
-    ? <img alt="" src="/host/avatar-1.png" className="absolute" style={{ left: 326.4, top: 6.75, width: 174, height: 174, mixBlendMode: 'color-burn', transform: 'rotate(3.22deg)', objectFit: 'cover' }} />
-    : i === 1
-      ? <img alt="" src="/host/avatar-2.png" className="absolute" style={{ left: 318, top: -4, width: 176, height: 207, mixBlendMode: 'color-burn', transform: 'rotate(-2.5deg)', objectFit: 'cover' }} />
-      : <img alt="" src="/host/avatar-3.png" className="absolute" style={{ left: 337.5, top: 13.2, width: 157.2, height: 202.6, opacity: 0.32, objectFit: 'cover', objectPosition: 'bottom' }} />
 
   return (
     <main className={`relative h-screen w-screen overflow-hidden bg-black ${idle ? 'cursor-none' : ''}`}>
@@ -135,31 +132,53 @@ export default function Host() {
           <div className="relative flex min-w-0 flex-1 items-center justify-center overflow-hidden">
             <DitheredSoup fgColor="#2e2e2e" />
             <div className="relative shrink-0" style={{ width: 989, height: 1080, transform: `scale(${scale})` }}>
-              <div className="absolute inset-x-0 flex flex-col items-center text-center text-white" style={{ ...pixel, top: 151, gap: 20 }}>
-                <p className="w-full text-[96px] leading-[normal]">Checkpoints</p>
-                {state && !state.session && <p className="w-full text-[40px]">Waiting for an organizer to start</p>}
-                {state?.session && !open && <p className="w-full text-[40px]">Checkpoints have ended. Thanks for coming!</p>}
-                {open && <p className="w-full text-[64px] leading-[normal]">Join at <span className="text-ph-yellow">phack.rs/checkpoints</span></p>}
-                {c?.status === 'called' && <p className="w-full text-[48px]"><span className="text-ph-yellow">{c.name}</span>, go to the podium</p>}
-              </div>
-              {open && <img alt="QR code: join at phack.rs/checkpoints" src="/host/qr.png" className="absolute" style={{ left: 236, top: 411, width: 517, height: 517 }} />}
+              {called ? (
+                // The server calls the first in line right away, so this is the usual screen: keep the QR so newcomers can still join.
+                // One centered column; the name clamps to 2 lines so a long one can't push into the QR.
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-white" style={pixel}>
+                  <p className="line-clamp-2 w-full break-words text-[96px] leading-[1.1]">Next: <span className="text-ph-yellow">{c!.name}</span></p>
+                  <p className="mt-[20px] w-full text-[64px] leading-[normal]">Come to the podium!</p>
+                  {open && <>
+                    <p className="mt-[72px] w-full text-[40px] leading-[normal]">Join at <span className="text-ph-yellow">phack.rs/checkpoints</span></p>
+                    <img alt="QR code: join at phack.rs/checkpoints" src="/host/qr.png" className="mt-[24px] size-[360px] shrink-0" />
+                  </>}
+                </div>
+              ) : (
+                <>
+                  <div className="absolute inset-x-0 flex flex-col items-center text-center text-white" style={{ ...pixel, top: 151, gap: 20 }}>
+                    <p className="w-full text-[96px] leading-[normal]">Checkpoints</p>
+                    {state && !state.session && <p className="w-full text-[40px]">Waiting for an organizer to start</p>}
+                    {state?.session && !open && <p className="w-full text-[40px]">Checkpoints have ended. Thanks for coming!</p>}
+                    {open && <p className="w-full text-[64px] leading-[normal]">Join at <span className="text-ph-yellow">phack.rs/checkpoints</span></p>}
+                  </div>
+                  {open && <img alt="QR code: join at phack.rs/checkpoints" src="/host/qr.png" className="absolute" style={{ left: 236, top: 411, width: 517, height: 517 }} />}
+                </>
+              )}
             </div>
           </div>
           {wide && (
             <div className="relative shrink-0 overflow-hidden border-l border-border bg-black" style={{ width: 573 * scale }}>
-            <div className="absolute left-0 top-0 origin-top-left" style={{ width: 573, height: 1080, transform: `scale(${scale})`, ...poly }}>
-              <p className="absolute whitespace-nowrap text-[48px] leading-[normal] text-white" style={{ left: 31, top: 47 }}>In Line</p>
-              {cards.map((k, i) => { const e = queue[i]; return e && (
-                <div key={e.id} className="absolute overflow-hidden" style={{ left: k.left, top: k.top, width: 501, height: 200, background: k.bg, transform: `rotate(${k.rot}deg)`, boxShadow: k.shadow ? '0 2px 4px rgba(0,0,0,.25)' : undefined }}>
-                  <div className="absolute flex flex-col leading-[normal] text-black" style={{ left: 25, top: 27, width: 277 }}>
-                    <p className="truncate text-[48px]">#{i + 1}</p>
-                    <p className="truncate text-[48px]">{e.name}</p>
-                    <p className="truncate text-[32px]">{e.project}</p>
-                  </div>
-                  {avatar(i)}
-                </div>
-              ) })}
-            </div>
+              <div className="absolute left-0 top-0 flex origin-top-left flex-col font-sans text-white" style={{ width: 573, height: 1080, transform: `scale(${scale})`, padding: '47px 31px 0' }}>
+                <p className="text-[48px] leading-[normal]">In Line</p>
+                <ol className="mt-[10px] flex flex-col">
+                  {shown.map((e, i) => {
+                    const { color, doodle } = looks[i], d = DOODLES[doodle], { rot, x } = SLOTS[i]
+                    return (
+                      // Earlier cards sit on top of later ones; each tucks 10px under the one above, clear of the '#N' line.
+                      <li key={e.id} className={`enter relative h-[200px] w-[501px] shrink-0 overflow-hidden text-black ${color} ${i ? '-mt-[10px]' : ''} ${i < shown.length - 1 ? 'shadow-[0_2px_4px_rgba(0,0,0,.25)]' : ''}`}
+                        style={{ zIndex: shown.length - i, transform: `translateX(${x}px) rotate(${rot}deg)`, '--i': i } as React.CSSProperties}>
+                        <img alt="" src={d.src} className={`absolute right-[6px] top-0 h-[200px] w-[176px] object-contain ${d.className}`} style={{ transform: `rotate(${-rot}deg)` }} />
+                        <div className="relative flex w-[277px] flex-col pl-[25px] pt-[27px] leading-[normal]">
+                          <p className="text-[48px]">#{i + 1}</p>
+                          <p className="truncate text-[48px]">{e.name}</p>
+                          <p className="truncate text-[32px]">{e.project}</p>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ol>
+                {more && <p className="ph-subheadline mt-[36px] line-clamp-2 text-[32px] leading-[1.2]">{more}</p>}
+              </div>
             </div>
           )}
         </div>

@@ -21,10 +21,10 @@ function Shell({ children, title }: { children: React.ReactNode; title?: string 
       <DitheredSoup fgColor="#897309" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[40vh] bg-black" />
       <header className="absolute left-6 top-6">
-        <a href="/admin" aria-label="Checkpoints Admin" className="block transition-transform active:scale-[0.97]"><img src="/glider.svg" alt="" width={24} height={24} /></a>
+        <a href="/admin" aria-label="Checkpoints Admin" className="block transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none"><img src="/glider.svg" alt="" width={24} height={24} /></a>
       </header>
-      <main className="relative flex flex-col items-center px-4 pb-16 pt-[142px]">
-        {title && <h1 className="ph-headline mb-[10px] w-full max-w-[933px] text-[36px]">{title}</h1>}
+      <main className="relative mx-auto flex w-full max-w-[965px] flex-col items-center px-4 pb-16 pt-[142px]">
+        {title && <h1 className="ph-headline mb-[19px] w-full text-[36px] leading-9">{title}</h1>}
         {children}
       </main>
     </div>
@@ -131,16 +131,16 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
     <Shell title="Hack Night 7.1">
       <Badge online={online} />
       {stats.on && <StatsOverlay history={history} title={statsStream && statsStream === c?.streamId ? `On stage: ${c.name}` : 'Previewed stream'} onClose={stats.toggle} />}
-      <fieldset disabled={busy} className="flex w-[933px] max-w-full min-w-0 flex-wrap gap-6 border-0 p-0">
-        <div className="flex w-[403px] max-w-full flex-col gap-6">
-          <div className="relative h-[418px] overflow-y-auto border border-border bg-black p-[15px]">
+      <fieldset disabled={busy} className="grid w-full min-w-0 grid-cols-1 gap-6 border-0 p-0 min-[965px]:grid-cols-[403px_506px]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <div className="relative h-[418px] overflow-y-auto border border-border bg-black p-4">
             <h2 className="ph-headline text-[19px]">Queue</h2>
             <p className="mt-2 text-[13px]">{open && state.queue.length > 0 ? `${state.queue.length} waiting · through the line in ${aboutMin(waitMs(state, state.queue.length, now()))}` : !s ? 'No session yet.' : !open ? 'Session ended.' : 'Queue is empty.'}</p>
-            <ol className="mt-5 space-y-1">
+            <ol className="mt-3 space-y-1">
               {state.queue.map((e, i) => (
-                <li key={e.id} className="flex items-center justify-between gap-2 border border-border p-2">
-                  <div className="min-w-0 whitespace-nowrap">
-                    <div className="flex items-center gap-[6px] text-[13px]"><b className="font-semibold">{e.name}</b><span className="truncate font-light">{e.project}</span></div>
+                <li key={e.id} className="flex min-h-[46px] flex-wrap items-center justify-between gap-2 border border-border p-2 leading-[14px]">
+                  <div className="min-w-0 flex-1 whitespace-nowrap">
+                    <div className="flex items-center gap-[6px] text-[13px]"><b className="truncate font-semibold">{e.name}</b><span className="truncate font-light">{e.project}</span></div>
                     <div className="ph-subheadline text-[11px]">{e.connected ? SHARE_LABEL[e.shareState] : <span className="dots text-ph-yellow">disconnected</span>}</div>
                   </div>
                   <div className="flex shrink-0 items-center gap-[10px]">
@@ -162,17 +162,17 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
             <button aria-label="Settings" aria-expanded={cog} className={`grid size-[50px] place-items-center border border-white bg-white ${press}`} onClick={() => setCog(!cog)}><img src="/cog.svg" alt="" width={36} height={36} /></button>
           </div>
         </div>
-        <div className="flex w-[506px] max-w-full flex-col gap-6">
+        <div className="flex min-w-0 flex-col gap-6">
           <div className="relative h-[322px] border border-border bg-black">
             {preview ? <ViewFrame key={`${preview}:${preview_?.shareEpoch ?? 0}`} streamId={preview} className="absolute inset-0 size-full bg-black" /> : null}
             <StatsButton onClick={stats.toggle} className="absolute bottom-[15px] right-[15px]" />
-            {busy && <span className="absolute left-[15px] top-[15px] text-white"><Spinner /></span>}
-            <span className="ph-subheadline pointer-events-none absolute right-[15px] top-[15px] bg-black px-1 text-xs">Preview{pinned && ' · pinned'}</span>
+            {busy && <span className="absolute left-[15px] top-4 text-white"><Spinner /></span>}
+            <span className="ph-subheadline pointer-events-none absolute right-[15px] top-4 bg-black px-1 text-xs">Preview{pinned && ' · pinned'}</span>
             {pinned && <button className={`${link} absolute right-[15px] top-[40px] bg-black px-1`} onClick={() => setPinned(false)}>follow next</button>}
           </div>
           {/* Current presenter. Flow layout (no absolute positioning), so nothing overlaps at any width. */}
-          <section aria-label="Current presenter" className={`flex min-h-[146px] flex-col gap-3 border bg-black p-[15px] ${c ? 'border-ph-orange' : 'border-border'}`}>
-            {c && (<>
+          <section aria-label="Current presenter" className={`flex min-h-[146px] flex-col gap-3 border bg-black p-4 ${c ? 'border-ph-orange' : 'border-border'}`}>
+            {c ? (<>
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <p className="ph-headline truncate text-[19px]">{c.name}</p>
@@ -185,7 +185,7 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
               </div>
               {/* Save window: time ran out but the server keeps them live for GRACE_MS. Add time to bring them back. */}
               {c.pausedLeft == null && c.deadline != null && c.deadline <= now() && <p role="status" className="border border-ph-pink px-2 py-1 text-xs font-semibold text-ph-pink">Time's up · ends in {Math.max(0, Math.ceil((c.deadline + GRACE_MS - now()) / 1000))}s. Add time to keep them</p>}
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="mt-auto flex flex-wrap items-center gap-2.5">
                 {c.status === 'called' && <button className={solidBtn} onClick={() => act('/ready', { id: c.entryId })}>Start</button>}
                 {c.status === 'called' && <button className={outlineBtn} onClick={() => act('/skip', { id: c.entryId })}>Skip</button>}
                 <button className={solidBtn} onClick={() => act('/stop', { id: c.entryId })}>Stop</button>
@@ -197,13 +197,16 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
                 ))}
                 {c.streamId && <button className={`ph-subheadline ml-auto border border-border px-2 py-1 text-[11px] text-ph-yellow ${press}`} onClick={() => { setPinned(true); setPreview(c.streamId!) }}>Preview · {SHARE_LABEL[c.shareState]}</button>}
               </div>
+            </>) : (<>
+              <p className="ph-headline text-[19px]">Nobody up yet</p>
+              <p className="text-sm">{open ? 'The next person in the queue will be called automatically.' : 'Start a checkpoint to open the queue.'}</p>
             </>)}
           </section>
         </div>
       </fieldset>
       {error && <p role="alert" className="mt-4 w-[933px] max-w-full text-ph-pink">{error}</p>}
       {cog && (
-        <fieldset disabled={busy} className="mt-6 flex w-[933px] max-w-full flex-col items-start gap-4 border border-border bg-black p-[15px] font-sans">
+        <fieldset disabled={busy} className="mt-6 flex w-[933px] max-w-full flex-col items-start gap-4 border border-border bg-black p-4 font-sans">
           <p className="flex items-center gap-1 text-[13px]">Hello, <b>{name}</b> · <a href={signOutUrl()} className={link}>Sign out</a></p>
           {open && <>
             <div className="flex flex-wrap items-center gap-4">

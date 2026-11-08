@@ -148,8 +148,8 @@ export default function Hacker() {
   // The server keeps a presenter live for a save window (GRACE_MS) past the deadline: say so, keep sharing, end nothing here.
   const timeUp = me?.status === 'live' && cur?.pausedLeft == null && msTotal !== null && msTotal <= 0
 
-  const plain = (text: string) => <h1 className="text-center text-[36px] leading-[normal] [text-shadow:0_1px_2px_rgba(0,0,0,.35)]">{text}</h1>
-  const link = 'text-xs text-[#929292] underline'
+  const plain = (text: string) => <h1 className="ph-headline text-center text-[36px] leading-9">{text}</h1>
+  const link = 'text-xs text-white underline'
   let body, fg = '#2e2e2e', green = false, top = 'pt-[155px]'
   if (!state.session) body = plain('No checkpoint is running.')
   else if (!open) body = plain('This checkpoint has ended.')
@@ -176,7 +176,7 @@ export default function Hacker() {
         </div>
         <div className="flex flex-col gap-2.5">
           <button disabled={pending > 0} className={`${BTN} w-full gap-2 bg-white text-black disabled:opacity-70`}>{pending > 0 && <Spinner />}Present</button>
-          <p className="text-xs text-[#929292]">Note: You get {span(state.session!.limitSec)} to present</p>
+          <p className="text-xs text-white">Note: You get {span(state.session!.limitSec)} to present</p>
         </div>
       </form>
     )
@@ -191,25 +191,25 @@ export default function Hacker() {
     const sub = live ? (msTotal === null ? '' : timeUp ? 'Time’s up' : `${fmt(msTotal).replace(/^0/, '')} left`)
       : me.status === 'waiting' ? (sharing || me.position === 1 ? `Up in ${aboutMinutes(waitMs(state, me.position - 1, now()))}${ahead ? ` ⊹ You’re after ${ahead}` : ''}` : `Join the queue by sharing your ${what}`) : ''
     const big = called || live
-    const btn = `${BTN} w-full ${big ? 'h-[50px] text-[20.971px] tracking-[-1.0486px]' : ''}`
+    const btn = `${BTN} w-full ${big ? 'h-[50px] text-xl' : ''}`
     body = (
       <div className="flex flex-col items-center gap-6">
         <div className="flex w-full flex-col items-center gap-2">
-          <h1 className={`w-full text-center text-[36px] leading-[normal] ${live ? '[text-shadow:0_4px_4px_rgba(0,0,0,.5)]' : '[text-shadow:0_1px_2px_rgba(0,0,0,.35)]'}`}>{title}</h1>
-          {sub && <p className="text-xl leading-[normal] text-[#a4a4a4]">{sub}</p>}
+          <h1 className="ph-headline w-full text-center text-[36px] leading-9">{title}</h1>
+          {sub && <p className="text-center text-xl leading-normal text-white">{sub}</p>}
         </div>
         {canShare ? (
           <ShareBox streamId={me.streamId} label={me.name} live={live} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} onPublished={published} shareRef={shareFn} hideShare={called} camera={phone} />
         ) : (
-          <p className="w-full border border-[#4d4d4d] bg-black p-3 text-center text-xs text-[#ff9300]">{phone ? 'No camera access in this browser.' : 'Screen sharing needs Chrome or Edge.'}</p>
+          <p className="w-full border border-border bg-black p-3 text-center text-xs text-ph-yellow">{phone ? 'No camera access in this browser.' : 'Screen sharing needs Chrome or Edge.'}</p>
         )}
         <div className="flex w-full flex-col items-center gap-3">
-          {called && <button disabled={pending > 0} className={`${btn} gap-3 bg-[#a5e209] text-black disabled:opacity-70`} onClick={start}>{pending > 0 && <Spinner className="size-5" />}Start Presenting</button>}
+          {called && <button disabled={pending > 0} className={`${btn} gap-3 bg-ph-lime text-black disabled:opacity-70`} onClick={start}>{pending > 0 && <Spinner className="size-5" />}Start Presenting</button>}
           {/* Take the stage with no share from this page: talk-only, or a browser that can't share. Ready only works once called. */}
-          {!live && !sharing && <button disabled={!called} className={`${btn} border ${called ? 'border-[#a5e209] text-[#a5e209]' : 'border-white text-white disabled:opacity-50'}`}
+          {!live && !sharing && <button disabled={!called} className={`${btn} border ${called ? 'border-ph-lime text-ph-lime' : 'border-white text-white disabled:opacity-50'}`}
             onClick={() => confirm('Start your time without sharing here?') && act('/ready', { noShare: true })}>Present without sharing</button>}
           {!live && sharing && !called && <button className={`${btn} border border-white text-white`} onClick={() => shareFn.current?.()}>Change {phone ? 'Camera' : 'Screen'}</button>}
-          {live && <button className={`${btn} bg-[#ff9300] text-black`} onClick={() => act('/end')}>End checkpoint</button>}
+          {live && <button className={`${btn} bg-ph-orange text-black`} onClick={() => act('/end')}>End checkpoint</button>}
           {!live && <button className={`${link} self-start`} style={sharing || called ? undefined : { alignSelf: 'center' }} onClick={() => confirm('Leave the queue?') && act('/leave')}>{sharing || called ? 'Leave queue' : 'Exit'}</button>}
         </div>
         {me.status === 'waiting' && state.session!.reactions && <div className="w-full"><ReactionPanel react={react} notice={notice} /></div>}
@@ -221,26 +221,26 @@ export default function Hacker() {
     <Shell fg={fg} green={green} top={top}>
       <Badge online={online} />
       {active && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
-      {pending > 0 && <div className="late fixed bottom-3 right-3 z-50 flex items-center gap-2 rounded bg-neutral-800 px-3 py-1 text-sm"><Spinner />Working…</div>}
+      {pending > 0 && <div className="late fixed bottom-3 right-3 z-50 flex items-center gap-2 border border-border bg-black px-3 py-1 text-sm"><Spinner />Working…</div>}
       {body}
-      {error && <p className="mt-3 text-center text-sm text-red-400">{error}</p>}
+      {error && <p className="mt-3 text-center text-sm text-ph-pink">{error}</p>}
     </Shell>
   )
 }
 
-const BTN = "flex items-center justify-center px-3 py-2.5 font-['Inconsolata',ui-monospace,monospace] text-base font-semibold tracking-[-0.8px] disabled:cursor-not-allowed"
-const INPUT = 'w-full border border-[#4d4d4d] bg-black px-3 py-2.5 text-base text-white placeholder:text-[#929292] focus:border-white focus:outline-none'
+const BTN = 'ph-subheadline flex min-h-[37px] items-center justify-center px-3 py-2 text-base leading-5 transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none disabled:cursor-not-allowed'
+const INPUT = 'h-10 w-full border border-border bg-black px-3 py-2 text-base text-white placeholder:text-white focus:border-white focus:outline-none'
 
 function Shell({ children, fg = '#2e2e2e', green = false, top = 'pt-[155px]' }: { children: React.ReactNode; fg?: string; green?: boolean; top?: string }) {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-black text-white">
+    <main className="relative min-h-screen overflow-hidden bg-black font-sans text-white">
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <DitheredSoup fgColor={fg} />
-        <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(0deg, #000 50%, rgba(102,102,102,0) 100%)' }} />
-        {green && <div className="absolute inset-0 bg-[rgba(165,226,9,0.5)] mix-blend-color-dodge" />}
+        <div className="absolute inset-x-0 bottom-0 top-[50vh] bg-black" />
+        {green && <div className="absolute inset-0 bg-ph-lime/50 mix-blend-color-dodge" />}
       </div>
-      <a href="/" aria-label="Checkpoints home" className="absolute left-6 top-6 z-10 block transition-transform active:scale-[0.97]"><img src="/glider.svg" alt="" width={24} height={24} /></a>
-      <div className={`relative mx-auto w-[506px] max-w-full px-4 pb-10 sm:px-0 ${top}`}>{children}</div>
+      <a href="/" aria-label="Checkpoints home" className="absolute left-6 top-6 z-10 block transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none"><img src="/glider.svg" alt="" width={24} height={24} /></a>
+      <div className={`relative mx-auto w-full max-w-[538px] px-4 pb-10 ${top}`}>{children}</div>
     </main>
   )
 }
