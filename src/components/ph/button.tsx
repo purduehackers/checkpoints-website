@@ -34,7 +34,8 @@ type ButtonProps = {
 
 export function Button({ children, href, variant = "solid", size = "md", icon, iconEnd, className, type = "button", ...rest }: ButtonProps) {
   const classes = cn(
-    "inline-flex w-fit shrink-0 cursor-pointer items-center justify-center whitespace-nowrap transition-[color,background-color,transform] duration-150 ease-quint active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40",
+    "inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap transition-[color,background-color,transform] duration-150 ease-quint active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40",
+    !size.startsWith("icon") && "w-fit",
     variant !== "link" && "font-mono font-semibold tracking-wide uppercase no-underline",
     variants[variant],
     variant !== "link" && sizes[size],

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ConnectionBadge, Spinner, aboutMin, api, fmt, signInUrl, signOutUrl, useLive, useTick, useUser, waitMs } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
@@ -8,7 +8,6 @@ import { Button } from './ph/button'
 import { Card } from './ph/card'
 import { Checkbox } from './ph/checkbox'
 import { Dialog } from './ph/dialog'
-import { DitherButton } from './ph/dither-button'
 import { Field } from './ph/field'
 import { Glider } from './ph/glider'
 import { Input } from './ph/input'
@@ -31,30 +30,6 @@ function Shell({ children, title }: { children: React.ReactNode; title?: string 
         {title && <h1 className="ph-headline mb-[19px] w-full text-[36px] leading-9">{title}</h1>}
         {children}
       </main>
-    </div>
-  )
-}
-
-// Dither pixels are square (aspect-ratio 1) and fill the width, so cols must track the button's
-// aspect or the pixels overflow the 52px height and the hover smears. 4 rows of ~13px pixels.
-const DITHER_ROWS = 4
-function SessionButton({ open, onClick }: { open: boolean; onClick: () => void }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [cols, setCols] = useState(26) // ~340x52, the desktop width, until measured
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const ro = new ResizeObserver(() => {
-      const { width, height } = el.getBoundingClientRect()
-      if (height) setCols(Math.max(1, Math.round((width / height) * DITHER_ROWS)))
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  return (
-    <div ref={ref} className="flex flex-1">
-      {/* Inline width: the registry CSS sets width: fit-content outside Tailwind's layers. */}
-      <DitherButton cols={cols} rows={DITHER_ROWS} style={{ width: '100%' }} onClick={onClick}>{open ? 'End checkpoint' : 'Start checkpoint'}</DitherButton>
     </div>
   )
 }
@@ -184,7 +159,7 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
             </ol>
           </Card>
           <div className="flex items-center gap-4">
-            <SessionButton open={open} onClick={() => open ? confirm('End checkpoints?') && act('/session/end') : act('/session/start')} />
+            <Button size="lg" variant={open ? 'orange' : 'lime'} className="flex-1" onClick={() => open ? confirm('End checkpoints?') && act('/session/end') : act('/session/start')}>{open ? 'End checkpoint' : 'Start checkpoint'}</Button>
             <Button size="icon-lg" variant="outline" icon="cog" aria-label="Settings" aria-haspopup="dialog" aria-expanded={cog} onClick={() => setCog(!cog)} />
           </div>
         </div>

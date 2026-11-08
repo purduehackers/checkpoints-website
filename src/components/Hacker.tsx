@@ -180,7 +180,7 @@ export default function Hacker() {
           <Field label="Project Name" htmlFor="hacker-project"><Input id="hacker-project" required maxLength={80} placeholder="Pixel garden" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} /></Field>
         </div>
         <div className="flex flex-col gap-2.5">
-          <DitherButton type="submit" disabled={pending > 0} style={{ width: '100%' }}>{pending > 0 && <Spinner />}Present</DitherButton>
+          <Button variant="solid" size="lg" className="w-full" type="submit" disabled={pending > 0}>{pending > 0 && <Spinner />}Present</Button>
           <p className="text-xs text-foreground">Note: You get {span(state.session!.limitSec)} to present</p>
         </div>
       </form>
