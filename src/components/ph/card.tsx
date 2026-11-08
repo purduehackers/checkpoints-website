@@ -6,12 +6,15 @@ type CardProps = {
   href?: string;
   title?: string;
   media?: ReactNode;
+  /** Border color utility; replaces the default border-border (cn() can't merge overrides). */
+  border?: string;
   className?: string;
 };
 
-export function Card({ children, href, title, media, className }: CardProps) {
+export function Card({ children, href, title, media, border = "border-border", className }: CardProps) {
   const classes = cn(
-    "flex flex-col gap-3 border border-border bg-card p-5 text-card-foreground no-underline",
+    "flex flex-col gap-3 border bg-card p-5 text-card-foreground no-underline",
+    border,
     href && "transition-colors duration-150 ease-quint hover:border-foreground",
     className,
   );

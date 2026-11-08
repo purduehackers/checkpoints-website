@@ -1,6 +1,6 @@
 import { Button } from './ph/button'
 import { useEffect, useState } from 'react'
-import { Badge, fmt, useLive, useTick } from '../lib/live'
+import { ConnectionBadge, fmt, useLive, useTick } from '../lib/live'
 
 // The whole screen does the signalling, so the speaker sees it from the corner of their eye:
 // solid red with white text from 0:30, then the red gently pulses from 0:10 through TIME'S UP.
@@ -30,7 +30,7 @@ export default function Timer() {
 
   return (
     <main className={`relative h-screen overflow-hidden bg-background text-foreground ${screen} ${idle ? 'cursor-none' : ''}`}>
-      <Badge online={online} />
+      <ConnectionBadge online={online} />
       {live ? (
         <>
           <div className={`absolute inset-x-[1.875vw] inset-y-[3.333vh] box-border border-solid ${expired ? 'border-[4.6875vw] border-[red]' : 'border border-border'}`} />
@@ -48,7 +48,7 @@ export default function Timer() {
           ) : <p className="ph-subheadline text-[4vw]">{state ? 'No one presenting' : ''}</p>}
         </div>
       )}
-      <Button variant="outline" size="sm" className="absolute bottom-3 right-3 z-40 bg-background" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>Fullscreen</Button>
+      <Button variant="outline" size="sm" className="absolute bottom-3 right-3 z-40" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>Fullscreen</Button>
     </main>
   )
 }

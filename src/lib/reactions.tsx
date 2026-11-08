@@ -7,7 +7,7 @@ export function ReactionPanel({ react, notice }: { react: (emoji: string) => voi
   return (
     <div className="space-y-1">
       <div className={`flex justify-between gap-2 border border-border bg-background p-2 ${slow ? 'opacity-50' : ''}`}>
-        {REACTIONS.map((e) => <Button variant="ghost" key={e} aria-label={`React ${e}`} onClick={() => react(e)} className="h-auto min-w-0 grow shrink! p-2! text-3xl!">{e}</Button>)}
+        {REACTIONS.map((e) => <Button variant="ghost" size="icon" key={e} aria-label={`React ${e}`} onClick={() => react(e)}><span className="text-3xl">{e}</span></Button>)}
       </div>
       {notice && now < Math.max(notice.until, notice.slowUntil) && <p role="status" className="text-sm text-ph-yellow">{notice.text}</p>}
     </div>

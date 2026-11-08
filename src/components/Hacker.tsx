@@ -2,10 +2,10 @@ import { Button } from './ph/button'
 import { DitherButton } from './ph/dither-button'
 import { Input } from './ph/input'
 import { Field } from './ph/field'
-import { Badge as StatusBadge } from './ph/badge'
+import { Badge } from './ph/badge'
 import { Glider } from './ph/glider'
 import { useEffect, useRef, useState } from 'react'
-import { Badge, Spinner, aboutMinutes, aheadName, api, fmt, hackerToken, ordinal, span, useLive, useTick, waitMs } from '../lib/live'
+import { ConnectionBadge, Spinner, aboutMinutes, aheadName, api, fmt, hackerToken, ordinal, span, useLive, useTick, waitMs } from '../lib/live'
 import { ShareBox } from '../lib/vdo'
 import { StatsButton, useStatsToggle } from '../lib/stats'
 import { DitheredSoup } from './DitheredSoup'
@@ -149,13 +149,12 @@ export default function Hacker() {
     return () => { removeEventListener('beforeunload', ask); removeEventListener('pagehide', bye) }
   }, [active, token])
 
-  if (!state) return <Shell><Badge online={online} /><p className="flex items-center justify-center gap-3 text-xl"><Spinner className="size-5" />Loading…</p></Shell>
+  if (!state) return <Shell><ConnectionBadge online={online} /><p className="flex items-center justify-center gap-3 text-xl"><Spinner className="size-5" />Loading…</p></Shell>
 
   // The server keeps a presenter live for a save window (GRACE_MS) past the deadline: say so, keep sharing, end nothing here.
   const timeUp = me?.status === 'live' && cur?.pausedLeft == null && msTotal !== null && msTotal <= 0
 
   const plain = (text: string) => <h1 className="ph-headline text-center text-[36px] leading-9">{text}</h1>
-  const link = 'h-auto px-0 py-1 text-xs underline'
   let body, fg = '--border', green = false, top = 'pt-[155px]'
   if (!state.session) body = plain('No checkpoint is running.')
   else if (!open) body = plain('This checkpoint has ended.')
@@ -177,11 +176,11 @@ export default function Hacker() {
       }}>
         {plain('Join the Checkpoint')}
         <div className="flex flex-col gap-4">
-          <Field label="Your Name" htmlFor="hacker-name"><Input id="hacker-name" required maxLength={60} placeholder="Your Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-          <Field label="Project Name" htmlFor="hacker-project"><Input id="hacker-project" required maxLength={80} placeholder="Project Name" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} /></Field>
+          <Field label="Your Name" htmlFor="hacker-name"><Input id="hacker-name" required maxLength={60} placeholder="Ada Lovelace" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <Field label="Project Name" htmlFor="hacker-project"><Input id="hacker-project" required maxLength={80} placeholder="Pixel garden" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} /></Field>
         </div>
         <div className="flex flex-col gap-2.5">
-          <DitherButton type="submit" disabled={pending > 0} style={{ width: '100%' }} className="disabled:cursor-not-allowed disabled:opacity-70">{pending > 0 && <Spinner />}Present</DitherButton>
+          <DitherButton type="submit" disabled={pending > 0} style={{ width: '100%' }}>{pending > 0 && <Spinner />}Present</DitherButton>
           <p className="text-xs text-foreground">Note: You get {span(state.session!.limitSec)} to present</p>
         </div>
       </form>
@@ -209,13 +208,13 @@ export default function Hacker() {
           <p className="w-full border border-border bg-background p-3 text-center text-xs text-ph-yellow">{phone ? 'No camera access in this browser.' : 'Screen sharing needs Chrome or Edge.'}</p>
         )}
         <div className="flex w-full flex-col items-center gap-3">
-          {called && <DitherButton disabled={pending > 0} style={{ width: '100%' }} className="disabled:cursor-not-allowed disabled:opacity-70" onClick={start}>{pending > 0 && <Spinner className="size-5" />}Start Presenting</DitherButton>}
+          {called && <DitherButton disabled={pending > 0} style={{ width: '100%' }} onClick={start}>{pending > 0 && <Spinner className="size-5" />}Start Presenting</DitherButton>}
           {/* Take the stage with no share from this page: talk-only, or a browser that can't share. Ready only works once called. */}
-          {!live && !sharing && <Button variant="outline" disabled={!called} size={size} className={`w-full ${called ? 'border-ph-lime text-ph-lime' : 'border-foreground text-foreground disabled:opacity-50'}`}
+          {!live && !sharing && <Button variant={called ? 'lime-outline' : 'outline'} disabled={!called} size={size} className="w-full"
             onClick={() => confirm('Start your time without sharing here?') && act('/ready', { noShare: true })}>Present without sharing</Button>}
           {!live && sharing && !called && <Button variant="outline" size={size} className="w-full" onClick={() => shareFn.current?.()}>Change {phone ? 'Camera' : 'Screen'}</Button>}
-          {live && <Button size={size} className="w-full bg-ph-orange text-ph-black" onClick={() => act('/end')}>End checkpoint</Button>}
-          {!live && <Button variant="ghost" className={`${link} self-start`} style={sharing || called ? undefined : { alignSelf: 'center' }} onClick={() => confirm('Leave the queue?') && act('/leave')}>{sharing || called ? 'Leave queue' : 'Exit'}</Button>}
+          {live && <Button variant="orange" size={size} className="w-full" onClick={() => act('/end')}>End checkpoint</Button>}
+          {!live && <Button variant="link" className="self-start" style={sharing || called ? undefined : { alignSelf: 'center' }} onClick={() => confirm('Leave the queue?') && act('/leave')}>{sharing || called ? 'Leave queue' : 'Exit'}</Button>}
         </div>
         {me.status === 'waiting' && state.session!.reactions && <div className="w-full"><ReactionPanel react={react} notice={notice} /></div>}
       </div>
@@ -224,9 +223,9 @@ export default function Hacker() {
 
   return (
     <Shell fg={fg} green={green} top={top}>
-      <Badge online={online} />
+      <ConnectionBadge online={online} />
       {active && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
-      {pending > 0 && <StatusBadge color="outline" className="late fixed bottom-3 right-3 z-50 gap-2 bg-background px-3 py-1 text-sm"><Spinner />Working…</StatusBadge>}
+      {pending > 0 && <Badge color="outline" className="late fixed bottom-3 right-3 z-50 bg-background"><Spinner />Working…</Badge>}
       {body}
       {error && <p className="mt-3 text-center text-sm text-ph-pink">{error}</p>}
     </Shell>
@@ -241,7 +240,7 @@ function Shell({ children, fg = '--border', green = false, top = 'pt-[155px]' }:
         <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(0deg, var(--background) 50%, transparent 100%)' }} />
         {green && <div className="absolute inset-0 bg-ph-lime/50 mix-blend-color-dodge" />}
       </div>
-      <a href="/" aria-label="Checkpoints home" className="absolute left-6 top-6 z-10 block transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none"><Glider /></a>
+      <a href="/" aria-label="Checkpoints home" className="absolute left-6 top-6 z-10 block transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none"><Glider className="text-ph-yellow" /></a>
       <div className={`relative mx-auto w-full max-w-[538px] px-4 pb-10 ${top}`}>{children}</div>
     </main>
   )

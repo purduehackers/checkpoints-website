@@ -89,7 +89,7 @@ export function useStatsToggle() {
 }
 
 export function StatsButton({ onClick, className = '' }: { onClick: () => void; className?: string }) {
-  return <Button variant="outline" size="sm" className={`z-40 bg-background ${className}`} onClick={onClick}>Stats for nerds</Button>
+  return <Button variant="outline" size="sm" className={`z-40 ${className}`} onClick={onClick}>Stats for nerds</Button>
 }
 
 function Spark({ label, values, unit, max }: { label: string; values: (number | null)[]; unit: string; max?: number }) {
@@ -110,7 +110,7 @@ export function StatsOverlay({ history, title, onClose }: { history: Sample[]; t
   const s = history[history.length - 1]
   return (
     <div className="fixed bottom-12 left-3 z-50 space-y-1 border border-border bg-background p-3 font-mono text-xs text-foreground">
-      <div className="flex items-center justify-between gap-4"><b>{title}</b><Button variant="ghost" size="sm" className="h-auto p-0" onClick={onClose} aria-label="Close stats">✕</Button></div>
+      <div className="flex items-center justify-between gap-4"><b>{title}</b><Button variant="link" onClick={onClose} aria-label="Close stats">✕</Button></div>
       {!s ? <p className="text-foreground">No stream stats yet.</p> : (
         <>
           <Spark label="fps" values={history.map((h) => h.fps)} unit="" max={30} />

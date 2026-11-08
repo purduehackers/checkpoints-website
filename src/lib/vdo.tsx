@@ -182,29 +182,29 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     return () => { clearInterval(i); setHistory([]) }
   }, [state])
 
-  const note = 'flex w-full flex-wrap items-center justify-center gap-x-1 border border-input py-2 text-xs'
-  const change = (text: string, onClick: () => void) => <Button variant="ghost" size="sm" className="h-auto p-0 normal-case underline" onClick={onClick}>{text}</Button>
+  const note = 'w-full flex-wrap justify-center'
+  const change = (text: string, onClick: () => void) => <Button variant="link" onClick={onClick}>{text}</Button>
   return (
     <div className="flex w-full flex-col gap-2">
       <div className="relative h-[314px] w-full overflow-hidden border border-input bg-background">
         <video ref={video} autoPlay muted playsInline className={`h-full w-full object-contain ${camera && facing === 'user' ? '-scale-x-100' : ''}`} />
         {connecting && <div className="absolute inset-0 flex items-center justify-center gap-3 bg-background/80 text-lg"><Spinner className="size-6" />Connecting…</div>}
         {state !== 'sharing' && !hideShare && !connecting && (
-          <Button onClick={() => share()} className="absolute inset-0 m-auto h-fit max-w-full whitespace-normal text-center py-2.5">
-            {state === 'stopped' ? 'Share again' : camera ? 'Pick a camera to share' : 'Pick a screen to share'}
+          <Button onClick={() => share()} className="absolute inset-0 m-auto max-w-full">
+            <span className="whitespace-normal text-center">{state === 'stopped' ? 'Share again' : camera ? 'Pick a camera to share' : 'Pick a screen to share'}</span>
           </Button>
         )}
       </div>
-      {state === 'stopped' && <Badge color="outline" className={`${note} text-ph-pink`}>Your share stopped.</Badge>}
+      {state === 'stopped' && <Badge color="pink" className={note}>Your share stopped.</Badge>}
       {state === 'sharing' && camera && (
-        <Badge color="outline" className={`${note} text-ph-lime`}>Sharing your camera. {change('Flip camera', () => share(false, facing === 'user' ? 'environment' : 'user'))}</Badge>
+        <Badge color="lime" className={note}>Sharing your camera. {change('Flip camera', () => share(false, facing === 'user' ? 'environment' : 'user'))}</Badge>
       )}
       {state === 'sharing' && !camera && live && (
-        <Badge color="outline" className={`${note} ${hasAudio ? 'text-ph-lime' : noAudioBrowser ? 'text-ph-orange' : 'text-muted-foreground'}`}>
+        <Badge color={hasAudio ? 'lime' : noAudioBrowser ? 'orange' : 'outline'} className={note}>
           {hasAudio ? 'Sharing with sound.' : noAudioBrowser ? 'This browser can’t share sound.' : 'No sound. Share a tab to include sound.'} {change('Change window.', () => share())}
         </Badge>
       )}
-      {error && <p className="text-center text-xs text-ph-pink">{error}{retry && !camera && <> <Button variant="ghost" size="sm" className="h-auto p-0 normal-case underline" onClick={() => share(true)}>Try basic share</Button></>}</p>}
+      {error && <p className="text-center text-xs text-ph-pink">{error}{retry && !camera && <> <Button variant="link" onClick={() => share(true)}>Try basic share</Button></>}</p>}
       {stats && <StatsOverlay history={history} title="Your stream" onClose={onCloseStats} />}
     </div>
   )

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Badge, Spinner, aboutMin, api, fmt, signInUrl, signOutUrl, useLive, useTick, useUser, waitMs } from '../lib/live'
+import { ConnectionBadge, Spinner, aboutMin, api, fmt, signInUrl, signOutUrl, useLive, useTick, useUser, waitMs } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
 import { DitheredSoup } from './DitheredSoup'
-import { Badge as Tag } from './ph/badge'
+import { Badge } from './ph/badge'
 import { Button } from './ph/button'
 import { Card } from './ph/card'
 import { Checkbox } from './ph/checkbox'
@@ -146,7 +146,7 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
   const statsStream = preview ?? state?.current?.streamId ?? null // nobody previewed: show the presenter
   const history = useRemoteStats(statsStream, stats.on)
 
-  if (!state) return <Shell><Badge online={online} /><Spinner className="size-5" />Loading…</Shell>
+  if (!state) return <Shell><ConnectionBadge online={online} /><Spinner className="size-5" />Loading…</Shell>
   const open = state.session?.status === 'open'
   const c = state.current
 
@@ -156,7 +156,7 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
 
   return (
     <Shell title="Hack Night 7.1">
-      <Badge online={online} />
+      <ConnectionBadge online={online} />
       {stats.on && <StatsOverlay history={history} title={statsStream && statsStream === c?.streamId ? `On stage: ${c.name}` : 'Previewed stream'} onClose={stats.toggle} />}
       <fieldset disabled={busy} className="grid w-full min-w-0 grid-cols-1 gap-6 border-0 p-0 min-[965px]:grid-cols-[403px_506px]">
         <div className="flex min-w-0 flex-col gap-6">
@@ -168,16 +168,16 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
                 <li key={e.id} className="flex min-h-[46px] flex-wrap items-center justify-between gap-2 border border-border p-2 leading-[14px]">
                   <div className="min-w-0 flex-1 whitespace-nowrap">
                     <div className="flex items-center gap-[6px] text-[13px]"><b className="truncate font-semibold">{e.name}</b><span className="truncate font-light">{e.project}</span></div>
-                    <div className="mt-1">{e.connected ? <Tag color="outline">{SHARE_LABEL[e.shareState]}</Tag> : <Tag color="yellow"><span className="dots">disconnected</span></Tag>}</div>
+                    <div className="mt-1">{e.connected ? <Badge color="outline">{SHARE_LABEL[e.shareState]}</Badge> : <Badge color="yellow"><span className="dots">disconnected</span></Badge>}</div>
                   </div>
-                  <div className="flex shrink-0 items-center">
-                    <Button variant="ghost" size="sm" className="px-2!" onClick={() => { setPinned(true); setPreview(e.streamId!) }}>Preview</Button>
-                    <Button variant="ghost" size="sm" className="px-2!" onClick={() => act('/skip', { id: e.id })}>Skip</Button>
-                    <Button variant="ghost" size="sm" className="px-2! text-ph-pink!" onClick={() => act('/remove', { id: e.id }).then(() => setUndo({ id: e.id, name: e.name }))}>Remove</Button>
+                  <div className="flex shrink-0 items-center gap-3 text-[13px]">
+                    <Button variant="link" onClick={() => { setPinned(true); setPreview(e.streamId!) }}>Preview</Button>
+                    <Button variant="link" onClick={() => act('/skip', { id: e.id })}>Skip</Button>
+                    <Button variant="link" onClick={() => act('/remove', { id: e.id }).then(() => setUndo({ id: e.id, name: e.name }))}>Remove</Button>
                   </div>
                   <div className="flex shrink-0">
-                    <Button variant="ghost" size="sm" icon="arrow-up" className="px-2!" disabled={i === 0} aria-label="Move up" onClick={() => act('/move', { id: e.id, dir: -1 })} />
-                    <Button variant="ghost" size="sm" icon="arrow-down" className="px-2!" disabled={i === state.queue.length - 1} aria-label="Move down" onClick={() => act('/move', { id: e.id, dir: 1 })} />
+                    <Button variant="ghost" icon="arrow-up" size="icon" disabled={i === 0} aria-label="Move up" onClick={() => act('/move', { id: e.id, dir: -1 })} />
+                    <Button variant="ghost" icon="arrow-down" size="icon" disabled={i === state.queue.length - 1} aria-label="Move down" onClick={() => act('/move', { id: e.id, dir: 1 })} />
                   </div>
                 </li>
               ))}
@@ -185,8 +185,7 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
           </Card>
           <div className="flex items-center gap-4">
             <SessionButton open={open} onClick={() => open ? confirm('End checkpoints?') && act('/session/end') : act('/session/start')} />
-            {/* w/px overrides are !important because cn() is a plain join and Button's base has w-fit + px-6. */}
-            <Button size="lg" variant="outline" icon="cog" aria-label="Settings" aria-haspopup="dialog" aria-expanded={cog} className="w-[52px]! px-0! [&_svg]:size-6" onClick={() => setCog(!cog)} />
+            <Button size="icon-lg" variant="outline" icon="cog" aria-label="Settings" aria-haspopup="dialog" aria-expanded={cog} onClick={() => setCog(!cog)} />
           </div>
         </div>
         <div className="flex min-w-0 flex-col gap-6">
@@ -194,12 +193,12 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
             {preview ? <ViewFrame key={`${preview}:${preview_?.shareEpoch ?? 0}`} streamId={preview} className="absolute inset-0 size-full bg-background" /> : null}
             <StatsButton onClick={stats.toggle} className="absolute bottom-[15px] right-[15px]" />
             {busy && <span className="absolute left-[15px] top-4 text-foreground"><Spinner /></span>}
-            <Tag className="pointer-events-none absolute right-[15px] top-4">Preview{pinned && ' · pinned'}</Tag>
-            {pinned && <Button variant="ghost" size="sm" className="absolute right-[15px] top-[36px] bg-background!" onClick={() => setPinned(false)}>follow next</Button>}
+            <Badge className="pointer-events-none absolute right-[15px] top-4">Preview{pinned && ' · pinned'}</Badge>
+            {pinned && <div className="absolute right-[15px] top-[36px] bg-background"><Button variant="ghost" size="sm" onClick={() => setPinned(false)}>follow next</Button></div>}
           </div>
           {/* Current presenter. Flow layout (no absolute positioning), so nothing overlaps at any width. */}
           <section aria-label="Current presenter" className="flex">
-          <Card className={`min-h-[146px] w-full ${c ? 'border-ph-orange!' : ''}`}>
+          <Card border={c ? 'border-ph-orange' : undefined} className="min-h-[146px] w-full">
             {c ? (<>
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -207,9 +206,9 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
                   <p className="mt-1 truncate font-light">{c.project}</p>
                 </div>
                 <div className="shrink-0 text-right">
-                  {c.away ? <Tag color="pink" className="ml-auto"><span className="dots">disconnected</span></Tag>
-                    : c.status === 'live' ? (c.pausedLeft != null ? <Tag color="yellow" className="ml-auto">Paused</Tag> : <Tag color="lime" className="ml-auto">Live</Tag>)
-                    : <Tag color="orange" className="ml-auto">Getting ready</Tag>}
+                  {c.away ? <Badge color="pink" className="ml-auto"><span className="dots">disconnected</span></Badge>
+                    : c.status === 'live' ? (c.pausedLeft != null ? <Badge color="yellow" className="ml-auto">Paused</Badge> : <Badge color="lime" className="ml-auto">Live</Badge>)
+                    : <Badge color="orange" className="ml-auto">Getting ready</Badge>}
                   {left != null && <p className="ph-headline mt-1 text-[24px] tabular-nums">{fmt(left)}</p>}
                 </div>
               </div>
@@ -223,9 +222,9 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
                 {/* Shown while getting ready too, so they're findable; the server only adjusts live entries. */}
                 {([15, 30] as const).map((d) => (
                   <Button key={d} variant="outline" disabled={c.status !== 'live'} title={c.status !== 'live' ? 'Available once their time starts' : undefined}
-                    className="normal-case!" onClick={() => act('/adjust', { id: c.entryId, delta: d })}>+{d}s</Button>
+                    onClick={() => act('/adjust', { id: c.entryId, delta: d })}><span className="normal-case">+{d}s</span></Button>
                 ))}
-                {c.streamId && <Button variant="ghost" size="sm" className="ml-auto" onClick={() => { setPinned(true); setPreview(c.streamId!) }}>Preview <Tag color="yellow">{SHARE_LABEL[c.shareState]}</Tag></Button>}
+                {c.streamId && <Button variant="ghost" size="sm" className="ml-auto" onClick={() => { setPinned(true); setPreview(c.streamId!) }}>Preview <Badge color="yellow">{SHARE_LABEL[c.shareState]}</Badge></Button>}
               </div>
             </>) : (<>
               <p className="ph-headline text-[19px]">Nobody up yet</p>
@@ -236,28 +235,30 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
         </div>
       </fieldset>
       {error && <p role="alert" className="mt-4 w-[933px] max-w-full text-ph-pink">{error}</p>}
-      {cog && <Dialog open onOpenChange={setCog} title="Settings">
+      <Dialog open={cog} onOpenChange={setCog} title="Settings">
         <fieldset disabled={busy} className="flex min-w-0 flex-col items-start gap-4 border-0 p-0">
-          <p className="text-[13px]">Hello, <b>{name}</b> · <Link href={signOutUrl()}>Sign out</Link></p>
+          <p className="text-[13px]">Hello, <b>{name}</b> · <Link href={typeof location === 'undefined' ? '/api/auth/logout' : signOutUrl()}>Sign out</Link></p>
           {open && <>
             <Field label="Limit (s)" htmlFor="admin-limit">
-              <Input id="admin-limit" type="number" key={s!.limitSec} defaultValue={s!.limitSec} min={10} className="w-24" onBlur={(e) => Number(e.target.value) !== s!.limitSec && act('/limit', { seconds: Number(e.target.value) })} />
+              <div className="w-24"><Input id="admin-limit" type="number" key={s!.limitSec} defaultValue={s!.limitSec} min={10} onBlur={(e) => Number(e.target.value) !== s!.limitSec && act('/limit', { seconds: Number(e.target.value) })} /></div>
             </Field>
-            <Field label="Quality">
+            {/* SegmentedToggle names its group via aria-label; the visible caption is aria-hidden so it isn't read twice. */}
+            <div className="flex flex-col gap-1.5">
+              <span aria-hidden className="ph-subheadline text-[12px]">Quality</span>
               <SegmentedToggle label="Quality" value={s!.quality} onValueChange={(q) => act('/quality', { quality: q as Quality })}
                 options={Object.keys(QUALITY).map((q) => ({ value: q, label: q === 'source' ? 'Source' : q }))} />
-            </Field>
+            </div>
             <Checkbox checked={s!.audio} onChange={() => act('/audio', { on: !s!.audio })}>Projector sound</Checkbox>
             <Checkbox checked={s!.reactions} onChange={() => act('/reactions', { on: !s!.reactions })}>Reactions</Checkbox>
             <p className="text-[12px] font-light">Ends by itself after 10 minutes with nothing happening, or 5 minutes with no organizer page open.</p>
-            <Button variant="outline" className="border-ph-pink! text-ph-pink!" onClick={() => confirm('End checkpoints?') && act('/session/end')}>End checkpoints</Button>
+            <Button variant="pink-outline" onClick={() => confirm('End checkpoints?') && act('/session/end')}>End checkpoints</Button>
           </>}
         </fieldset>
-      </Dialog>}
+      </Dialog>
       {undo && (
         <div role="status" className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 border border-border bg-background px-4 py-2 text-[13px]">
           Removed {undo.name}.
-          <Button variant="ghost" size="sm" className="text-ph-yellow!" onClick={() => { act('/unremove', { id: undo.id }); setUndo(null) }}>Undo</Button>
+          <Button variant="link" onClick={() => { act('/unremove', { id: undo.id }); setUndo(null) }}>Undo</Button>
         </div>
       )}
     </Shell>

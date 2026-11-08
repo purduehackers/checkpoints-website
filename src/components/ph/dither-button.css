@@ -87,6 +87,20 @@
   }
 }
 
+.ph-dither-btn:is(:disabled, [aria-disabled="true"]) {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ph-dither-btn:is(:disabled, [aria-disabled="true"]) .ph-dither-btn__pixel::after {
+  opacity: 0 !important;
+  transition: none;
+}
+
+.ph-dither-btn:is(:disabled, [aria-disabled="true"]) .ph-dither-btn__label {
+  color: var(--label) !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ph-dither-btn__pixel::after,
   .ph-dither-btn__label {

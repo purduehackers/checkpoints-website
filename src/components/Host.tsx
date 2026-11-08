@@ -1,7 +1,7 @@
-import { Badge as StatusBadge } from './ph/badge'
+import { Badge } from './ph/badge'
 import { Icon } from './ph/icon'
 import { useEffect, useRef, useState } from 'react'
-import { Badge, fmt, useLive, useTick } from '../lib/live'
+import { ConnectionBadge, fmt, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { spawn } from '../lib/reactions'
 import { DitheredSoup } from './DitheredSoup'
@@ -102,8 +102,8 @@ export default function Host() {
 
   return (
     <main className={`relative h-screen w-screen overflow-hidden bg-background ${idle ? 'cursor-none' : ''}`}>
-      <Badge online={online} />
-      {c?.away && <StatusBadge color="orange" className="absolute left-1/2 top-[8vh] z-30 -translate-x-1/2 px-[1.2vw] py-[0.6vw] text-[2vw]!"><span className="dots">{c.name} disconnected</span></StatusBadge>}
+      <ConnectionBadge online={online} />
+      {c?.away && <Badge color="orange" className="absolute left-1/2 top-[8vh] z-30 -translate-x-1/2"><span className="dots text-[2vw]">{c.name} disconnected</span></Badge>}
       <div ref={reactBox} className="pointer-events-none absolute bottom-0 right-0 top-0 z-20 w-40 overflow-hidden" />
       {live ? (
         // Edge to edge so the share is as big as the screen allows; the bar sits above the video, never over it.
@@ -186,7 +186,7 @@ export default function Host() {
           )}
         </div>
       )}
-      {audio && !clicked && <StatusBadge color="yellow" className="absolute bottom-3 right-3 z-40 px-3 py-1 text-xs">Click anywhere for sound</StatusBadge>}
+      {audio && !clicked && <Badge color="yellow" className="absolute bottom-3 right-3 z-40">Click anywhere for sound</Badge>}
     </main>
   )
 }
