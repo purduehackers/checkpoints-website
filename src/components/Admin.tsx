@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Badge, Spinner, aboutMin, api, fmt, signInUrl, signOutUrl, useLive, useTick, useUser, waitMs } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { StatsButton, StatsOverlay, useRemoteStats, useStatsToggle } from '../lib/stats'
@@ -31,6 +31,30 @@ function Shell({ children, title }: { children: React.ReactNode; title?: string 
         {title && <h1 className="ph-headline mb-[19px] w-full text-[36px] leading-9">{title}</h1>}
         {children}
       </main>
+    </div>
+  )
+}
+
+// Dither pixels are square (aspect-ratio 1) and fill the width, so cols must track the button's
+// aspect or the pixels overflow the 52px height and the hover smears. 4 rows of ~13px pixels.
+const DITHER_ROWS = 4
+function SessionButton({ open, onClick }: { open: boolean; onClick: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [cols, setCols] = useState(26) // ~340x52, the desktop width, until measured
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      const { width, height } = el.getBoundingClientRect()
+      if (height) setCols(Math.max(1, Math.round((width / height) * DITHER_ROWS)))
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return (
+    <div ref={ref} className="flex flex-1">
+      {/* Inline width: the registry CSS sets width: fit-content outside Tailwind's layers. */}
+      <DitherButton cols={cols} rows={DITHER_ROWS} style={{ width: '100%' }} onClick={onClick}>{open ? 'End checkpoint' : 'Start checkpoint'}</DitherButton>
     </div>
   )
 }
@@ -160,10 +184,9 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
             </ol>
           </Card>
           <div className="flex items-center gap-4">
-            {open ? <DitherButton className="flex-1" onClick={() => confirm('End checkpoints?') && act('/session/end')}>End checkpoint</DitherButton>
-                  : <DitherButton className="flex-1" onClick={() => act('/session/start')}>Start checkpoint</DitherButton>}
-            {/* No cog in the registry icon set, so the existing pixel cog sits inside a registry Button. */}
-            <Button size="lg" aria-label="Settings" aria-haspopup="dialog" aria-expanded={cog} className="w-[52px] px-0!" onClick={() => setCog(!cog)}><img src="/cog.svg" alt="" width={36} height={36} /></Button>
+            <SessionButton open={open} onClick={() => open ? confirm('End checkpoints?') && act('/session/end') : act('/session/start')} />
+            {/* w/px overrides are !important because cn() is a plain join and Button's base has w-fit + px-6. */}
+            <Button size="lg" variant="outline" icon="cog" aria-label="Settings" aria-haspopup="dialog" aria-expanded={cog} className="w-[52px]! px-0! [&_svg]:size-6" onClick={() => setCog(!cog)} />
           </div>
         </div>
         <div className="flex min-w-0 flex-col gap-6">
