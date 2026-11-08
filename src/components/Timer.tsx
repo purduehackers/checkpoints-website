@@ -1,3 +1,4 @@
+import { Button } from './ph/button'
 import { useEffect, useState } from 'react'
 import { Badge, fmt, useLive, useTick } from '../lib/live'
 
@@ -28,7 +29,7 @@ export default function Timer() {
   const expired = live && !paused && left !== null && left <= 0
 
   return (
-    <main className={`relative h-screen overflow-hidden bg-black text-white ${screen} ${idle ? 'cursor-none' : ''}`}>
+    <main className={`relative h-screen overflow-hidden bg-background text-foreground ${screen} ${idle ? 'cursor-none' : ''}`}>
       <Badge online={online} />
       {live ? (
         <>
@@ -47,7 +48,7 @@ export default function Timer() {
           ) : <p className="ph-subheadline text-[4vw]">{state ? 'No one presenting' : ''}</p>}
         </div>
       )}
-      <button className="ph-subheadline absolute bottom-3 right-3 z-40 border border-border bg-black px-3 py-1 text-xs text-white transition-transform active:scale-[0.97] hover:text-ph-yellow" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>Fullscreen</button>
+      <Button variant="outline" size="sm" className="absolute bottom-3 right-3 z-40 bg-background" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>Fullscreen</Button>
     </main>
   )
 }

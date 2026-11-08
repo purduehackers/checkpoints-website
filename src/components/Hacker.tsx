@@ -1,3 +1,9 @@
+import { Button } from './ph/button'
+import { DitherButton } from './ph/dither-button'
+import { Input } from './ph/input'
+import { Field } from './ph/field'
+import { Badge as StatusBadge } from './ph/badge'
+import { Glider } from './ph/glider'
 import { useEffect, useRef, useState } from 'react'
 import { Badge, Spinner, aboutMinutes, aheadName, api, fmt, hackerToken, ordinal, span, useLive, useTick, waitMs } from '../lib/live'
 import { ShareBox } from '../lib/vdo'
@@ -149,8 +155,8 @@ export default function Hacker() {
   const timeUp = me?.status === 'live' && cur?.pausedLeft == null && msTotal !== null && msTotal <= 0
 
   const plain = (text: string) => <h1 className="ph-headline text-center text-[36px] leading-9">{text}</h1>
-  const link = 'text-xs text-white underline'
-  let body, fg = '#2e2e2e', green = false, top = 'pt-[155px]'
+  const link = 'h-auto px-0 py-1 text-xs underline'
+  let body, fg = '--border', green = false, top = 'pt-[155px]'
   if (!state.session) body = plain('No checkpoint is running.')
   else if (!open) body = plain('This checkpoint has ended.')
   else if (me?.status === 'removed') body = plain('You were removed from the queue.')
@@ -158,12 +164,12 @@ export default function Hacker() {
     body = (
       <div className="space-y-6">
         {plain('Thanks for presenting!')}
-        <button className={`${BTN} w-full bg-white text-black`} onClick={() => setThanked(true)}>Join again</button>
+        <Button className="w-full" onClick={() => setThanked(true)}>Join again</Button>
       </div>
     )
   }
   else if (!active) {
-    fg = '#8837ff'; top = 'pt-[210px]'
+    fg = '--ph-purple'; top = 'pt-[210px]'
     body = (
       <form className="flex flex-col gap-6" onSubmit={(e) => {
         e.preventDefault(); setError('')
@@ -171,46 +177,45 @@ export default function Hacker() {
       }}>
         {plain('Join the Checkpoint')}
         <div className="flex flex-col gap-4">
-          <input required maxLength={60} placeholder="Your Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={INPUT} />
-          <input required maxLength={80} placeholder="Project Name" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} className={INPUT} />
+          <Field label="Your Name" htmlFor="hacker-name"><Input id="hacker-name" required maxLength={60} placeholder="Your Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <Field label="Project Name" htmlFor="hacker-project"><Input id="hacker-project" required maxLength={80} placeholder="Project Name" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} /></Field>
         </div>
         <div className="flex flex-col gap-2.5">
-          <button disabled={pending > 0} className={`${BTN} w-full gap-2 bg-white text-black disabled:opacity-70`}>{pending > 0 && <Spinner />}Present</button>
-          <p className="text-xs text-white">Note: You get {span(state.session!.limitSec)} to present</p>
+          <DitherButton type="submit" disabled={pending > 0} style={{ width: '100%' }} className="disabled:cursor-not-allowed disabled:opacity-70">{pending > 0 && <Spinner />}Present</DitherButton>
+          <p className="text-xs text-foreground">Note: You get {span(state.session!.limitSec)} to present</p>
         </div>
       </form>
     )
   } else {
     const sharing = shareState === 'sharing'
     const called = me.status === 'called', live = me.status === 'live'
-    if (live) fg = '#8837ff'
+    if (live) fg = '--ph-purple'
     if (called) green = true
     const what = phone ? 'camera' : 'screen'
     const title = live ? 'You’re live' : called ? 'It’s your turn!' : me.position === 1 ? 'You’re up next!' : sharing ? `You’re ${ordinal(me.position)} in line` : `Share your ${what}`
     const ahead = me.status === 'waiting' ? aheadName(state, me.position) : ''
     const sub = live ? (msTotal === null ? '' : timeUp ? 'Time’s up' : `${fmt(msTotal).replace(/^0/, '')} left`)
       : me.status === 'waiting' ? (sharing || me.position === 1 ? `Up in ${aboutMinutes(waitMs(state, me.position - 1, now()))}${ahead ? ` ⊹ You’re after ${ahead}` : ''}` : `Join the queue by sharing your ${what}`) : ''
-    const big = called || live
-    const btn = `${BTN} w-full ${big ? 'h-[50px] text-xl' : ''}`
+    const size = called || live ? 'lg' : 'md'
     body = (
       <div className="flex flex-col items-center gap-6">
         <div className="flex w-full flex-col items-center gap-2">
           <h1 className="ph-headline w-full text-center text-[36px] leading-9">{title}</h1>
-          {sub && <p className="text-center text-xl leading-normal text-white">{sub}</p>}
+          {sub && <p className="text-center text-xl leading-normal text-foreground">{sub}</p>}
         </div>
         {canShare ? (
           <ShareBox streamId={me.streamId} label={me.name} live={live} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} onPublished={published} shareRef={shareFn} hideShare={called} camera={phone} />
         ) : (
-          <p className="w-full border border-border bg-black p-3 text-center text-xs text-ph-yellow">{phone ? 'No camera access in this browser.' : 'Screen sharing needs Chrome or Edge.'}</p>
+          <p className="w-full border border-border bg-background p-3 text-center text-xs text-ph-yellow">{phone ? 'No camera access in this browser.' : 'Screen sharing needs Chrome or Edge.'}</p>
         )}
         <div className="flex w-full flex-col items-center gap-3">
-          {called && <button disabled={pending > 0} className={`${btn} gap-3 bg-ph-lime text-black disabled:opacity-70`} onClick={start}>{pending > 0 && <Spinner className="size-5" />}Start Presenting</button>}
+          {called && <DitherButton disabled={pending > 0} style={{ width: '100%' }} className="disabled:cursor-not-allowed disabled:opacity-70" onClick={start}>{pending > 0 && <Spinner className="size-5" />}Start Presenting</DitherButton>}
           {/* Take the stage with no share from this page: talk-only, or a browser that can't share. Ready only works once called. */}
-          {!live && !sharing && <button disabled={!called} className={`${btn} border ${called ? 'border-ph-lime text-ph-lime' : 'border-white text-white disabled:opacity-50'}`}
-            onClick={() => confirm('Start your time without sharing here?') && act('/ready', { noShare: true })}>Present without sharing</button>}
-          {!live && sharing && !called && <button className={`${btn} border border-white text-white`} onClick={() => shareFn.current?.()}>Change {phone ? 'Camera' : 'Screen'}</button>}
-          {live && <button className={`${btn} bg-ph-orange text-black`} onClick={() => act('/end')}>End checkpoint</button>}
-          {!live && <button className={`${link} self-start`} style={sharing || called ? undefined : { alignSelf: 'center' }} onClick={() => confirm('Leave the queue?') && act('/leave')}>{sharing || called ? 'Leave queue' : 'Exit'}</button>}
+          {!live && !sharing && <Button variant="outline" disabled={!called} size={size} className={`w-full ${called ? 'border-ph-lime text-ph-lime' : 'border-foreground text-foreground disabled:opacity-50'}`}
+            onClick={() => confirm('Start your time without sharing here?') && act('/ready', { noShare: true })}>Present without sharing</Button>}
+          {!live && sharing && !called && <Button variant="outline" size={size} className="w-full" onClick={() => shareFn.current?.()}>Change {phone ? 'Camera' : 'Screen'}</Button>}
+          {live && <Button size={size} className="w-full bg-ph-orange text-ph-black" onClick={() => act('/end')}>End checkpoint</Button>}
+          {!live && <Button variant="ghost" className={`${link} self-start`} style={sharing || called ? undefined : { alignSelf: 'center' }} onClick={() => confirm('Leave the queue?') && act('/leave')}>{sharing || called ? 'Leave queue' : 'Exit'}</Button>}
         </div>
         {me.status === 'waiting' && state.session!.reactions && <div className="w-full"><ReactionPanel react={react} notice={notice} /></div>}
       </div>
@@ -221,25 +226,22 @@ export default function Hacker() {
     <Shell fg={fg} green={green} top={top}>
       <Badge online={online} />
       {active && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
-      {pending > 0 && <div className="late fixed bottom-3 right-3 z-50 flex items-center gap-2 border border-border bg-black px-3 py-1 text-sm"><Spinner />Working…</div>}
+      {pending > 0 && <StatusBadge color="outline" className="late fixed bottom-3 right-3 z-50 gap-2 bg-background px-3 py-1 text-sm"><Spinner />Working…</StatusBadge>}
       {body}
       {error && <p className="mt-3 text-center text-sm text-ph-pink">{error}</p>}
     </Shell>
   )
 }
 
-const BTN = 'ph-subheadline flex min-h-[37px] items-center justify-center px-3 py-2 text-base leading-5 transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none disabled:cursor-not-allowed'
-const INPUT = 'h-10 w-full border border-border bg-black px-3 py-2 text-base text-white placeholder:text-white focus:border-white focus:outline-none'
-
-function Shell({ children, fg = '#2e2e2e', green = false, top = 'pt-[155px]' }: { children: React.ReactNode; fg?: string; green?: boolean; top?: string }) {
+function Shell({ children, fg = '--border', green = false, top = 'pt-[155px]' }: { children: React.ReactNode; fg?: string; green?: boolean; top?: string }) {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-black font-sans text-white">
+    <main className="relative min-h-screen overflow-hidden bg-background font-sans text-foreground">
       <div aria-hidden className="pointer-events-none absolute inset-0">
-        <DitheredSoup fgColor={fg} />
-        <div className="absolute inset-x-0 bottom-0 top-[50vh] bg-black" />
+        <DitheredSoup fgColor={getComputedStyle(document.documentElement).getPropertyValue(fg).trim()} />
+        <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(0deg, var(--background) 50%, transparent 100%)' }} />
         {green && <div className="absolute inset-0 bg-ph-lime/50 mix-blend-color-dodge" />}
       </div>
-      <a href="/" aria-label="Checkpoints home" className="absolute left-6 top-6 z-10 block transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none"><img src="/glider.svg" alt="" width={24} height={24} /></a>
+      <a href="/" aria-label="Checkpoints home" className="absolute left-6 top-6 z-10 block transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none"><Glider /></a>
       <div className={`relative mx-auto w-full max-w-[538px] px-4 pb-10 ${top}`}>{children}</div>
     </main>
   )

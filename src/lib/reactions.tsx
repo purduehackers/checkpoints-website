@@ -1,3 +1,4 @@
+import { Button } from '../components/ph/button'
 import { REACTIONS } from '../../shared/types'
 
 // Hacker side: one button per emoji. Every tap is sent; the server owns the cooldown, warning and slow mode.
@@ -5,8 +6,8 @@ export function ReactionPanel({ react, notice }: { react: (emoji: string) => voi
   const now = Date.now(), slow = !!notice && now < notice.slowUntil
   return (
     <div className="space-y-1">
-      <div className={`flex justify-between gap-2 border border-border bg-black p-2 ${slow ? 'opacity-50' : ''}`}>
-        {REACTIONS.map((e) => <button key={e} aria-label={`React ${e}`} onClick={() => react(e)} className="min-w-0 grow p-2 text-3xl transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none">{e}</button>)}
+      <div className={`flex justify-between gap-2 border border-border bg-background p-2 ${slow ? 'opacity-50' : ''}`}>
+        {REACTIONS.map((e) => <Button variant="ghost" key={e} aria-label={`React ${e}`} onClick={() => react(e)} className="h-auto min-w-0 grow shrink! p-2! text-3xl!">{e}</Button>)}
       </div>
       {notice && now < Math.max(notice.until, notice.slowUntil) && <p role="status" className="text-sm text-ph-yellow">{notice.text}</p>}
     </div>

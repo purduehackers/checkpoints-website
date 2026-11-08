@@ -1,3 +1,4 @@
+import { Badge as StatusBadge } from '../components/ph/badge'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Role, State } from '../../shared/types'
 
@@ -101,5 +102,5 @@ export function Spinner({ className = 'size-4' }: { className?: string }) {
 }
 
 export function Badge({ online }: { online: boolean }) {
-  return online ? null : <div className="fixed right-2 top-2 z-50 flex items-center gap-2 border border-border bg-ph-orange px-2 py-1 ph-subheadline text-xs text-black"><Spinner className="size-3" />reconnecting…</div>
+  return online ? null : <StatusBadge color="orange" className="fixed right-2 top-2 z-50 gap-2 px-2 py-1 text-xs"><Spinner className="size-3" />reconnecting…</StatusBadge>
 }
