@@ -173,35 +173,44 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
           </div>
           {/* Current presenter. Flow layout (no absolute positioning), so nothing overlaps at any width. */}
           <section aria-label="Current presenter" className="flex">
-          <Card border={c ? 'border-ph-orange' : undefined} className="min-h-[146px] w-full">
-            {c ? (<>
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="ph-headline truncate text-[19px]">{c.name}</p>
-                  <p className="mt-1 truncate font-light">{c.project}</p>
+          {/* min-h 148 = queue card 418 + gap 24 + session button 52 - preview 322 - gap 24, so the columns end level; grows past that rather than squeezing. */}
+          <Card border={c ? 'border-ph-orange' : undefined} className="min-h-[148px] w-full">
+            {c ? (
+              <div className="flex flex-col gap-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="ph-headline truncate text-[28px] leading-8">{c.name}</p>
+                    <p className="mt-1 truncate font-light">{c.project}</p>
+                  </div>
+                  {/* h-8 matches the name's line height so badge + timer sit centered on the name. */}
+                  <div className="flex h-8 shrink-0 items-center gap-3">
+                    {c.away ? <Badge color="pink"><span className="dots">disconnected</span></Badge>
+                      : c.status === 'live' ? (c.pausedLeft != null ? <Badge color="yellow">Paused</Badge> : <Badge color="lime">Live</Badge>)
+                      : <Badge color="orange">Getting ready</Badge>}
+                    {left != null && <p className="ph-headline text-[28px] leading-8 tabular-nums">{fmt(left)}</p>}
+                  </div>
                 </div>
-                <div className="shrink-0 text-right">
-                  {c.away ? <Badge color="pink" className="ml-auto"><span className="dots">disconnected</span></Badge>
-                    : c.status === 'live' ? (c.pausedLeft != null ? <Badge color="yellow" className="ml-auto">Paused</Badge> : <Badge color="lime" className="ml-auto">Live</Badge>)
-                    : <Badge color="orange" className="ml-auto">Getting ready</Badge>}
-                  {left != null && <p className="ph-headline mt-1 text-[24px] tabular-nums">{fmt(left)}</p>}
+                {/* Save window: time ran out but the server keeps them live for GRACE_MS. Add time to bring them back. */}
+                {c.pausedLeft == null && c.deadline != null && c.deadline <= now() && <p role="status" className="border border-ph-pink px-3 py-2 text-xs font-semibold text-ph-pink">Time's up · ends in {Math.max(0, Math.ceil((c.deadline + GRACE_MS - now()) / 1000))}s. Add time to keep them</p>}
+                <div className="flex flex-wrap gap-2">
+                  {c.status === 'called' && <Button onClick={() => act('/ready', { id: c.entryId })}>Start</Button>}
+                  {c.status === 'called' && <Button variant="outline" onClick={() => act('/skip', { id: c.entryId })}>Skip</Button>}
+                  <Button variant="outline" onClick={() => act('/stop', { id: c.entryId })}>Stop</Button>
+                  {c.status === 'live' && <Button onClick={() => act(c.pausedLeft != null ? '/resume' : '/pause', { id: c.entryId })}>{c.pausedLeft != null ? 'Resume' : 'Pause'}</Button>}
+                  {/* Shown while getting ready too, so they're findable; the server only adjusts live entries. */}
+                  {([15, 30] as const).map((d) => (
+                    <Button key={d} variant="outline" disabled={c.status !== 'live'} title={c.status !== 'live' ? 'Available once their time starts' : undefined}
+                      onClick={() => act('/adjust', { id: c.entryId, delta: d })}><span className="normal-case">+{d}s</span></Button>
+                  ))}
                 </div>
+                {c.streamId && (
+                  <div className="flex items-center justify-between gap-4 border-t border-border pt-4 text-[13px]">
+                    <span className="flex items-center gap-2">Screen <Badge color="yellow">{SHARE_LABEL[c.shareState]}</Badge></span>
+                    <Button variant="ghost" size="sm" onClick={() => { setPinned(true); setPreview(c.streamId!) }}>Preview</Button>
+                  </div>
+                )}
               </div>
-              {/* Save window: time ran out but the server keeps them live for GRACE_MS. Add time to bring them back. */}
-              {c.pausedLeft == null && c.deadline != null && c.deadline <= now() && <p role="status" className="border border-ph-pink px-2 py-1 text-xs font-semibold text-ph-pink">Time's up · ends in {Math.max(0, Math.ceil((c.deadline + GRACE_MS - now()) / 1000))}s. Add time to keep them</p>}
-              <div className="mt-auto flex flex-wrap items-center gap-2.5">
-                {c.status === 'called' && <Button onClick={() => act('/ready', { id: c.entryId })}>Start</Button>}
-                {c.status === 'called' && <Button variant="outline" onClick={() => act('/skip', { id: c.entryId })}>Skip</Button>}
-                <Button variant="outline" onClick={() => act('/stop', { id: c.entryId })}>Stop</Button>
-                {c.status === 'live' && <Button onClick={() => act(c.pausedLeft != null ? '/resume' : '/pause', { id: c.entryId })}>{c.pausedLeft != null ? 'Resume' : 'Pause'}</Button>}
-                {/* Shown while getting ready too, so they're findable; the server only adjusts live entries. */}
-                {([15, 30] as const).map((d) => (
-                  <Button key={d} variant="outline" disabled={c.status !== 'live'} title={c.status !== 'live' ? 'Available once their time starts' : undefined}
-                    onClick={() => act('/adjust', { id: c.entryId, delta: d })}><span className="normal-case">+{d}s</span></Button>
-                ))}
-                {c.streamId && <Button variant="ghost" size="sm" className="ml-auto" onClick={() => { setPinned(true); setPreview(c.streamId!) }}>Preview <Badge color="yellow">{SHARE_LABEL[c.shareState]}</Badge></Button>}
-              </div>
-            </>) : (<>
+            ) : (<>
               <p className="ph-headline text-[19px]">Nobody up yet</p>
               <p className="text-sm">{open ? 'The next person in the queue will be called automatically.' : 'Start a checkpoint to open the queue.'}</p>
             </>)}
