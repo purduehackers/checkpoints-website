@@ -353,13 +353,46 @@ test('previous follows end, stop and expire, hides stream ids, and clears when t
   }
 })
 
+test('stopping someone only called never makes them previous or revivable', async () => {
+  await fresh('A', 'B', 'C')
+  await live('aa-A-xxxx')
+  const a = (await cur())!.entryId
+  await q.end('aa-A-xxxx')
+  const b = (await cur())!.entryId
+  await q.stop(b)
+  expect((await q.snapshot()).rows.find((r) => r.id === b)?.ended_at).toBeNull()
+  expect((await host()).previous?.entryId).toBe(a)
+  const before = await q.snapshot()
+  await q.adjust(b, 15)
+  expect(await q.snapshot()).toEqual(before)
+})
+
+test('handoff expires at two minutes, with or without a called successor', async () => {
+  for (const next of [[], ['B']]) {
+    await fresh('A', ...next)
+    await live('aa-A-xxxx')
+    const a = (await cur())!.entryId
+    const now = freeze(Date.now())
+    await q.end('aa-A-xxxx')
+    freeze(now + 119_999)
+    expect((await host()).previous?.entryId).toBe(a)
+    freeze(now + 120_000)
+    expect((await host()).previous).toBeNull()
+    expect((await q.loadState('hacker', 'aa-A-xxxx')).previous).toBeNull()
+    const before = await q.snapshot()
+    await q.adjust(a, 30)
+    expect(await q.snapshot()).toEqual(before)
+  }
+})
+
 test('adjust revives previous and returns the called person to position 1', async () => {
   for (const delta of [15, 30]) {
     await fresh('A', 'B', 'C')
     await live('aa-A-xxxx')
     const { entryId, deadline } = (await cur())!
-    const now = freeze(deadline!)
+    let now = freeze(deadline!)
     await q.expire(now)
+    now = freeze(now + 119_999)
     await q.adjust(entryId, delta)
     expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: now + delta * 1000, pausedLeft: null })
     expect(await names()).toEqual(['B', 'C'])

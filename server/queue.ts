@@ -3,6 +3,7 @@ import { db, ready } from './db'
 import { QUALITY, type Current, type QueueItem, type Role, type ShareState, type State } from '../shared/types'
 
 const DISCONNECTED_MS = 3 * 60_000 // US-2.4 grace period
+const HANDOFF_MS = 120_000
 const BYE_GRACE_MS = 5_000 // closed tab -> out of the line; long enough for a refresh to reconnect
 const ADMIN_GONE_MS = 5 * 60_000 // no organizer page open this long: the checkpoint ends
 const DORMANT_MS = 10 * 60_000 // no action and nobody live this long: the checkpoint ends
@@ -170,7 +171,7 @@ export const adjust = async (id: string, deltaSec: number) => {
     paused_left = CASE WHEN paused_left IS NOT NULL THEN paused_left + ? END
     WHERE id = ? AND status = 'live'`, [now, ms, ms, id])
   if (n) return
-  const previous = `id = (SELECT id FROM queue_entries WHERE ${OPEN} AND status = 'done' AND ended_at IS NOT NULL
+  const previous = `id = (SELECT id FROM queue_entries WHERE ${OPEN} AND status = 'done' AND ended_at > ${now - HANDOFF_MS}
     ORDER BY ended_at DESC, sort_key DESC LIMIT 1)
     AND NOT EXISTS (SELECT 1 FROM queue_entries WHERE ${OPEN} AND status = 'live')`
   await ready
@@ -196,7 +197,7 @@ export async function hackerReady(token: string, noShare = false) {
 // Ends exactly the entry the organizer clicked. If it already finished (deadline, double-click), the next
 // person who was just called is NOT touched.
 export async function stop(id: string) {
-  const n = await changes(`UPDATE queue_entries SET status = 'done', ended_at = ? WHERE id = ? AND ${OPEN} AND status IN ('called','live')`, [Date.now(), id])
+  const n = await changes(`UPDATE queue_entries SET status = 'done', ended_at = CASE WHEN status = 'live' THEN ? END WHERE id = ? AND ${OPEN} AND status IN ('called','live')`, [Date.now(), id])
   if (n) await advanceOpen()
 }
 export async function remove(id: string) {
@@ -279,7 +280,7 @@ export function view({ s, rows }: Snapshot, role: Role, token?: string): State {
     ...((admin || (role === 'host' && cur.status === 'live')) && { streamId: cur.stream_id }),
   }
   const prev = s.status === 'open' && cur?.status !== 'live'
-    ? rows.filter((r) => r.status === 'done' && r.ended_at != null).sort((a, b) => b.ended_at - a.ended_at || b.sort_key - a.sort_key)[0] : undefined
+    ? rows.filter((r) => r.status === 'done' && r.ended_at > serverNow - HANDOFF_MS).sort((a, b) => b.ended_at - a.ended_at || b.sort_key - a.sort_key)[0] : undefined
   const previous = prev ? { entryId: prev.id, name: prev.name, project: prev.project, ...(admin && { streamId: prev.stream_id }) } : null
   const queue: QueueItem[] = waiting.map((r) => ({
     id: r.id, name: r.name, project: r.project, shareState: r.share_state, shareEpoch: Number(r.share_epoch ?? 0),

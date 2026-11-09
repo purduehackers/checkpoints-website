@@ -82,6 +82,7 @@ export default function Hacker() {
   const cur = state?.current?.entryId === me?.entryId ? state?.current : null
   const active = me && ['waiting', 'called', 'live'].includes(me.status)
   const handoff = me?.status === 'done' && state?.previous?.entryId === me?.entryId
+  const inFlow = active || handoff
   const open = state?.session?.status === 'open'
   // "Thanks for presenting" only right after presenting on this page; a refresh (or Join again) goes back to the form.
   const presentedHere = useRef(false)
@@ -97,9 +98,9 @@ export default function Hacker() {
   // Each publish (incl. Change window / Flip camera, where the state stays 'sharing') bumps the server's share epoch so the
   // projector remounts its viewer. Marks 'sharing' as reported so the effect above doesn't send it twice; still ahead of Ready in the chain.
   const published = () => { reported.current = 'sharing'; act('/share-state', { state: 'sharing' }) }
-  useEffect(() => { if (!active && !handoff) { reported.current = null; setShareState('not_shared'); setShareKey((n) => n + 1) } }, [active, handoff])
+  useEffect(() => { if (!inFlow) { reported.current = null; setShareState('not_shared'); setShareKey((n) => n + 1) } }, [inFlow])
   // Cleared once out of the line (leave, end, removed; not before the first state arrives) or once sharing.
-  useEffect(() => { if (!handoff && ((state && !active) || shareState === 'sharing')) setNoShare(false) }, [!!state, active, handoff, shareState])
+  useEffect(() => { if (!handoff && ((state && !inFlow) || shareState === 'sharing')) setNoShare(false) }, [!!state, inFlow, handoff, shareState])
   // Being called never starts the clock by itself: walking up takes a while, so the presenter presses Start Presenting.
   // Only when that press opened the picker do we go live as the share connects, after the share-state report above
   // (requests run in click order), so the server has seen 'sharing' before Ready. Cleared when the call ends.
@@ -151,13 +152,13 @@ export default function Hacker() {
   // Closing the tab takes you out of the line. beforeunload only asks (it also fires on refresh, which is fine);
   // pagehide tells the server, which waits 5s so a refresh (new socket) or a Wi-Fi blip (no pagehide) keeps the spot.
   useEffect(() => {
-    if (!active && !handoff) return
+    if (!inFlow) return
     const ask = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
     const bye = () => navigator.sendBeacon?.('/api/bye', new Blob([JSON.stringify({ token })], { type: 'application/json' }))
     addEventListener('beforeunload', ask)
     addEventListener('pagehide', bye)
     return () => { removeEventListener('beforeunload', ask); removeEventListener('pagehide', bye) }
-  }, [active, handoff, token])
+  }, [inFlow, token])
 
   const join = async () => {
     setError('')
@@ -166,23 +167,17 @@ export default function Hacker() {
     apply(next)
     return next.me.streamId
   }
-  const joinSharing = async () => {
+  const joinWith = async (sharing: boolean) => {
+    if (joining) return
     if (!formRef.current?.reportValidity()) return
     setJoining(true)
-    try { await shareFn.current?.() } finally { setJoining(false) }
-  }
-  const joinWithoutSharing = async () => {
-    if (!formRef.current?.reportValidity()) return
-    setNoShare(true)
-    setJoining(true)
-    try { await join() } catch (e) { setError((e as Error).message); setNoShare(false) }
+    if (!sharing) setNoShare(true)
+    try { if (sharing) await shareFn.current?.(); else await join() }
+    catch (e) { setError((e as Error).message); setNoShare(false) }
     finally { setJoining(false) }
   }
 
   if (!state) return <Shell><ConnectionBadge online={online} /><p className="flex items-center justify-center gap-3 text-xl"><Spinner className="size-5" />Loading…</p></Shell>
-
-  // Time hit 0 but the server has not ticked yet (under a second): say so.
-  const timeUp = me?.status === 'live' && cur?.pausedLeft == null && msTotal !== null && msTotal <= 0
 
   const plain = (text: string) => <h1 className="ph-headline text-center text-[36px] leading-9">{text}</h1>
   const sharing = shareState === 'sharing'
@@ -200,13 +195,12 @@ export default function Hacker() {
       </div>
     )
   }
-  else if (!active && !handoff) {
+  else if (!inFlow) {
     fg = '--ph-purple'; top = 'pt-[210px]'; showShare = true
     body = (
       <form ref={formRef} className="flex flex-col gap-6" onSubmit={(e) => {
         e.preventDefault()
-        if (canShare) joinSharing()
-        else joinWithoutSharing()
+        joinWith(canShare)
       }}>
         {plain('Join the Checkpoint')}
         <div className="flex flex-col gap-4">
@@ -214,9 +208,8 @@ export default function Hacker() {
           <Field label="Project Name" htmlFor="hacker-project"><Input id="hacker-project" required maxLength={80} placeholder="Pixel garden" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} /></Field>
         </div>
         <div className="flex flex-col gap-2.5">
-          {canShare && <Button variant="solid" size="lg" className="w-full" type="button" disabled={joining} onClick={joinSharing}>{joining && <Spinner />}{phone ? 'Share my camera' : 'Pick a screen to share'}</Button>}
-          <Button variant="outline" size="lg" className="w-full" type="button" disabled={joining} onClick={joinWithoutSharing}>{joining && !canShare && <Spinner />}I won’t need to share my screen</Button>
-          {!canShare && <p className="w-full border border-border bg-background p-3 text-center text-xs text-ph-yellow">{phone ? 'No camera access in this browser.' : 'Screen sharing needs Chrome or Edge.'}</p>}
+          {canShare && <Button variant="solid" size="lg" className="w-full" type="submit" disabled={joining}>{joining && <Spinner />}{phone ? 'Share my camera' : 'Pick a screen to share'}</Button>}
+          <Button variant="outline" size="lg" className="w-full" type={canShare ? 'button' : 'submit'} disabled={joining} onClick={canShare ? () => joinWith(false) : undefined}>{joining && !canShare && <Spinner />}I won’t need to share my screen</Button>
           <p className="text-xs text-foreground">Note: You get {span(state.session!.limitSec)} to present</p>
         </div>
       </form>
@@ -229,8 +222,8 @@ export default function Hacker() {
     const waiting = me.status === 'waiting'
       ? waitingCopy({ position: me.position, shareState, noShare, what, wait: aboutMinutes(waitMs(state, me.position - 1, now())), ahead: aheadName(state, me.position) })
       : null
-    const title = handoff ? 'Time’s up. Thanks for presenting!' : live ? 'You’re live' : called ? 'It’s your turn!' : waiting?.title ?? ''
-    const sub = handoff ? 'Keep this page open in case the organizer gives you more time.' : live ? (msTotal === null ? '' : timeUp ? 'Time’s up' : `${fmt(msTotal).replace(/^0/, '')} left`) : called ? 'Head up front, then press Start Presenting.' : waiting?.sub ?? ''
+    const title = handoff ? 'Thanks for presenting!' : live ? 'You’re live' : called ? 'It’s your turn!' : waiting?.title ?? ''
+    const sub = handoff ? 'Keep this page open for a moment in case the organizer gives you more time.' : live ? (msTotal === null ? '' : `${fmt(msTotal).replace(/^0/, '')} left`) : called ? 'Head up front, then press Start Presenting.' : waiting?.sub ?? ''
     const size = called || live ? 'lg' : 'md'
     body = (
       <div className="flex w-full flex-col items-center gap-2">
@@ -246,6 +239,7 @@ export default function Hacker() {
           {called && !sharing && !noShare && <Button variant="lime-outline" size={size} className="w-full"
             onClick={() => confirm('Start your time without sharing here?') && act('/ready', { noShare: true })}>Present without sharing</Button>}
           {!live && sharing && !called && <Button variant="outline" size={size} className="w-full" onClick={() => shareFn.current?.()}>Change {phone ? 'Camera' : 'Screen'}</Button>}
+          {canShare && noShare && !sharing && <Button variant="link" onClick={() => shareFn.current?.()}>Share my {phone ? 'camera' : 'screen'}</Button>}
           {live && <Button variant="orange" size={size} className="w-full" onClick={() => act('/end')}>End checkpoint</Button>}
           {!live && <Button variant="link" className="self-start" onClick={() => confirm('Leave the queue?') && act('/leave')}>Leave queue</Button>}
         </div>
@@ -257,12 +251,12 @@ export default function Hacker() {
   return (
     <Shell fg={fg} green={green} top={top}>
       <ConnectionBadge online={online} />
-      {(active || handoff) && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
+      {inFlow && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
       {pending > 0 && <Badge color="outline" className="late fixed bottom-3 right-3 z-50 bg-background"><Spinner />Working…</Badge>}
       <div className="flex flex-col items-center gap-6">
         {body}
-        {showShare && canShare && <ShareBox key={shareKey} streamId={active || handoff ? me!.streamId : join} label={me?.name ?? form.name} live={live} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} onPublished={published} shareRef={shareFn} hideShare={called || handoff} hidden={(!active && !handoff) || (noShare && !sharing && me?.status !== 'waiting')} camera={phone} />}
-        {active && !canShare && <p className="w-full border border-border bg-background p-3 text-center text-xs text-ph-yellow">{phone ? 'No camera access in this browser.' : 'Screen sharing needs Chrome or Edge.'}</p>}
+        {showShare && canShare && <ShareBox key={shareKey} streamId={inFlow ? me!.streamId : join} label={me?.name ?? form.name} live={live} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} onPublished={published} shareRef={shareFn} hideShare={called || handoff} hidden={!inFlow || (noShare && !sharing)} camera={phone} />}
+        {showShare && !handoff && !canShare && <p className="w-full border border-border bg-background p-3 text-center text-xs text-ph-yellow">{phone ? 'No camera access in this browser.' : 'Screen sharing needs Chrome or Edge.'}</p>}
         {actions}
       </div>
       {error && <p className="mt-3 text-center text-sm text-ph-pink">{error}</p>}

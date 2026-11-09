@@ -45,7 +45,8 @@ export function useLive(role: Role, onReactions?: (counts: Record<string, number
   const [notice, setNotice] = useState<{ text: string; until: number; slowUntil: number } | null>(null) // from the reaction spam guard
   const onR = useRef(onReactions)
   onR.current = onReactions
-  const apply = useCallback((s: State) => { skew.current = Date.now() - s.serverNow; setState(s) }, [])
+  const latest = useRef(-Infinity)
+  const apply = useCallback((s: State) => { if (s.serverNow < latest.current) return; latest.current = s.serverNow; skew.current = Date.now() - s.serverNow; setState(s) }, [])
   const now = useCallback(() => Date.now() - skew.current, [])
 
   useEffect(() => {
