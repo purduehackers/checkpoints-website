@@ -191,7 +191,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
         {connecting && <div className="absolute inset-0 flex items-center justify-center gap-3 bg-background/80 text-lg"><Spinner className="size-6" />Connecting…</div>}
         {state !== 'sharing' && !hideShare && !connecting && (
           <Button onClick={() => share()} className="absolute inset-0 m-auto max-w-full">
-            <span className="whitespace-normal text-center">{state === 'stopped' ? 'Share again' : camera ? 'Pick a camera to share' : 'Pick a screen to share'}</span>
+            <span className="whitespace-normal text-center">{state === 'stopped' ? 'Share again' : camera ? 'Share camera to join queue' : 'Share screen to join queue'}</span>
           </Button>
         )}
       </div>

@@ -3,8 +3,8 @@ import { ordinal } from '../lib/live'
 // Heading + sub for a waiting participant. Sharing or choosing to present without sharing both put you in line.
 export function waitingCopy({ position, sharing, noShare, what, wait, ahead }: { position: number; sharing: boolean; noShare: boolean; what: string; wait: string; ahead: string }) {
   const inLine = sharing || noShare
-  const title = position === 1 ? 'You’re up next!' : inLine ? `You’re ${ordinal(position)} in line` : `Share your ${what}`
-  const sub = inLine || position === 1 ? `Up in ${wait}${ahead ? ` ⊹ You’re after ${ahead}` : ''}` : 'Share now, or present without sharing'
+  const title = position === 1 ? 'You’re up next!' : inLine ? `You’re ${ordinal(position)} in line` : 'You’re not in line yet'
+  const sub = inLine || position === 1 ? `Up in ${wait}${ahead ? ` ⊹ You’re after ${ahead}` : ''}` : `Share your ${what} to join the queue`
   return { title, sub }
 }
 

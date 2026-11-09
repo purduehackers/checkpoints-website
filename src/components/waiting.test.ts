@@ -3,8 +3,9 @@ import { loadNoShare, saveNoShare, waitingCopy } from './waiting'
 
 const base = { position: 3, sharing: false, noShare: false, what: 'screen', wait: 'about 6 min', ahead: 'Ada' }
 
-test('not sharing, not chosen: asks to share, offers presenting without sharing', () => {
-  expect(waitingCopy(base)).toEqual({ title: 'Share your screen', sub: 'Share now, or present without sharing' })
+test('not sharing, not chosen: says plainly they are not in line yet', () => {
+  expect(waitingCopy(base)).toEqual({ title: 'You’re not in line yet', sub: 'Share your screen to join the queue' })
+  expect(waitingCopy({ ...base, what: 'camera' }).sub).toBe('Share your camera to join the queue')
 })
 
 test('sharing or chose no-share: normal queue status', () => {

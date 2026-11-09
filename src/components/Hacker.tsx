@@ -219,7 +219,7 @@ export default function Hacker() {
           {called && <DitherButton disabled={pending > 0} style={{ width: '100%' }} onClick={start}>{pending > 0 && <Spinner className="size-5" />}Start Presenting</DitherButton>}
           {/* Join the line without sharing (talk-only, or a browser that can't share); Start Presenting then goes straight live. */}
           {!live && !sharing && (!called || noShare) && <Button variant="outline" size={size} className="w-full" aria-pressed={noShare} icon={noShare ? 'check' : undefined}
-            onClick={() => setNoShare(!noShare)}>{noShare ? 'Presenting without sharing' : 'Present without sharing'}</Button>}
+            onClick={() => setNoShare(!noShare)}>{noShare ? 'In line without sharing' : 'Join queue without sharing'}</Button>}
           {/* Called without having chosen: take the stage with no share from this page. */}
           {called && !sharing && !noShare && <Button variant="lime-outline" size={size} className="w-full"
             onClick={() => confirm('Start your time without sharing here?') && act('/ready', { noShare: true })}>Present without sharing</Button>}
