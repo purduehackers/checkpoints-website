@@ -180,7 +180,7 @@ export default function Hacker() {
 
   if (!state) return <Shell><ConnectionBadge online={online} /><p className="flex items-center justify-center gap-3 text-xl"><Spinner className="size-5" />Loading…</p></Shell>
 
-  // The server keeps a presenter live for a save window (GRACE_MS) past the deadline: say so, keep sharing, end nothing here.
+  // Time hit 0 but the server has not ticked yet (under a second): say so.
   const timeUp = me?.status === 'live' && cur?.pausedLeft == null && msTotal !== null && msTotal <= 0
 
   const plain = (text: string) => <h1 className="ph-headline text-center text-[36px] leading-9">{text}</h1>

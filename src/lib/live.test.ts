@@ -4,7 +4,7 @@ import type { Current, State } from '../../shared/types'
 
 const now = 1_000_000
 const state = (current: Partial<Current> | null, limitSec = 120): State => ({
-  serverNow: now, queue: [],
+  serverNow: now, queue: [], previous: null,
   session: { status: 'open', limitSec, quality: '1080p', audio: true, reactions: true },
   current: current && { entryId: 'x', name: 'X', project: 'P', status: 'live', deadline: null, pausedLeft: null, shareState: 'sharing', shareEpoch: 1, ...current },
 })

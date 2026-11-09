@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import * as live from '../lib/live'
 import type { State } from '../../shared/types'
 
-const state: State = { serverNow: 0, session: null, current: null, queue: [] }
+const state: State = { serverNow: 0, session: null, current: null, previous: null, queue: [] }
 mock.module('../lib/live', () => ({
   ...live,
   useUser: () => ({ user: { name: 'Organizer', organizer: true }, authMode: 'password' }),
