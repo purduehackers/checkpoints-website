@@ -1,5 +1,5 @@
 import { Button } from '../components/ph/button'
-import { Badge } from '../components/ph/badge'
+import { Callout } from '../components/ph/callout'
 // Everything VDO.Ninja lives here.
 // Sharing: we capture the screen (phones: the camera) ourselves (so we know exactly when it starts and stops) and the
 // VDO.Ninja SDK handles signalling, peer connections and TURN. Viewing: plain vdo.ninja iframes.
@@ -190,7 +190,6 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     return () => { clearInterval(i); setHistory([]) }
   }, [state])
 
-  const note = 'w-full flex-wrap justify-center'
   const change = (text: string, onClick: () => void) => <Button variant="link" onClick={onClick}>{text}</Button>
   return (
     <div className="flex w-full flex-col gap-2">
@@ -203,14 +202,15 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
           </Button>
         )}
       </div>
-      {!hidden && state === 'stopped' && <Badge color="pink" className={note}>Your share stopped.</Badge>}
+      {/* hideShare = called (or handoff); while waiting, the subtitle already says to share again. */}
+      {!hidden && state === 'stopped' && (live || hideShare) && <Callout icon="exclamation-triangle" className="w-full">Your share stopped.</Callout>}
       {!hidden && state === 'sharing' && camera && (
-        <Badge color="lime" className={note}>Sharing your camera. {change('Flip camera', () => share(false, facing === 'user' ? 'environment' : 'user'))}</Badge>
+        <p className="text-center text-sm text-muted-foreground">Sharing your camera. {change('Flip camera', () => share(false, facing === 'user' ? 'environment' : 'user'))}</p>
       )}
       {!hidden && state === 'sharing' && !camera && live && (
-        <Badge color={hasAudio ? 'lime' : noAudioBrowser ? 'orange' : 'outline'} className={note}>
-          {hasAudio ? 'Sharing with sound.' : noAudioBrowser ? 'This browser can’t share sound.' : 'No sound. Share a tab to include sound.'} {change('Change window.', () => share())}
-        </Badge>
+        <p className="text-center text-sm text-muted-foreground">
+          {hasAudio ? 'Sharing with sound.' : noAudioBrowser ? 'This browser can’t share sound.' : 'No sound. Share a tab to include sound.'} {change('Change window', () => share())}
+        </p>
       )}
       {error && <p className="text-center text-xs text-ph-pink">{error}{retry && !camera && <> <Button variant="link" onClick={() => share(true)}>Try basic share</Button></>}</p>}
       {stats && <StatsOverlay history={history} title="Your stream" onClose={onCloseStats} />}

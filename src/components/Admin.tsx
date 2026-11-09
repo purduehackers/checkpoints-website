@@ -35,6 +35,7 @@ function Shell({ children, title }: { children: React.ReactNode; title?: string 
 }
 
 const SHARE_LABEL = { sharing: 'sharing', not_shared: 'not sharing', stopped: 'stopped' }
+const SHARE_COLOR = { sharing: 'lime', stopped: 'pink', not_shared: 'outline' } as const
 
 export default function Admin() {
   const auth = useUser()
@@ -135,20 +136,20 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
       {stats.on && <StatsOverlay history={history} title={statsStream && statsStream === c?.streamId ? `On stage: ${c.name}` : 'Previewed stream'} onClose={stats.toggle} />}
       <fieldset disabled={busy} className="grid w-full min-w-0 grid-cols-1 gap-6 border-0 p-0 min-[965px]:grid-cols-[403px_506px]">
         <div className="flex min-w-0 flex-col gap-6">
-          <Card className="h-[418px] overflow-y-auto">
+          <Card className="min-h-[418px] grow basis-0 overflow-y-auto">
             <h2 className="ph-headline text-[19px]">Queue</h2>
-            <p className="text-[13px]">{open && state.queue.length > 0 ? `${state.queue.length} waiting · through the line in ${aboutMin(waitMs(state, state.queue.length, now()))}` : !s ? 'No session yet.' : !open ? 'Session ended.' : 'Queue is empty.'}</p>
+            <p className="text-[13px]">{open && state.queue.length > 0 ? `${state.queue.length} waiting · through the line in ${aboutMin(waitMs(state, state.queue.length, now()))}` : !s ? 'No checkpoint yet.' : !open ? 'Checkpoint ended.' : 'Queue is empty.'}</p>
             <ol className="mt-1 space-y-1">
               {state.queue.map((e, i) => (
                 <li key={e.id} className="flex min-h-[46px] flex-wrap items-center justify-between gap-2 border border-border p-2 leading-[14px]">
                   <div className="min-w-0 flex-1 whitespace-nowrap">
                     <div className="flex items-center gap-[6px] text-[13px]"><b className="truncate font-semibold">{e.name}</b><span className="truncate font-light">{e.project}</span></div>
-                    <div className="mt-1">{e.connected ? <Badge color="outline">{SHARE_LABEL[e.shareState]}</Badge> : <Badge color="yellow"><span className="dots">disconnected</span></Badge>}</div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3 text-[13px]">
-                    <Button variant="link" onClick={() => { setPinned(true); setPreview(e.streamId!) }}>Preview</Button>
-                    <Button variant="link" onClick={() => act('/skip', { id: e.id })}>Skip</Button>
-                    <Button variant="link" onClick={() => act('/remove', { id: e.id }).then(() => setUndo({ id: e.id, name: e.name }))}>Remove</Button>
+                    <div className="mt-1 flex items-center gap-3 text-[13px]">
+                      {e.connected ? <Badge color={SHARE_COLOR[e.shareState]}>{SHARE_LABEL[e.shareState]}</Badge> : <Badge color="yellow"><span className="dots">disconnected</span></Badge>}
+                      <Button variant="link" onClick={() => { setPinned(true); setPreview(e.streamId!) }}>Preview</Button>
+                      <Button variant="link" onClick={() => act('/skip', { id: e.id })}>Skip</Button>
+                      <Button variant="link" onClick={() => act('/remove', { id: e.id }).then(() => setUndo({ id: e.id, name: e.name }))}>Remove</Button>
+                    </div>
                   </div>
                   <div className="flex shrink-0">
                     <Button variant="ghost" icon="arrow-up" size="icon" disabled={i === 0} aria-label="Move up" onClick={() => act('/move', { id: e.id, dir: -1 })} />
@@ -159,7 +160,7 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
             </ol>
           </Card>
           <div className="flex items-center gap-4">
-            <Button size="lg" variant={open ? 'orange' : 'lime'} className="flex-1" onClick={() => open ? confirm('End checkpoints?') && act('/session/end') : act('/session/start')}>{open ? 'End checkpoint' : 'Start checkpoint'}</Button>
+            <Button size="lg" variant={open ? 'orange' : 'lime'} className="flex-1" onClick={() => open ? confirm('End the checkpoint?') && act('/session/end') : act('/session/start')}>{open ? 'End checkpoint' : 'Start checkpoint'}</Button>
             <Button size="icon-lg" variant="outline" icon="cog" aria-label="Settings" aria-haspopup="dialog" aria-expanded={cog} onClick={() => setCog(!cog)} />
           </div>
         </div>
@@ -172,9 +173,8 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
             {pinned && <div className="absolute right-[15px] top-[36px] bg-background"><Button variant="ghost" size="sm" onClick={() => setPinned(false)}>follow next</Button></div>}
           </div>
           {/* Current presenter. Flow layout (no absolute positioning), so nothing overlaps at any width. */}
-          <section aria-label="Current presenter" className="flex">
-          {/* min-h 148 = queue card 418 + gap 24 + session button 52 - preview 322 - gap 24, so the columns end level; grows past that rather than squeezing. */}
-          <Card border={c ? 'border-ph-orange' : undefined} className="min-h-[148px] w-full">
+          <section aria-label="Current presenter" className="flex grow">
+          <Card border={c ? 'border-ph-orange' : undefined} className="w-full">
             {c ? (
               <div className="flex flex-col gap-6">
                 <div className="flex items-start justify-between gap-4">
@@ -195,15 +195,14 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
                   {c.status === 'called' && <Button variant="outline" onClick={() => act('/skip', { id: c.entryId })}>Skip</Button>}
                   <Button variant="outline" onClick={() => act('/stop', { id: c.entryId })}>Stop</Button>
                   {c.status === 'live' && <Button onClick={() => act(c.pausedLeft != null ? '/resume' : '/pause', { id: c.entryId })}>{c.pausedLeft != null ? 'Resume' : 'Pause'}</Button>}
-                  {/* Shown while getting ready too, so they're findable; the server only adjusts live entries. */}
-                  {([15, 30] as const).map((d) => (
-                    <Button key={d} variant="outline" disabled={c.status !== 'live'} title={c.status !== 'live' ? 'Available once their time starts' : undefined}
+                  {c.status === 'live' && ([15, 30] as const).map((d) => (
+                    <Button key={d} variant="outline"
                       onClick={() => act('/adjust', { id: c.entryId, delta: d })}><span className="normal-case">+{d}s</span></Button>
                   ))}
                 </div>
                 {c.streamId && (
                   <div className="flex items-center justify-between gap-4 border-t border-border pt-4 text-[13px]">
-                    <span className="flex items-center gap-2">Screen <Badge color="yellow">{SHARE_LABEL[c.shareState]}</Badge></span>
+                    <span className="flex items-center gap-2">Screen <Badge color={SHARE_COLOR[c.shareState]}>{SHARE_LABEL[c.shareState]}</Badge></span>
                     <Button variant="ghost" size="sm" onClick={() => { setPinned(true); setPreview(c.streamId!) }}>Preview</Button>
                   </div>
                 )}
@@ -244,7 +243,7 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
             <Checkbox checked={s!.audio} onChange={() => act('/audio', { on: !s!.audio })}>Projector sound</Checkbox>
             <Checkbox checked={s!.reactions} onChange={() => act('/reactions', { on: !s!.reactions })}>Reactions</Checkbox>
             <p className="text-[12px] font-light">Ends by itself after 10 minutes with nothing happening, or 5 minutes with no organizer page open.</p>
-            <Button variant="pink-outline" onClick={() => confirm('End checkpoints?') && act('/session/end')}>End checkpoints</Button>
+            <Button variant="pink-outline" onClick={() => confirm('End the checkpoint?') && act('/session/end')}>End checkpoint</Button>
           </>}
         </fieldset>
       </Dialog>

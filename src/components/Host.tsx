@@ -1,4 +1,5 @@
 import { Badge } from './ph/badge'
+import { Button } from './ph/button'
 import { Icon } from './ph/icon'
 import { useEffect, useRef, useState } from 'react'
 import { ConnectionBadge, fmt, useLive, useTick } from '../lib/live'
@@ -172,7 +173,7 @@ export default function Host() {
                         style={{ zIndex: shown.length - i, transform: `translateX(${x}px) rotate(${rot}deg)`, '--i': i } as React.CSSProperties}>
                         <img alt="" src={d.src} className={`absolute right-[6px] top-0 h-[200px] w-[176px] object-contain ${d.className}`} style={{ transform: `rotate(${-rot}deg)` }} />
                         <div className="relative flex w-[277px] flex-col pl-[25px] pt-[27px] leading-[normal]">
-                          <p className="text-[48px]">#{i + 1}</p>
+                          <p className="text-[48px]">#{i + 2}</p>
                           <p className="truncate text-[48px]">{e.name}</p>
                           <p className="truncate text-[32px]">{e.project}</p>
                         </div>
@@ -186,7 +187,7 @@ export default function Host() {
           )}
         </div>
       )}
-      {audio && !clicked && <Badge color="yellow" className="absolute bottom-3 right-3 z-40">Click anywhere for sound</Badge>}
+      {audio && !clicked && <Button variant="solid" size="sm" className="absolute bottom-3 right-3 z-40">Click anywhere for sound</Button>}
     </main>
   )
 }

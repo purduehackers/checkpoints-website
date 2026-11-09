@@ -189,7 +189,7 @@ export default function Hacker() {
   else if (me?.status === 'removed') body = plain('You were removed from the queue.')
   else if (me?.status === 'done' && !handoff && presentedHere.current && !thanked) {
     body = (
-      <div className="space-y-6">
+      <div className="w-full space-y-6">
         {plain('Thanks for presenting!')}
         <Button className="w-full" onClick={() => setThanked(true)}>Join again</Button>
       </div>
@@ -209,8 +209,8 @@ export default function Hacker() {
         </div>
         <div className="flex flex-col gap-2.5">
           {canShare && <Button variant="solid" size="lg" className="w-full" type="submit" disabled={joining}>{joining && <Spinner />}{phone ? 'Share my camera' : 'Pick a screen to share'}</Button>}
-          <Button variant="outline" size="lg" className="w-full" type={canShare ? 'button' : 'submit'} disabled={joining} onClick={canShare ? () => joinWith(false) : undefined}>{joining && !canShare && <Spinner />}I won’t need to share my screen</Button>
-          <p className="text-xs text-foreground">Note: You get {span(state.session!.limitSec)} to present</p>
+          <Button variant="outline" size="lg" className="w-full" type={canShare ? 'button' : 'submit'} disabled={joining} onClick={canShare ? () => joinWith(false) : undefined}>{joining && !canShare && <Spinner />}I won’t need to share</Button>
+          <p className="text-sm text-muted-foreground">Note: You get {span(state.session!.limitSec)} to present</p>
         </div>
       </form>
     )
@@ -228,7 +228,7 @@ export default function Hacker() {
     body = (
       <div className="flex w-full flex-col items-center gap-2">
         <h1 className="ph-headline w-full text-center text-[36px] leading-9">{title}</h1>
-        {sub && <p className="text-center text-xl leading-normal text-foreground">{sub}</p>}
+        {sub && <p className={live ? 'ph-headline text-center text-[28px] tabular-nums' : 'text-center text-xl leading-normal text-foreground'}>{sub}</p>}
       </div>
     )
     actions = !handoff && (
@@ -239,8 +239,8 @@ export default function Hacker() {
           {called && !sharing && !noShare && <Button variant="lime-outline" size={size} className="w-full"
             onClick={() => confirm('Start your time without sharing here?') && act('/ready', { noShare: true })}>Present without sharing</Button>}
           {!live && sharing && !called && <Button variant="outline" size={size} className="w-full" onClick={() => shareFn.current?.()}>Change {phone ? 'Camera' : 'Screen'}</Button>}
-          {canShare && noShare && !sharing && <Button variant="link" onClick={() => shareFn.current?.()}>Share my {phone ? 'camera' : 'screen'}</Button>}
-          {live && <Button variant="orange" size={size} className="w-full" onClick={() => act('/end')}>End checkpoint</Button>}
+          {canShare && noShare && !sharing && <Button variant="outline" size={size} className="w-full" onClick={() => shareFn.current?.()}>Share my {phone ? 'camera' : 'screen'}</Button>}
+          {live && <Button variant="orange" size={size} className="w-full" onClick={() => act('/end')}>I’m done</Button>}
           {!live && <Button variant="link" className="self-start" onClick={() => confirm('Leave the queue?') && act('/leave')}>Leave queue</Button>}
         </div>
         {me.status === 'waiting' && state.session!.reactions && <div className="w-full"><ReactionPanel react={react} notice={notice} /></div>}
