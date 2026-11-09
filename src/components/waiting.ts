@@ -1,10 +1,12 @@
+import type { ShareState } from '../../shared/types'
 import { ordinal } from '../lib/live'
 
-// Heading + sub for a waiting participant. Sharing or choosing to present without sharing both put you in line.
-export function waitingCopy({ position, sharing, noShare, what, wait, ahead }: { position: number; sharing: boolean; noShare: boolean; what: string; wait: string; ahead: string }) {
-  const inLine = sharing || noShare
-  const title = position === 1 ? 'You’re up next!' : inLine ? `You’re ${ordinal(position)} in line` : 'You’re not in line yet'
-  const sub = inLine || position === 1 ? `Up in ${wait}${ahead ? ` ⊹ You’re after ${ahead}` : ''}` : `Share your ${what} to join the queue`
+// Every waiting participant has already joined, even if their share stopped.
+export function waitingCopy({ position, shareState, noShare, what, wait, ahead }: { position: number; shareState: ShareState; noShare: boolean; what: string; wait: string; ahead: string }) {
+  const title = position === 1 ? 'You’re up next!' : `You’re ${ordinal(position)} in line`
+  const action = shareState === 'sharing' ? '' : noShare ? `You can share your ${what} anytime before your turn.`
+    : shareState === 'stopped' ? 'Your share stopped. Share again before your turn.' : `Share your ${what} before your turn.`
+  const sub = `Up in ${wait}${ahead ? ` ⊹ You’re after ${ahead}` : ''}${action ? `. ${action}` : ''}`
   return { title, sub }
 }
 
