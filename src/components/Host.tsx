@@ -78,7 +78,7 @@ export default function Host() {
   const open = state?.session?.status === 'open'
   const audio = state?.session?.audio ?? true
   const inPerson = !!live && c!.shareState !== 'sharing' // "Present without sharing": nothing to project
-  const timeUp = left !== null && left <= 0 && c?.pausedLeft == null // in the GRACE_MS save window the presenter is still live
+  const timeUp = left !== null && left <= 0 && c?.pausedLeft == null
   // Only the last 10 seconds (and TIME'S UP) show on the big screen; the speaker has /timer for the full countdown.
   const timer = left !== null && left <= 10_000 && <div className={`px-[0.4em] font-bold tabular-nums ${c?.pausedLeft != null ? 'border border-border bg-background text-ph-yellow' : 'bg-red-600 text-foreground'}`}>{c?.pausedLeft != null && '⏸ '}{timeUp ? "TIME'S UP" : fmt(left)}</div>
   const queue = state?.queue ?? []

@@ -10,8 +10,6 @@ export const QUALITY = {
   '1440p': { kbps: 6000 },
   source: { kbps: 8000 },
 } as const
-// After time runs out the presenter stays live this long ("Time's up", save window) before the server ends them.
-export const GRACE_MS = 15_000
 export type Quality = keyof typeof QUALITY
 
 export interface QueueItem {
@@ -41,6 +39,7 @@ export interface State {
   serverNow: number
   session: { status: 'open' | 'closed'; limitSec: number; quality: Quality; audio: boolean; reactions: boolean } | null
   current: Current | null
+  previous: { entryId: string; name: string; project: string; streamId?: string } | null
   queue: QueueItem[]
   me?: {
     entryId: string

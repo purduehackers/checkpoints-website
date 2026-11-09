@@ -37,7 +37,6 @@ export default function Timer() {
         <>
           <div className={`absolute inset-x-[1.875vw] inset-y-[3.333vh] box-border border-solid ${frameBorder(left, paused)}`} />
           <p className={`ph-headline absolute inset-x-0 top-[17.59%] text-center text-[10.4167vw] ${paused ? 'text-ph-yellow' : ''}`}>{paused && '⏸ Paused · '}{c.name}</p>
-          {/* Past the deadline the server keeps them live for GRACE_MS so the organizer can add time. */}
           <div className={`absolute inset-x-0 top-[36.11%] text-center font-bold leading-none tabular-nums text-[26.0417vw] ${paused ? 'text-ph-yellow' : expired ? 'text-[red]' : ''}`}>{left === null ? '--:--' : fmt(Math.max(left, 0))}</div>
         </>
       ) : (

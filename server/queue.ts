@@ -1,6 +1,6 @@
 // All SQL and every state transition lives here.
 import { db, ready } from './db'
-import { GRACE_MS, QUALITY, type Current, type QueueItem, type Role, type ShareState, type State } from '../shared/types'
+import { QUALITY, type Current, type QueueItem, type Role, type ShareState, type State } from '../shared/types'
 
 const DISCONNECTED_MS = 3 * 60_000 // US-2.4 grace period
 const BYE_GRACE_MS = 5_000 // closed tab -> out of the line; long enough for a refresh to reconnect
@@ -126,7 +126,7 @@ export async function leave(token: string) {
 export const setShare = (token: string, state: ShareState) =>
   mutate(`share_state = ?${state === 'sharing' ? ', share_epoch = share_epoch + 1' : ''}`, ACTIVE, token, [state])
 export async function end(token: string) {
-  const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE client_token = ? AND ${OPEN} AND status = 'live'`, [token])
+  const n = await changes(`UPDATE queue_entries SET status = 'done', ended_at = ? WHERE client_token = ? AND ${OPEN} AND status = 'live'`, [Date.now(), token])
   if (n) await advanceOpen()
 }
 // One statement for every connected hacker, instead of one per socket.
@@ -148,31 +148,39 @@ export async function sweepByes(now = Date.now()) {
   if (n) await advanceOpen()
 }
 
-// The deadline column is the HARD END: the visible deadline + GRACE_MS. Older deployments share this DB and end
-// live rows at `deadline <= now` with no grace, so storing the end keeps the save window for them too.
-// view() hands clients the visible deadline (column - GRACE_MS); everything that writes it adds GRACE_MS back.
-
+// The stored deadline is the visible cutoff; expire() ends the slot on the next tick.
 // Ready gate: called -> live, and the server fixes the deadline.
 export async function adminReady(entryId: string) {
   const s = await openSession()
   if (!s) return
   const now = Date.now()
-  await run(`UPDATE queue_entries SET status = 'live', deadline = ?, paused_left = NULL WHERE session_id = ? AND status = 'called' AND id = ?`, [now + s.limit_sec * 1000 + GRACE_MS, s.id, entryId])
+  await run(`UPDATE queue_entries SET status = 'live', deadline = ?, paused_left = NULL WHERE session_id = ? AND status = 'called' AND id = ?`, [now + s.limit_sec * 1000, s.id, entryId])
 }
 
 export const pause = (id: string) =>
-  run(`UPDATE queue_entries SET paused_left = MAX(0, deadline - ? - ?), deadline = NULL WHERE id = ? AND status = 'live' AND deadline IS NOT NULL`, [GRACE_MS, Date.now(), id])
+  run(`UPDATE queue_entries SET paused_left = MAX(0, deadline - ?), deadline = NULL WHERE id = ? AND status = 'live' AND deadline IS NOT NULL`, [Date.now(), id])
 export const resume = (id: string) =>
-  run(`UPDATE queue_entries SET deadline = ? + paused_left, paused_left = NULL WHERE id = ? AND status = 'live' AND paused_left IS NOT NULL`, [Date.now() + GRACE_MS, id])
-// Only the organizer's +15 / +30 s buttons. Past the visible deadline (save window) the time restarts from now,
-// not from the stale deadline: column = max(now + GRACE_MS, column) + delta. Paused entries just gain paused_left; anything else is ignored.
-export const adjust = (id: string, deltaSec: number) => {
+  run(`UPDATE queue_entries SET deadline = ? + paused_left, paused_left = NULL WHERE id = ? AND status = 'live' AND paused_left IS NOT NULL`, [Date.now(), id])
+// Overdue clocks restart from now; paused clocks gain time without resuming.
+export const adjust = async (id: string, deltaSec: number) => {
   if (deltaSec !== 15 && deltaSec !== 30) return
-  const ms = deltaSec * 1000
-  return run(`UPDATE queue_entries SET
+  const ms = deltaSec * 1000, now = Date.now()
+  const n = await changes(`UPDATE queue_entries SET
     deadline = CASE WHEN deadline IS NOT NULL THEN MAX(?, deadline) + ? END,
     paused_left = CASE WHEN paused_left IS NOT NULL THEN paused_left + ? END
-    WHERE id = ? AND status = 'live'`, [Date.now() + GRACE_MS, ms, ms, id])
+    WHERE id = ? AND status = 'live'`, [now, ms, ms, id])
+  if (n) return
+  const previous = `id = (SELECT id FROM queue_entries WHERE ${OPEN} AND status = 'done' AND ended_at IS NOT NULL
+    ORDER BY ended_at DESC, sort_key DESC LIMIT 1)
+    AND NOT EXISTS (SELECT 1 FROM queue_entries WHERE ${OPEN} AND status = 'live')`
+  await ready
+  await db.batch([
+    // Demote first: one_active_entry forbids a called entry alongside the revived presenter.
+    { sql: `UPDATE queue_entries SET status = 'waiting' WHERE ${OPEN} AND status = 'called'
+        AND EXISTS (SELECT 1 FROM queue_entries WHERE id = ? AND ${previous})`, args: [id] },
+    { sql: `UPDATE queue_entries SET status = 'live', deadline = ?, paused_left = NULL, ended_at = NULL
+        WHERE id = ? AND status = 'done' AND ${previous}`, args: [now + ms, id] },
+  ], 'write')
 }
 
 // The hacker's own Ready needs a running share, so the clock never starts on a blank screen.
@@ -188,7 +196,7 @@ export async function hackerReady(token: string, noShare = false) {
 // Ends exactly the entry the organizer clicked. If it already finished (deadline, double-click), the next
 // person who was just called is NOT touched.
 export async function stop(id: string) {
-  const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE id = ? AND ${OPEN} AND status IN ('called','live')`, [id])
+  const n = await changes(`UPDATE queue_entries SET status = 'done', ended_at = ? WHERE id = ? AND ${OPEN} AND status IN ('called','live')`, [Date.now(), id])
   if (n) await advanceOpen()
 }
 export async function remove(id: string) {
@@ -241,9 +249,8 @@ export async function expire(now = Date.now()) {
   if (s && ((s.admin_seen_at != null && s.admin_seen_at <= now - ADMIN_GONE_MS) || (s.active_at != null && !s.live && s.active_at <= now - DORMANT_MS))) {
     return endSession()
   }
-  // The column already includes the GRACE_MS save window, so this is the same SQL as older deployments run.
   // Paused rows have a NULL deadline.
-  const n = await changes(`UPDATE queue_entries SET status = 'done' WHERE status = 'live' AND deadline <= ?`, [now])
+  const n = await changes(`UPDATE queue_entries SET status = 'done', ended_at = ? WHERE status = 'live' AND deadline <= ?`, [now, now])
   if (n) await advanceOpen()
   await sweepByes(now)
   await advanceOpen() // the invariant, last: covers every path above and slots finished elsewhere
@@ -261,22 +268,25 @@ export const loadState = async (role: Role, token?: string) => view(await snapsh
 
 export function view({ s, rows }: Snapshot, role: Role, token?: string): State {
   const serverNow = Date.now()
-  if (!s) return { serverNow, session: null, current: null, queue: [] }
+  if (!s) return { serverNow, session: null, current: null, previous: null, queue: [] }
   const admin = role === 'admin'
   const cur = rows.find((r) => r.status === 'called' || r.status === 'live')
   const waiting = s.status === 'open' ? rows.filter((r) => r.status === 'waiting') : [] // a closed session has no line
   const current: Current | null = !cur ? null : {
     entryId: cur.id, name: cur.name, project: cur.project, status: cur.status,
-    deadline: cur.deadline == null ? null : Number(cur.deadline) - GRACE_MS, pausedLeft: cur.paused_left, shareState: cur.share_state, shareEpoch: Number(cur.share_epoch ?? 0),
+    deadline: cur.deadline == null ? null : Number(cur.deadline), pausedLeft: cur.paused_left, shareState: cur.share_state, shareEpoch: Number(cur.share_epoch ?? 0),
     ...(role !== 'hacker' && { away: cur.bye_at != null }),
     ...((admin || (role === 'host' && cur.status === 'live')) && { streamId: cur.stream_id }),
   }
+  const prev = s.status === 'open' && cur?.status !== 'live'
+    ? rows.filter((r) => r.status === 'done' && r.ended_at != null).sort((a, b) => b.ended_at - a.ended_at || b.sort_key - a.sort_key)[0] : undefined
+  const previous = prev ? { entryId: prev.id, name: prev.name, project: prev.project, ...(admin && { streamId: prev.stream_id }) } : null
   const queue: QueueItem[] = waiting.map((r) => ({
     id: r.id, name: r.name, project: r.project, shareState: r.share_state, shareEpoch: Number(r.share_epoch ?? 0),
     connected: serverNow - r.last_seen_at < DISCONNECTED_MS && r.bye_at == null,
     ...(admin && { streamId: r.stream_id }),
   }))
-  const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec, quality: s.quality, audio: !!s.audio, reactions: !!s.reactions }, current, queue }
+  const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec, quality: s.quality, audio: !!s.audio, reactions: !!s.reactions }, current, previous, queue }
   const mine = role === 'hacker' && token ? rows.find((r) => r.client_token === token) : undefined
   if (mine) {
     state.me = { entryId: mine.id, name: mine.name, project: mine.project, status: mine.status, position: waiting.indexOf(mine) + 1, streamId: mine.stream_id }

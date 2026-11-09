@@ -13,7 +13,7 @@ import { Glider } from './ph/glider'
 import { Input } from './ph/input'
 import { Link } from './ph/link'
 import { SegmentedToggle } from './ph/segmented-toggle'
-import { GRACE_MS, QUALITY, type Quality } from '../../shared/types'
+import { QUALITY, type Quality } from '../../shared/types'
 
 function Shell({ children, title }: { children: React.ReactNode; title?: string }) {
   return (
@@ -190,8 +190,6 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
                     {left != null && <p className="ph-headline text-[28px] leading-8 tabular-nums">{fmt(left)}</p>}
                   </div>
                 </div>
-                {/* Save window: time ran out but the server keeps them live for GRACE_MS. Add time to bring them back. */}
-                {c.pausedLeft == null && c.deadline != null && c.deadline <= now() && <p role="status" className="border border-ph-pink px-3 py-2 text-xs font-semibold text-ph-pink">Time's up · ends in {Math.max(0, Math.ceil((c.deadline + GRACE_MS - now()) / 1000))}s. Add time to keep them</p>}
                 <div className="flex flex-wrap gap-2">
                   {c.status === 'called' && <Button onClick={() => act('/ready', { id: c.entryId })}>Start</Button>}
                   {c.status === 'called' && <Button variant="outline" onClick={() => act('/skip', { id: c.entryId })}>Skip</Button>}
@@ -214,6 +212,17 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
               <p className="ph-headline text-[19px]">Nobody up yet</p>
               <p className="text-sm">{open ? 'The next person in the queue will be called automatically.' : 'Start a checkpoint to open the queue.'}</p>
             </>)}
+            {state.previous && (
+              <div className="mt-4 border-t border-border pt-4 text-[13px]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p>Previous: <b>{state.previous.name}</b> · {state.previous.project}</p>
+                  <div className="flex gap-2">
+                    {[15, 30].map((d) => <Button key={d} variant="outline" onClick={() => act('/adjust', { id: state.previous!.entryId, delta: d })}><span className="normal-case">+{d}s</span></Button>)}
+                  </div>
+                </div>
+                <p className="mt-1 text-[12px] font-light">Adding time brings them back{c ? `; ${c.name} returns to the front of the line` : ''}.</p>
+              </div>
+            )}
           </Card>
           </section>
         </div>

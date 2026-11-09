@@ -52,6 +52,7 @@ const ADDED = [
   `ALTER TABLE sessions ADD COLUMN reactions INTEGER NOT NULL DEFAULT 1`,
   `ALTER TABLE queue_entries ADD COLUMN bye_at INTEGER`, // nullable, so older code that never sets it keeps working
   `ALTER TABLE queue_entries ADD COLUMN share_epoch INTEGER NOT NULL DEFAULT 0`, // old code ignores it; old rows read 0
+  `ALTER TABLE queue_entries ADD COLUMN ended_at INTEGER`,
 ]
 export const ready = db.executeMultiple(SCHEMA).then(async () => {
   for (const sql of ADDED) await db.execute(sql).catch((e) => { if (!/duplicate column/i.test(String(e))) throw e })

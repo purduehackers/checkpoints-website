@@ -2,7 +2,6 @@ import { afterEach, beforeAll, expect, setSystemTime, test } from 'bun:test'
 
 process.env.TURSO_DATABASE_URL = ':memory:'
 const q = await import('./queue')
-const { GRACE_MS } = await import('../shared/types')
 const { db } = await import('./db')
 
 // Other test files share this in-memory DB: always start from a fresh checkpoint.
@@ -81,11 +80,11 @@ test('quality, projector audio and reactions round-trip; bad quality is rejected
   await q.setReactions(true)
 })
 
-test('expire ends a live slot GRACE_MS after its deadline, not before', async () => {
+test('expire ends a live slot at its deadline, not before', async () => {
   const { deadline } = (await host()).current!
-  await q.expire(deadline! + GRACE_MS - 1)
+  await q.expire(deadline! - 1)
   expect((await host()).current).toMatchObject({ name: 'Ada', status: 'live' })
-  await q.expire(deadline! + GRACE_MS)
+  await q.expire(deadline!)
   expect((await host()).current).toMatchObject({ name: 'Cy', status: 'called' }) // auto-advanced
   expect((await q.loadState('hacker', 'tok-aaaaaaaa')).me?.status).toBe('done')
 })
@@ -335,43 +334,87 @@ test('adjust adds paused time', async () => {
   expect(await cur()).toMatchObject({ deadline: now + 50_000, pausedLeft: null })
 })
 
-test('save window: live at deadline+10s, done at deadline+15s; the next person is called only then', async () => {
-  await fresh('A', 'B')
-  await live('aa-A-xxxx')
-  const { entryId, deadline } = (await cur())!
-  await q.expire(deadline! + 10_000)
-  expect(await cur()).toMatchObject({ entryId, status: 'live', deadline })
-  expect(await status('B')).toBe('waiting') // not called during the grace window
-  expect(await calledOrLive()).toBe(1)
-  await q.expire(deadline! + GRACE_MS)
-  expect(await status('A')).toBe('done')
-  expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
+test('previous follows end, stop and expire, hides stream ids, and clears when the next person is live', async () => {
+  for (const way of ['end', 'stop', 'expire']) {
+    await fresh('A', 'B')
+    expect((await host()).previous).toBeNull()
+    await live('aa-A-xxxx')
+    const { entryId, deadline } = (await cur())!
+    const now = freeze(deadline!)
+    if (way === 'end') await q.end('aa-A-xxxx')
+    else if (way === 'stop') await q.stop(entryId)
+    else await q.expire(now)
+    expect((await host()).previous).toEqual({ entryId, name: 'A', project: 'P' })
+    expect((await q.loadState('hacker', 'aa-B-xxxx')).previous).toEqual({ entryId, name: 'A', project: 'P' })
+    expect((await q.loadState('admin')).previous?.streamId).toBeString()
+    expect((await q.snapshot()).rows.find((r) => r.id === entryId)?.ended_at).toBe(now)
+    await live('aa-B-xxxx')
+    expect((await host()).previous).toBeNull()
+  }
 })
 
-test('older deployments (no grace in expire) still respect the save window', async () => {
-  await fresh('A', 'B')
-  await live('aa-A-xxxx')
-  const { entryId, deadline } = (await cur())!
-  // What a pre-grace deployment sharing this DB runs on every tick, 5s after the visible deadline.
-  await db.execute({ sql: `UPDATE queue_entries SET status = 'done' WHERE status = 'live' AND deadline <= ?`, args: [deadline! + 5_000] })
-  expect(await cur()).toMatchObject({ entryId, status: 'live', deadline })
-  expect(await status('B')).toBe('waiting')
+test('adjust revives previous and returns the called person to position 1', async () => {
+  for (const delta of [15, 30]) {
+    await fresh('A', 'B', 'C')
+    await live('aa-A-xxxx')
+    const { entryId, deadline } = (await cur())!
+    const now = freeze(deadline!)
+    await q.expire(now)
+    await q.adjust(entryId, delta)
+    expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: now + delta * 1000, pausedLeft: null })
+    expect(await names()).toEqual(['B', 'C'])
+    expect(await pos('aa-B-xxxx')).toBe(1)
+    expect((await host()).previous).toBeNull()
+    expect((await q.snapshot()).rows.find((r) => r.id === entryId)?.ended_at).toBeNull()
+    expect(await calledOrLive()).toBe(1)
+  }
 })
 
-test('+15 in the save window brings them back with 15s from now', async () => {
+test('adjust refuses previous once someone else is live, and refuses an older done entry', async () => {
+  await fresh('A', 'B', 'C')
+  await live('aa-A-xxxx')
+  const a = (await cur())!.entryId
+  await q.end('aa-A-xxxx')
+  await live('aa-B-xxxx')
+  let before = await q.snapshot()
+  await q.adjust(a, 30)
+  expect(await q.snapshot()).toEqual(before)
+  freeze(Date.now() + 1000)
+  await q.end('aa-B-xxxx')
+  before = await q.snapshot()
+  await q.adjust(a, 15)
+  expect(await q.snapshot()).toEqual(before)
+  expect((await host()).previous?.name).toBe('B')
+})
+
+test('previous can return to an empty stage but not a closed session', async () => {
+  await fresh('A')
+  await live('aa-A-xxxx')
+  const a = (await cur())!.entryId
+  await q.end('aa-A-xxxx')
+  expect((await host()).previous?.entryId).toBe(a)
+  await q.adjust(a, 15)
+  expect(await cur()).toMatchObject({ entryId: a, status: 'live' })
+  await q.end('aa-A-xxxx')
+  await q.endSession()
+  expect((await host()).previous).toBeNull()
+  const before = await q.snapshot()
+  await q.adjust(a, 30)
+  expect(await q.snapshot()).toEqual(before)
+})
+
+test('adjust on an overdue live entry restarts from now before the next tick', async () => {
   await fresh('A', 'B')
   await live('aa-A-xxxx')
   const { entryId, deadline } = (await cur())!
   const now = freeze(deadline! + 10_000)
   await q.adjust(entryId, 15)
   expect(await cur()).toMatchObject({ entryId, status: 'live', deadline: now + 15_000 })
-  await q.expire(deadline! + GRACE_MS + 1_000) // the old cutoff has passed, the new clock hasn't
-  expect(await cur()).toMatchObject({ entryId, status: 'live' })
-  await q.expire(now + 15_000 + GRACE_MS)
+  await q.expire(now + 15_000)
   expect(await status('A')).toBe('done')
 })
 
-test('pausing in the save window holds them; +30 then resume gives 30s', async () => {
+test('pausing an overdue slot before the next tick holds it; +30 then resume gives 30s', async () => {
   await fresh('A', 'B')
   await live('aa-A-xxxx')
   const { entryId, deadline } = (await cur())!
@@ -387,9 +430,8 @@ test('pausing in the save window holds them; +30 then resume gives 30s', async (
   expect(await cur()).toMatchObject({ deadline: now + 30_000, pausedLeft: null })
 })
 
-test('pause, resume and adjust on non-live or unknown entries are no-ops', async () => {
+test('pause, resume and adjust on waiting, called or unknown entries are no-ops', async () => {
   await fresh('A', 'B', 'C')
-  await q.stop((await cur())!.entryId)
   const before = await q.snapshot()
   for (const id of [...before.rows.map((r) => r.id), 'no-such-id']) {
     await q.pause(id)
@@ -445,7 +487,7 @@ test('pausing one presenter never pauses the next one', async () => {
   await q.stop(a)
   await live('aa-B-xxxx')
   const { deadline } = (await cur())!
-  await q.expire(deadline! + GRACE_MS) // B's clock runs and ends on time
+  await q.expire(deadline!) // B's clock runs and ends on time
   expect(await status('B')).toBe('done')
 })
 
@@ -517,7 +559,7 @@ test('expire, end, stop advance to the first waiting person', async () => {
   await fresh('A', 'B', 'C', 'D')
   await live('aa-A-xxxx')
   const { deadline } = (await cur())!
-  await q.expire(deadline! + GRACE_MS)
+  await q.expire(deadline!)
   expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
   expect((await host()).queue.map((e) => e.name)).toEqual(['C', 'D'])
   await live('aa-B-xxxx')
@@ -556,7 +598,7 @@ test('concurrent finishes never leave two called/live entries', async () => {
   await live('aa-A-xxxx')
   const { deadline } = (await cur())!
   const a = (await cur())!.entryId
-  await Promise.all([q.stop(a), q.stop(a), q.expire(deadline! + GRACE_MS), q.end('aa-A-xxxx')])
+  await Promise.all([q.stop(a), q.stop(a), q.expire(deadline!), q.end('aa-A-xxxx')])
   expect(await calledOrLive()).toBe(1)
   expect((await cur())!.name).toBe('B') // the repeated stops of A never touch B
   await q.stop(a) // late click on someone already finished
