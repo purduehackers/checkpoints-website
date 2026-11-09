@@ -6,3 +6,4 @@ dist
 .direnv
 .env*
 !.env.example
+screenshots/
