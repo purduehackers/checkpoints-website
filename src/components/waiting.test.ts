@@ -7,7 +7,7 @@ const status = 'Up in about 6 min ⊹ You’re after Ada'
 test('joined without a current share keeps their place and gets an instruction', () => {
   expect(waitingCopy(base)).toEqual({ title: 'You’re 3rd in line', sub: `${status}. Share your screen before your turn.` })
   expect(waitingCopy({ ...base, what: 'camera' }).sub).toBe(`${status}. Share your camera before your turn.`)
-  expect(waitingCopy({ ...base, shareState: 'stopped' }).sub).toBe(`${status}. Your share stopped. Share again before your turn.`)
+  expect(waitingCopy({ ...base, shareState: 'stopped' }).sub).toBe(`${status}. Share again before your turn.`)
 })
 
 test('sharing gives queue status; no-share adds an optional sharing reminder', () => {

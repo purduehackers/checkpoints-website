@@ -5,7 +5,7 @@ import { ordinal } from '../lib/live'
 export function waitingCopy({ position, shareState, noShare, what, wait, ahead }: { position: number; shareState: ShareState; noShare: boolean; what: string; wait: string; ahead: string }) {
   const title = position === 1 ? 'You’re up next!' : `You’re ${ordinal(position)} in line`
   const action = shareState === 'sharing' ? '' : noShare ? `You can share your ${what} anytime before your turn.`
-    : shareState === 'stopped' ? 'Your share stopped. Share again before your turn.' : `Share your ${what} before your turn.`
+    : shareState === 'stopped' ? 'Share again before your turn.' : `Share your ${what} before your turn.`
   const sub = `Up in ${wait}${ahead ? ` ⊹ You’re after ${ahead}` : ''}${action ? `. ${action}` : ''}`
   return { title, sub }
 }
