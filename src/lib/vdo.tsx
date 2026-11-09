@@ -44,9 +44,9 @@ function cameraError(e: unknown): string {
 const FPS_CAP: MediaTrackConstraints = { frameRate: { ideal: 30, max: 30 } }
 
 // Hacker's share with its own preview. Unmounting it ends the share.
-export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState, onPublished, shareRef, hideShare, camera }: {
-  streamId: string; label: string; live: boolean; quality: Quality; stats: boolean; onCloseStats: () => void; onState: (s: ShareState) => void; onPublished?: () => void // every successful publish, incl. Change window / Flip camera
-  shareRef?: { current: (() => void) | null }; hideShare?: boolean // the parent's own button starts the share (one click instead of two)
+export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, onState, onPublished, shareRef, hideShare, hidden, camera }: {
+  streamId: string | (() => Promise<string>); label: string; live: boolean; quality: Quality; stats: boolean; onCloseStats: () => void; onState: (s: ShareState) => void; onPublished?: () => void // every successful publish, incl. Change window / Flip camera
+  shareRef?: { current: (() => Promise<void>) | null }; hidden?: boolean; hideShare?: boolean // the parent's own button starts the share (one click instead of two)
   camera?: boolean // phones share the camera, not a screen. No mic: it would feed back through the projector speakers
 }) {
   const video = useRef<HTMLVideoElement>(null)
@@ -126,6 +126,14 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
       }
       return setError(`No video from the capture.${tabHint} (EmptyCapture)`)
     }
+    let id: string
+    try { id = typeof streamId === 'function' ? await streamId() : streamId }
+    catch (e) {
+      s.getTracks().forEach((t) => t.stop())
+      report('not_shared')
+      setError(e instanceof Error ? e.message : String(e))
+      return
+    }
     stop() // "Change window" / "Flip camera": replace the previous share. Claimed before any await, so a newer share() or stop() makes this one bail below.
     stream.current = s
     setFacing(face)
@@ -148,7 +156,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
       if (sdkNow.state.publishing) await new Promise((r) => sdkNow.addEventListener('publishingStopped', r, { once: true }))
       if (stream.current !== s) return // replaced or ended while we waited
       // Bitrate only: given a resolution or frameRate, the SDK calls applyConstraints, which wipes our capture caps.
-      await sdk.current.publish(s, { streamID: streamId, media: { video: { maxBitrate: QUALITY[quality].kbps }, audio: { maxBitrate: AUDIO_KBPS } } })
+      await sdk.current.publish(s, { streamID: id, media: { video: { maxBitrate: QUALITY[quality].kbps }, audio: { maxBitrate: AUDIO_KBPS } } })
       setConnecting(false)
       report('sharing')
       onPublished?.()
@@ -159,7 +167,7 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
     }
   }
 
-  if (shareRef) shareRef.current = () => { share() }
+  if (shareRef) shareRef.current = () => share()
 
   useEffect(() => () => { stop(); sdk.current?.disconnect().catch(() => {}) }, [])
   useEffect(muteUnlessLive, [live])
@@ -186,20 +194,20 @@ export function ShareBox({ streamId, label, live, quality, stats, onCloseStats, 
   const change = (text: string, onClick: () => void) => <Button variant="link" onClick={onClick}>{text}</Button>
   return (
     <div className="flex w-full flex-col gap-2">
-      <div className="relative h-[314px] w-full overflow-hidden border border-input bg-background">
+      <div hidden={hidden} className="relative h-[314px] w-full overflow-hidden border border-input bg-background">
         <video ref={video} autoPlay muted playsInline className={`h-full w-full object-contain ${camera && facing === 'user' ? '-scale-x-100' : ''}`} />
         {connecting && <div className="absolute inset-0 flex items-center justify-center gap-3 bg-background/80 text-lg"><Spinner className="size-6" />Connecting…</div>}
         {state !== 'sharing' && !hideShare && !connecting && (
           <Button onClick={() => share()} className="absolute inset-0 m-auto max-w-full">
-            <span className="whitespace-normal text-center">{state === 'stopped' ? 'Share again' : camera ? 'Share camera to join queue' : 'Share screen to join queue'}</span>
+            <span className="whitespace-normal text-center">{state === 'stopped' ? 'Share again' : camera ? 'Share camera' : 'Share screen'}</span>
           </Button>
         )}
       </div>
-      {state === 'stopped' && <Badge color="pink" className={note}>Your share stopped.</Badge>}
-      {state === 'sharing' && camera && (
+      {!hidden && state === 'stopped' && <Badge color="pink" className={note}>Your share stopped.</Badge>}
+      {!hidden && state === 'sharing' && camera && (
         <Badge color="lime" className={note}>Sharing your camera. {change('Flip camera', () => share(false, facing === 'user' ? 'environment' : 'user'))}</Badge>
       )}
-      {state === 'sharing' && !camera && live && (
+      {!hidden && state === 'sharing' && !camera && live && (
         <Badge color={hasAudio ? 'lime' : noAudioBrowser ? 'orange' : 'outline'} className={note}>
           {hasAudio ? 'Sharing with sound.' : noAudioBrowser ? 'This browser can’t share sound.' : 'No sound. Share a tab to include sound.'} {change('Change window.', () => share())}
         </Badge>
