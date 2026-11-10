@@ -219,7 +219,6 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
                     {[15, 30].map((d) => <Button key={d} variant="outline" onClick={() => act('/adjust', { id: state.previous!.entryId, delta: d })}><span className="normal-case">+{d}s</span></Button>)}
                   </div>
                 </div>
-                <p className="mt-1 text-[12px] font-light">Adding time brings them back{c ? `; ${c.name} returns to the front of the line` : ''}.</p>
               </div>
             )}
           </Card>
