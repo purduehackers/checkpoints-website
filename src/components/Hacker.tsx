@@ -62,7 +62,10 @@ export default function Hacker() {
   const shareFn = useRef<(() => Promise<void>) | null>(null) // ShareBox's share(), so Start presenting can open the picker (or camera)
   const formRef = useRef<HTMLFormElement>(null)
   const [joining, setJoining] = useState(false)
-  const wantReady = useRef(false) // Start Presenting opened the picker: go live once that share connects. Never set by sharing alone.
+  const [wantReady, setWantReady] = useState(false) // Start Presenting was pressed before the share was up: go live once it connects. Never set by sharing alone.
+  const [shareBusy, setShareBusy] = useState(false) // a share() is capturing or connecting
+  // Every share goes through here, so Start Presenting can wait on one already in flight instead of opening the picker twice.
+  const share = async () => { setShareBusy(true); try { await shareFn.current?.() } finally { setShareBusy(false) } }
   const stats = useStatsToggle()
   useTick()
 
@@ -105,15 +108,16 @@ export default function Hacker() {
   // Only when that press opened the picker do we go live as the share connects, after the share-state report above
   // (requests run in click order), so the server has seen 'sharing' before Ready. Cleared when the call ends.
   useEffect(() => {
-    if (me?.status !== 'called') wantReady.current = false
-    else if (wantReady.current && shareState === 'sharing') { wantReady.current = false; act('/ready') }
-  }, [shareState, me?.status])
+    if (me?.status !== 'called') setWantReady(false)
+    else if (wantReady && shareState === 'sharing') { setWantReady(false); act('/ready') }
+  }, [shareState, me?.status, wantReady])
   const start = () => {
     if (shareState === 'sharing') return act('/ready')
-    // Opens the picker (or camera); the effect above goes live once it connects.
+    // Opens the picker (or camera), unless a share is already on its way; the effect above goes live once it connects.
     // No share possible here (unsupported browser): start without one.
-    if (noShare || !canShare) act('/ready', { noShare: true })
-    else { wantReady.current = true; shareFn.current?.() }
+    if (shareBusy) setWantReady(true)
+    else if (noShare || !canShare) act('/ready', { noShare: true })
+    else { setWantReady(true); share() }
   }
 
   // Chime + notification on transitions only, not on a refresh that lands already in that state (prev is null until the first state).
@@ -172,7 +176,7 @@ export default function Hacker() {
     if (!formRef.current?.reportValidity()) return
     setJoining(true)
     if (!sharing) setNoShare(true)
-    try { if (sharing) await shareFn.current?.(); else await join() }
+    try { if (sharing) await share(); else await join() }
     catch (e) { setError((e as Error).message); setNoShare(false) }
     finally { setJoining(false) }
   }
@@ -182,6 +186,7 @@ export default function Hacker() {
   const plain = (text: string) => <h1 className="ph-headline text-center text-[36px] leading-9">{text}</h1>
   const sharing = shareState === 'sharing'
   const called = me?.status === 'called', live = me?.status === 'live'
+  const startBusy = pending > 0 || (wantReady && shareBusy)
   let showShare = false, actions
   let body, fg = '--border', green = false, top = 'pt-[155px]'
   if (!state.session) body = plain('No checkpoint is running.')
@@ -234,12 +239,12 @@ export default function Hacker() {
     actions = !handoff && (
       <>
         <div className="flex w-full flex-col items-center gap-3">
-          {called && <DitherButton disabled={pending > 0} style={{ width: '100%' }} onClick={start}>{pending > 0 && <Spinner className="size-5" />}Start Presenting</DitherButton>}
+          {called && <DitherButton disabled={startBusy} style={{ width: '100%' }} onClick={start}>{startBusy && <Spinner className="size-5" />}Start Presenting</DitherButton>}
           {/* Called without having chosen: take the stage with no share from this page. */}
           {called && !sharing && !noShare && <Button variant="lime-outline" size={size} className="w-full"
             onClick={() => confirm('Start your time without sharing here?') && act('/ready', { noShare: true })}>Present without sharing</Button>}
-          {!live && sharing && !called && <Button variant="outline" size={size} className="w-full" onClick={() => shareFn.current?.()}>Change {phone ? 'Camera' : 'Screen'}</Button>}
-          {canShare && noShare && !sharing && <Button variant="outline" size={size} className="w-full" onClick={() => shareFn.current?.()}>Share my {phone ? 'camera' : 'screen'}</Button>}
+          {!live && sharing && !called && <Button variant="outline" size={size} className="w-full" onClick={share}>Change {phone ? 'Camera' : 'Screen'}</Button>}
+          {canShare && noShare && !sharing && <Button variant="outline" size={size} className="w-full" onClick={share}>Share my {phone ? 'camera' : 'screen'}</Button>}
           {live && <Button variant="orange" size={size} className="w-full" onClick={() => act('/end')}>I’m done</Button>}
           {!live && <Button variant="link" className="self-start" onClick={() => confirm('Leave the queue?') && act('/leave')}>Leave queue</Button>}
         </div>
