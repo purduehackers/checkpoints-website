@@ -233,7 +233,7 @@ export function ViewFrame({ streamId, className = '', muted }: { streamId: strin
   return (
     <div className={`relative ${className}`}>
       {!loaded && <div className="absolute inset-0 flex items-center justify-center text-muted-foreground"><Spinner className="size-8" /></div>}
-      <iframe ref={ref} onLoad={() => { setLoaded(true); send() }} allow="autoplay; fullscreen" className="absolute inset-0 h-full w-full border-0" src={`https://vdo.ninja/?view=${streamId}&cleanoutput&autostart${muted === undefined ? '&noaudio' : '&stereo'}${startMuted ? '&mutespeaker' : ''}`} />
+      <iframe ref={ref} onLoad={() => { setLoaded(true); send() }} allow="autoplay; fullscreen" className="absolute inset-0 h-full w-full border-0" src={`https://vdo.ninja/?view=${streamId}&cleanoutput&transparent&autostart${muted === undefined ? '&noaudio' : '&stereo'}${startMuted ? '&mutespeaker' : ''}`} />
     </div>
   )
 }
