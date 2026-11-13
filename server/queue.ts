@@ -1,6 +1,6 @@
 // All SQL and every state transition lives here.
 import { db, ready } from './db'
-import { QUALITY, type Current, type QueueItem, type Role, type ShareState, type State } from '../shared/types'
+import { QUALITY, type Current, type Metrics, type QueueItem, type Role, type ShareState, type State } from '../shared/types'
 
 const DISCONNECTED_MS = 3 * 60_000 // US-2.4 grace period
 const HANDOFF_MS = 120_000
@@ -59,13 +59,14 @@ export const activity = (now = Date.now()) => run(`UPDATE sessions SET active_at
 // For GET /api/info: is a checkpoint open right now? (Callers run expire() first.)
 export const isActive = async () => !!(await openSession())
 
-const finishCurrent = (sid: string) => changes(`UPDATE queue_entries SET status = 'done' WHERE session_id = ? AND status IN ('called','live')`, [sid])
+// ended_at is only for a presentation that actually started (live); a called entry that never went live has none.
+const finishCurrent = (sid: string, now = Date.now()) => changes(`UPDATE queue_entries SET status = 'done', ended_at = CASE WHEN status = 'live' THEN ? END WHERE session_id = ? AND status IN ('called','live')`, [now, sid])
 
-export async function endSession() {
+export async function endSession(now = Date.now()) {
   const s = await openSession()
   if (!s) return
-  await finishCurrent(s.id) // no advance: the night is over
-  await run(`UPDATE sessions SET status = 'closed' WHERE id = ?`, [s.id])
+  await finishCurrent(s.id, now) // no advance: the night is over
+  await run(`UPDATE sessions SET status = 'closed', ended_at = ? WHERE id = ?`, [now, s.id])
 }
 
 export async function setLimit(sec: number) {
@@ -85,7 +86,7 @@ const MAX_WAITING = 200 // a script can't bury the line; far above a real hack n
 const clean = (s: string, max: number) =>
   s.normalize('NFC').replace(/\s+/g, ' ').replace(/\p{C}/gu, '').replace(/(\p{M}{2})\p{M}+/gu, '$1').trim().slice(0, max)
 
-export async function join(token: string, name: string, project: string) {
+export async function join(token: string, name: string, project: string, userSub: string | null = null) {
   name = clean(name, 60)
   project = clean(project, 80)
   if (!name || !project) throw new Error('name and project are required')
@@ -101,13 +102,13 @@ export async function join(token: string, name: string, project: string) {
   }
   if (!mine) {
     await run(
-      `INSERT INTO queue_entries (id, session_id, client_token, name, project, stream_id, sort_key, joined_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ${NEXT_KEY}, ?, ?)
+      `INSERT INTO queue_entries (id, session_id, client_token, name, project, stream_id, sort_key, joined_at, last_seen_at, user_sub)
+       VALUES (?, ?, ?, ?, ?, ?, ${NEXT_KEY}, ?, ?, ?)
        ON CONFLICT (session_id, client_token) DO NOTHING`, // a double-submitted Join must not 500
-      [crypto.randomUUID(), s.id, token, name, project, 'ck' + crypto.randomUUID().replaceAll('-', '').slice(0, 14), s.id, now, now],
+      [crypto.randomUUID(), s.id, token, name, project, 'ck' + crypto.randomUUID().replaceAll('-', '').slice(0, 14), s.id, now, now, userSub],
     )
   } else if (again) {
-    await run(`UPDATE queue_entries SET status = 'waiting', bye_at = NULL, name = ?, project = ?, share_state = 'not_shared', deadline = NULL, paused_left = NULL, sort_key = ${NEXT_KEY}, joined_at = ?, last_seen_at = ? WHERE id = ? AND status IN ('left','done')`, [name, project, s.id, now, now, mine.id])
+    await run(`UPDATE queue_entries SET status = 'waiting', bye_at = NULL, name = ?, project = ?, share_state = 'not_shared', deadline = NULL, paused_left = NULL, sort_key = ${NEXT_KEY}, joined_at = ?, last_seen_at = ?, user_sub = COALESCE(?, user_sub) WHERE id = ? AND status IN ('left','done')`, [name, project, s.id, now, now, userSub, mine.id])
   } // else: already has a spot (or was removed): joining again returns it unchanged
   await advance(s.id) // empty stage: the joiner is up right away
 }
@@ -119,7 +120,7 @@ const mutate = (set: string, status: string, token: string, args: any[] = []) =>
 
 // Finishing the called/live entry advances the line; a waiting entry leaving does not.
 export async function leave(token: string) {
-  const n = await changes(`UPDATE queue_entries SET status = 'left' WHERE client_token = ? AND ${OPEN} AND status IN ('called','live')`, [token])
+  const n = await changes(`UPDATE queue_entries SET status = 'left', ended_at = CASE WHEN status = 'live' THEN ? END WHERE client_token = ? AND ${OPEN} AND status IN ('called','live')`, [Date.now(), token])
   if (n) return advanceOpen()
   await mutate(`status = 'left'`, `= 'waiting'`, token)
 }
@@ -144,7 +145,7 @@ export const back = (...tokens: string[]) => tokens.length
 // Grace over: they really left. Called/live advance the line, waiting just drop out.
 export async function sweepByes(now = Date.now()) {
   const cutoff = now - BYE_GRACE_MS
-  const n = await changes(`UPDATE queue_entries SET status = 'left' WHERE bye_at <= ? AND ${OPEN} AND status IN ('called','live')`, [cutoff])
+  const n = await changes(`UPDATE queue_entries SET status = 'left', ended_at = CASE WHEN status = 'live' THEN ? END WHERE bye_at <= ? AND ${OPEN} AND status IN ('called','live')`, [now, cutoff])
   await run(`UPDATE queue_entries SET status = 'left' WHERE bye_at <= ? AND ${OPEN} AND status = 'waiting'`, [cutoff])
   if (n) await advanceOpen()
 }
@@ -155,7 +156,7 @@ export async function adminReady(entryId: string) {
   const s = await openSession()
   if (!s) return
   const now = Date.now()
-  await run(`UPDATE queue_entries SET status = 'live', deadline = ?, paused_left = NULL WHERE session_id = ? AND status = 'called' AND id = ?`, [now + s.limit_sec * 1000, s.id, entryId])
+  await run(`UPDATE queue_entries SET status = 'live', deadline = ?, paused_left = NULL, live_at = ?, ended_at = NULL WHERE session_id = ? AND status = 'called' AND id = ?`, [now + s.limit_sec * 1000, now, s.id, entryId])
 }
 
 export const pause = (id: string) =>
@@ -201,7 +202,7 @@ export async function stop(id: string) {
   if (n) await advanceOpen()
 }
 export async function remove(id: string) {
-  const n = await changes(`UPDATE queue_entries SET status = 'removed' WHERE id = ? AND status IN ('called','live')`, [id])
+  const n = await changes(`UPDATE queue_entries SET status = 'removed', ended_at = CASE WHEN status = 'live' THEN ? END WHERE id = ? AND status IN ('called','live')`, [Date.now(), id])
   if (n) return advanceOpen()
   await run(`UPDATE queue_entries SET status = 'removed' WHERE id = ? AND status = 'waiting'`, [id])
 }
@@ -290,7 +291,55 @@ export function view({ s, rows }: Snapshot, role: Role, token?: string): State {
   const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec, quality: s.quality, audio: !!s.audio, reactions: !!s.reactions }, current, previous, queue }
   const mine = role === 'hacker' && token ? rows.find((r) => r.client_token === token) : undefined
   if (mine) {
-    state.me = { entryId: mine.id, name: mine.name, project: mine.project, status: mine.status, position: waiting.indexOf(mine) + 1, streamId: mine.stream_id }
+    state.me = { entryId: mine.id, name: mine.name, project: mine.project, status: mine.status, position: waiting.indexOf(mine) + 1, streamId: mine.stream_id, signedIn: mine.user_sub != null }
   }
   return state
+}
+
+// ---- organizer metrics ----
+// A presentation is a queue entry with live_at (the clock started) and ended_at (it stopped for any reason: time-out,
+// Stop, End, Remove, left, end of the checkpoint). The one still live counts up to `now`. Entries that never went
+// live, and rows from older code without live_at/ended_at, are ignored.
+// - presenting time = ended_at - live_at, wall clock: a Pause does NOT stop it, and +15/+30 s just lengthens it.
+// - switch time = next.live_at - previous.ended_at (presentations ordered by live_at, clamped at 0), counted for
+//   every consecutive pair in the checkpoint, even if nobody was waiting for part of the gap.
+// - a person who presents again after rejoining keeps only their latest presentation (one row per person).
+// - a presenter revived with +15/+30 s inside the handoff keeps the original live_at: one presentation, which
+//   includes the short gap in between.
+export function metrics(rows: Row[], s: Row, now = Date.now()): Metrics {
+  const num = (v: unknown) => (v == null ? null : Number(v))
+  const open = s.status === 'open'
+  const done = rows
+    .filter((r) => r.live_at != null && (r.ended_at != null || r.status === 'live'))
+    .map((r) => ({ r, live: Number(r.live_at), end: r.ended_at != null ? Number(r.ended_at) : now }))
+    .sort((a, b) => a.live - b.live)
+  let prevEnd: number | null = null
+  const entries = done.map(({ r, live, end }) => {
+    const switchMs: number | null = prevEnd == null ? null : Math.max(0, live - prevEnd)
+    prevEnd = end
+    return { id: r.id as string, name: r.name as string, project: r.project as string, liveAt: live, endedAt: r.ended_at != null ? end : null, presentingMs: Math.max(0, end - live), switchMs }
+  })
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
+  const switches = entries.flatMap((e) => (e.switchMs == null ? [] : [e.switchMs])).sort((a, b) => a - b)
+  const presentingMs = sum(entries.map((e) => e.presentingMs)), switchingMs = sum(switches)
+  const startedAt = Number(s.created_at)
+  const lastEnd = done.reduce((m, d) => Math.max(m, d.end), startedAt)
+  const endedAt = open ? null : num(s.ended_at) ?? lastEnd // closed by older code: the last presentation's end
+  const totalMs = Math.max(0, (endedAt ?? now) - startedAt)
+  const mid = switches.length >> 1
+  return {
+    now, sessionStatus: s.status, startedAt, endedAt, totalMs, presentingMs, switchingMs,
+    otherMs: Math.max(0, totalMs - presentingMs - switchingMs),
+    presentingShare: presentingMs + switchingMs > 0 ? presentingMs / (presentingMs + switchingMs) : null,
+    presenters: entries.length,
+    avgPresentingMs: entries.length ? presentingMs / entries.length : null,
+    avgSwitchMs: switches.length ? switchingMs / switches.length : null,
+    medianSwitchMs: switches.length ? (switches.length % 2 ? switches[mid] : (switches[mid - 1] + switches[mid]) / 2) : null,
+    entries,
+  }
+}
+// Admin-only: reached through GET /api/admin/metrics, never through view()/State (which also goes to host and hackers).
+export async function loadMetrics(now = Date.now()): Promise<Metrics | null> {
+  const { s, rows } = await snapshot()
+  return s ? metrics(rows, s, now) : null
 }

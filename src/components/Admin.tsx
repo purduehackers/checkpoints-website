@@ -13,7 +13,7 @@ import { Glider } from './ph/glider'
 import { Input } from './ph/input'
 import { Link } from './ph/link'
 import { SegmentedToggle } from './ph/segmented-toggle'
-import { QUALITY, type Quality } from '../../shared/types'
+import { QUALITY, type Metrics, type Quality } from '../../shared/types'
 
 function Shell({ children, title }: { children: React.ReactNode; title?: string }) {
   return (
@@ -226,6 +226,7 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
         </div>
       </fieldset>
       {error && <p role="alert" className="mt-4 w-[933px] max-w-full text-ph-pink">{error}</p>}
+      {s && <Timing onDenied={onDenied} />}
       <Dialog open={cog} onOpenChange={setCog} title="Settings">
         <fieldset disabled={busy} className="flex min-w-0 flex-col items-start gap-4 border-0 p-0">
           <p className="text-[13px]">Hello, <b>{name}</b> · <Link href={typeof location === 'undefined' ? '/api/auth/logout' : signOutUrl()}>Sign out</Link></p>
@@ -253,5 +254,58 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
         </div>
       )}
     </Shell>
+  )
+}
+
+// Organizer-only timing, polled (not in the live State: it moves every second and must not reach host or hackers).
+const dash = (ms: number | null) => (ms == null ? '–' : fmt(ms))
+const pct = (x: number | null) => (x == null ? '–' : `${Math.round(x * 100)}%`)
+
+function Timing({ onDenied }: { onDenied: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [m, setM] = useState<Metrics | null>(null)
+  useEffect(() => {
+    if (!open) return
+    let dead = false
+    const load = () => fetch('/api/admin/metrics').then(async (r) => {
+      if (r.status === 401) return onDenied()
+      const j = await r.json()
+      if (!dead && r.ok) setM(j.metrics)
+    }).catch(() => {}) // offline: keep the last numbers
+    load()
+    const t = setInterval(load, 5000)
+    return () => { dead = true; clearInterval(t) }
+  }, [open])
+  return (
+    <Card className="mt-6 w-[933px] max-w-full">
+      <div className="flex items-center justify-between gap-4">
+        <h2 className="ph-headline text-[19px]">Timing</h2>
+        <Button variant="link" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Hide' : 'Show'}</Button>
+      </div>
+      {open && !m && <p className="text-[13px]">Loading…</p>}
+      {open && m && (<>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-[13px] sm:grid-cols-3">
+          {([
+            ['Total time', fmt(m.totalMs)],
+            ['Presenting', `${fmt(m.presentingMs)} (${pct(m.presentingShare)})`],
+            ['Switching', `${fmt(m.switchingMs)} (${pct(m.presentingShare == null ? null : 1 - m.presentingShare)})`],
+            ['Presenters', String(m.presenters)],
+            ['Avg presenting', dash(m.avgPresentingMs)],
+            ['Avg / median switch', `${dash(m.avgSwitchMs)} / ${dash(m.medianSwitchMs)}`],
+          ] as const).map(([k, v]) => <div key={k}><dt className="font-light">{k}</dt><dd className="font-semibold tabular-nums">{v}</dd></div>)}
+        </dl>
+        <p className="text-[12px] font-light">Presenting is wall clock from Start to the end, pauses included. Switching is the gap between one presenter ending and the next starting. The percentages split presenting and switching only.</p>
+        {m.entries.length > 0 && (
+          <ol className="space-y-1">
+            {m.entries.map((e) => (
+              <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 border border-border p-2 text-[13px]">
+                <span className="min-w-0 truncate"><b className="font-semibold">{e.name}</b> <span className="font-light">{e.project}</span></span>
+                <span className="tabular-nums">{fmt(e.presentingMs)} presenting{e.endedAt == null && ' · live'} · {e.switchMs == null ? 'first up' : `${fmt(e.switchMs)} switch`}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </>)}
+    </Card>
   )
 }

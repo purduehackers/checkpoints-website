@@ -2,7 +2,7 @@ import { Badge } from './ph/badge'
 import { Button } from './ph/button'
 import { Icon } from './ph/icon'
 import { useEffect, useRef, useState } from 'react'
-import { ConnectionBadge, fmt, useLive, useTick } from '../lib/live'
+import { ConnectionBadge, fmt, ordinal, useLive, useTick } from '../lib/live'
 import { ViewFrame } from '../lib/vdo'
 import { spawn } from '../lib/reactions'
 import { DitheredSoup } from './DitheredSoup'
@@ -140,8 +140,8 @@ export default function Host() {
                 // The server calls the first in line right away, so this is the usual screen: keep the QR so newcomers can still join.
                 // One centered column; the name clamps to 2 lines so a long one can't push into the QR.
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-foreground" style={pixel}>
-                  <p className="line-clamp-2 w-full break-words text-[96px] leading-[1.1]">Next: <span className="text-ph-yellow">{c!.name}</span></p>
-                  <p className="mt-[20px] w-full text-[64px] leading-[normal]">Come to the podium!</p>
+                  <p className="line-clamp-2 w-full break-words text-[96px] leading-[1.1] text-ph-yellow">{c!.name}</p>
+                  <p className="mt-[40px] w-full text-[64px] leading-[normal]">Come to the podium!</p>
                   {open && <>
                     <p className="mt-[72px] w-full text-[40px] leading-[normal]">Join at <span className="text-ph-yellow">phack.rs/checkpoints</span></p>
                     <img alt="QR code: join at phack.rs/checkpoints" src="/host/qr.png" className="mt-[24px] size-[360px] shrink-0" />
@@ -173,7 +173,7 @@ export default function Host() {
                         style={{ zIndex: shown.length - i, transform: `translateX(${x}px) rotate(${rot}deg)`, '--i': i } as React.CSSProperties}>
                         <img alt="" src={d.src} className={`absolute right-[6px] top-0 h-[200px] w-[176px] object-contain ${d.className}`} style={{ transform: `rotate(${-rot}deg)` }} />
                         <div className="relative flex w-[277px] flex-col pl-[25px] pt-[27px] leading-[normal]">
-                          <p className="text-[48px]">#{i + 2}</p>
+                          <p className="text-[32px]">{i ? `${ordinal(i + 1)} in line` : 'Next in line'}</p>
                           <p className="truncate text-[48px]">{e.name}</p>
                           <p className="truncate text-[32px]">{e.project}</p>
                         </div>

@@ -105,11 +105,11 @@ Identity for the MVP: a hacker is a random token stored in their browser (one qu
 
 ## Epic 4: My turn
 
-### ✅ US-4.1 Up-next alert (MVP, M)
+### ✅ US-4.1 Next-in-line alert (MVP, M)
 *As a hacker, I'm alerted when I'm next, so I don't miss my turn while I'm heads-down.*
 - When I become #1 in line, my page highlights itself (a full-page color pulse).
-- Browser notifications (permission asked from the Join click): 3rd in line, 2nd in line, up next, my turn, 15 seconds left, and time's up. They fail silently where unsupported (iOS Safari outside a home-screen app).
-- The tab title changes, for example "You're up next! · Checkpoints".
+- Browser notifications (permission asked from the Join click): 3rd in line, 2nd in line, next in line, my turn, 15 seconds left, and time's up. They fail silently where unsupported (iOS Safari outside a home-screen app).
+- The tab title changes, for example "You're next in line! · Checkpoints".
 
 ### ✅ US-4.2 Ready screen (MVP, M)
 *As a hacker, when the organizer calls me, my page dims and shows a big Ready button, so I can walk to the podium before my screen goes up.*
@@ -167,7 +167,7 @@ Identity for the MVP: a hacker is a random token stored in their browser (one qu
 
 ### ✅ US-6.1 Screensaver (MVP, M)
 *As the projector, I show a branded screensaver between presenters, so the room never sees a blank or broken screen.*
-- Purdue Hackers branding, the join code, and "Up next: <name>".
+- Purdue Hackers branding, the join code, and "Next in line: <name>".
 - It shows whenever nobody is live.
 
 ### ✅ US-6.2 Live view (MVP, S)

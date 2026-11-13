@@ -3,10 +3,12 @@ import { ordinal } from '../lib/live'
 
 // Every waiting participant has already joined, even if their share stopped.
 export function waitingCopy({ position, shareState, noShare, what, wait, ahead }: { position: number; shareState: ShareState; noShare: boolean; what: string; wait: string; ahead: string }) {
-  const title = position === 1 ? 'You’re up next!' : `You’re ${ordinal(position)} in line`
-  const action = shareState === 'sharing' ? '' : noShare ? `You can share your ${what} anytime before your turn.`
-    : shareState === 'stopped' ? 'Share again before your turn.' : `Share your ${what} before your turn.`
-  const sub = `Up in ${wait}${ahead ? ` ⊹ You’re after ${ahead}` : ''}${action ? `. ${action}` : ''}`
+  const first = position === 1 // "Next in line": the one after whoever is at the podium
+  const title = first ? 'You’re next in line!' : `You’re ${ordinal(position)} in line`
+  const action = shareState === 'sharing' ? (first ? 'Get ready to head to the podium.' : '') : noShare ? `You can share your ${what} anytime before your turn.`
+    : shareState === 'stopped' ? (first ? 'Get ready: share again now.' : 'Share again before your turn.')
+    : first ? `Get ready: share your ${what} now if you haven’t.` : `Share your ${what} before your turn.`
+  const sub = `Your turn in ${wait}${ahead ? ` ⊹ You’re after ${ahead}` : ''}${action ? `. ${action}` : ''}`
   return { title, sub }
 }
 

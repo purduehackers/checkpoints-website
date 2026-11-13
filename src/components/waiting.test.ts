@@ -2,7 +2,7 @@ import { expect, mock, test } from 'bun:test'
 import { loadNoShare, saveNoShare, waitingCopy } from './waiting'
 
 const base = { position: 3, shareState: 'not_shared' as const, noShare: false, what: 'screen', wait: 'about 6 min', ahead: 'Ada' }
-const status = 'Up in about 6 min ⊹ You’re after Ada'
+const status = 'Your turn in about 6 min ⊹ You’re after Ada'
 
 test('joined without a current share keeps their place and gets an instruction', () => {
   expect(waitingCopy(base)).toEqual({ title: 'You’re 3rd in line', sub: `${status}. Share your screen before your turn.` })
@@ -13,13 +13,14 @@ test('joined without a current share keeps their place and gets an instruction',
 test('sharing gives queue status; no-share adds an optional sharing reminder', () => {
   expect(waitingCopy({ ...base, shareState: 'sharing' })).toEqual({ title: 'You’re 3rd in line', sub: status })
   expect(waitingCopy({ ...base, noShare: true }).sub).toBe(`${status}. You can share your screen anytime before your turn.`)
-  expect(waitingCopy({ ...base, noShare: true, what: 'camera', ahead: '' }).sub).toBe('Up in about 6 min. You can share your camera anytime before your turn.')
+  expect(waitingCopy({ ...base, noShare: true, what: 'camera', ahead: '' }).sub).toBe('Your turn in about 6 min. You can share your camera anytime before your turn.')
 })
 
-test('up next still includes the action needed before their turn', () => {
-  for (const shareState of ['not_shared', 'stopped', 'sharing'] as const) {
-    expect(waitingCopy({ ...base, position: 1, shareState })).toEqual({ ...waitingCopy({ ...base, shareState }), title: 'You’re up next!' })
-  }
+test('next in line says what to do now', () => {
+  const first = { ...base, position: 1 }
+  expect(waitingCopy(first)).toEqual({ title: 'You’re next in line!', sub: `${status}. Get ready: share your screen now if you haven’t.` })
+  expect(waitingCopy({ ...first, shareState: 'stopped' }).sub).toBe(`${status}. Get ready: share again now.`)
+  expect(waitingCopy({ ...first, shareState: 'sharing' }).sub).toBe(`${status}. Get ready to head to the podium.`)
   expect(waitingCopy({ ...base, position: 1, noShare: true }).sub).toBe(`${status}. You can share your screen anytime before your turn.`)
 })
 

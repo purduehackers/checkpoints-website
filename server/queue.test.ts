@@ -878,3 +878,81 @@ test('if the stage emptied before the undo, the restored person is called', asyn
   expect(await cur()).toMatchObject({ name: 'B', status: 'called' })
   expect(await calledOrLive()).toBe(1)
 })
+
+// ---- organizer metrics: presenting time, switch time, totals ----
+const T0 = 1_800_000_000_000
+const sec = (n: number) => n * 1000
+const metricsNow = async (now: number) => (await q.loadMetrics(now))!
+
+test('metrics: three presenters with gaps, a timeout and a stop, then the checkpoint ends', async () => {
+  freeze(T0); await fresh('A', 'B', 'C')
+  freeze(T0 + sec(10)); await live('aa-A-xxxx')
+  freeze(T0 + sec(70)); await stopCur() // A: 60 s
+  freeze(T0 + sec(85)); await live('aa-B-xxxx') // switch 15 s
+  freeze(T0 + sec(175)); await q.expire(T0 + sec(175)) // B times out after the 90 s limit
+  freeze(T0 + sec(200)); await live('aa-C-xxxx') // switch 25 s
+  freeze(T0 + sec(230)); await stopCur() // C: 30 s
+  await q.endSession(T0 + sec(300))
+  const m = await metricsNow(T0 + sec(999)) // `now` is irrelevant once the checkpoint is closed
+  expect(m.entries.map((e) => [e.name, e.presentingMs, e.switchMs])).toEqual([['A', sec(60), null], ['B', sec(90), sec(15)], ['C', sec(30), sec(25)]])
+  expect(m).toMatchObject({
+    sessionStatus: 'closed', startedAt: T0, endedAt: T0 + sec(300), totalMs: sec(300),
+    presentingMs: sec(180), switchingMs: sec(40), presenters: 3,
+    avgPresentingMs: sec(60), avgSwitchMs: sec(20), medianSwitchMs: sec(20),
+  })
+  expect(m.presentingShare).toBeCloseTo(180 / 220)
+  expect(m.otherMs).toBe(sec(80)) // 10 s before A, 70 s after C
+})
+
+test('metrics: a pause counts as presenting (wall clock); a presenter who is still live runs up to now', async () => {
+  freeze(T0); await fresh('A', 'B')
+  freeze(T0 + sec(5)); await live('aa-A-xxxx')
+  freeze(T0 + sec(25)); await q.pause((await cur())!.entryId)
+  freeze(T0 + sec(55)); await q.resume((await cur())!.entryId)
+  freeze(T0 + sec(75)); await stopCur()
+  freeze(T0 + sec(100)); await live('aa-B-xxxx')
+  const m = await metricsNow(T0 + sec(130))
+  expect(m.entries[0]).toMatchObject({ name: 'A', presentingMs: sec(70), endedAt: T0 + sec(75) })
+  expect(m.entries[1]).toMatchObject({ name: 'B', presentingMs: sec(30), switchMs: sec(25), endedAt: null })
+  expect(m).toMatchObject({ sessionStatus: 'open', endedAt: null, totalMs: sec(130), presentingMs: sec(100), switchingMs: sec(25), presenters: 2, medianSwitchMs: sec(25) })
+})
+
+test('metrics: removing or losing the live presenter ends their time; a called entry that never went live is not a presenter', async () => {
+  freeze(T0); await fresh('A', 'B', 'C')
+  freeze(T0 + sec(10)); await live('aa-A-xxxx')
+  freeze(T0 + sec(40)); await q.remove((await cur())!.entryId) // A: 30 s; B is called
+  freeze(T0 + sec(50)); await q.stop((await cur())!.entryId) // B never went live
+  freeze(T0 + sec(60)); await live('aa-C-xxxx')
+  freeze(T0 + sec(90)); await q.leave('aa-C-xxxx') // C: 30 s
+  const m = await metricsNow(T0 + sec(100))
+  expect(m.entries.map((e) => [e.name, e.presentingMs, e.switchMs])).toEqual([['A', sec(30), null], ['C', sec(30), sec(20)]])
+})
+
+test('metrics: an empty checkpoint has zero presenters and null averages; the pure function handles no rows', async () => {
+  freeze(T0); await fresh()
+  const m = await metricsNow(T0 + sec(42))
+  expect(m).toMatchObject({ presenters: 0, entries: [], presentingMs: 0, switchingMs: 0, totalMs: sec(42), presentingShare: null, avgPresentingMs: null, avgSwitchMs: null, medianSwitchMs: null })
+  // Rows from older code (no live_at / ended_at) and a closed session without ended_at are tolerated.
+  const old = { id: 'x', name: 'Old', project: 'P', status: 'done', live_at: null, ended_at: null }
+  expect(q.metrics([old], { status: 'closed', created_at: T0, ended_at: null }, T0 + sec(5))).toMatchObject({ presenters: 0, endedAt: T0, totalMs: 0 })
+})
+
+test('metrics: median of an even count averages the middle two; overlapping or reversed times clamp at 0', () => {
+  const s = { status: 'open', created_at: T0 }
+  const r = (id: string, live: number, end: number) => ({ id, name: id, project: 'P', status: 'done', live_at: T0 + sec(live), ended_at: T0 + sec(end) })
+  const m = q.metrics([r('d', 100, 110), r('a', 0, 10), r('b', 20, 30), r('c', 31, 90)], s, T0 + sec(200))
+  expect(m.entries.map((e) => e.name)).toEqual(['a', 'b', 'c', 'd'])
+  expect(m.entries.map((e) => e.switchMs)).toEqual([null, sec(10), sec(1), sec(10)])
+  expect(m.medianSwitchMs).toBe(sec(10))
+  expect(q.metrics([r('a', 0, 50), r('b', 40, 60)], s, T0 + sec(70)).entries[1].switchMs).toBe(0)
+})
+
+test('metrics never reach host or hacker state, and the admin State carries none either', async () => {
+  freeze(T0); await fresh('A', 'B')
+  freeze(T0 + sec(5)); await live('aa-A-xxxx')
+  freeze(T0 + sec(35)); await stopCur()
+  for (const state of [await q.loadState('host'), await q.loadState('hacker', 'aa-A-xxxx'), await q.loadState('hacker', 'aa-B-xxxx'), await q.loadState('admin')]) {
+    expect(Object.keys(state)).not.toContain('metrics')
+    expect(JSON.stringify(state)).not.toMatch(/presentingMs|switchMs|live_at|ended_at|switchingMs/)
+  }
+})

@@ -59,7 +59,7 @@ async function joinForm(page: Page, name: string, project: string) {
 const adminCtx = await browser.newContext(desktop)
 const admin = await adminCtx.newPage()
 await admin.goto(`${WEB}/admin`)
-await adminCtx.request.post(`${WEB}/api/auth/password`, { data: { password: '123456' } })
+await adminCtx.request.post(`${WEB}/api/auth/password`, { data: { password: '123' } })
 const adminApi = (path: string, data: object = {}) => adminCtx.request.post(`${WEB}/api/admin${path}`, { data }).then((r) => r.json())
 
 // --- No checkpoint yet

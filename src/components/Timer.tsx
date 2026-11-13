@@ -43,7 +43,7 @@ export default function Timer() {
         <div className="flex h-full flex-col items-center justify-center gap-[2vw] text-center">
           {c?.status === 'called' ? (
             <>
-              <h1 className="ph-headline text-[8vw]"><span className="text-ph-yellow">{c.name}</span> is up next</h1>
+              <h1 className="ph-headline text-[8vw]"><span className="text-ph-yellow">{c.name}</span> is coming to the podium</h1>
               <p className="ph-subheadline text-[3vw]">Getting ready…</p>
             </>
           ) : <p className="ph-subheadline text-[4vw]">{state ? 'No one presenting' : ''}</p>}

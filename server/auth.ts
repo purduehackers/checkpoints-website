@@ -84,7 +84,7 @@ const redirect = (location: string, ...cookies: string[]) => {
 /** Password sessions use the same signed, HttpOnly cookie as OIDC sessions. */
 export function passwordLogin(request: Request, password: string) {
   if (authMode() !== 'password') return Response.json({ error: 'Password sign-in is disabled' }, { status: 403 })
-  if (password !== '123456') return Response.json({ error: 'Incorrect password' }, { status: 401 })
+  if (password !== '123') return Response.json({ error: 'Incorrect password' }, { status: 401 })
   return Response.json({ ok: true }, { headers: {
     'cache-control': 'no-store',
     'set-cookie': setCookie(SESSION, seal(SESSION, { sub: 'preview-organizer', name: 'Preview organizer', organizer: true, authMode: 'password' }, SESSION_MS), SESSION_MS, originOf(request).startsWith('https:')),

@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   audio INTEGER NOT NULL DEFAULT 1,
   reactions INTEGER NOT NULL DEFAULT 1,
   admin_seen_at INTEGER,
-  active_at INTEGER
+  active_at INTEGER,
+  ended_at INTEGER
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_open_session ON sessions(status) WHERE status = 'open';
 
@@ -36,6 +37,8 @@ CREATE TABLE IF NOT EXISTS queue_entries (
   last_seen_at INTEGER NOT NULL,
   bye_at INTEGER,
   share_epoch INTEGER NOT NULL DEFAULT 0,
+  live_at INTEGER,
+  ended_at INTEGER,
   UNIQUE (session_id, client_token)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_entry ON queue_entries(session_id) WHERE status IN ('called','live');
@@ -53,6 +56,9 @@ const ADDED = [
   `ALTER TABLE queue_entries ADD COLUMN bye_at INTEGER`, // nullable, so older code that never sets it keeps working
   `ALTER TABLE queue_entries ADD COLUMN share_epoch INTEGER NOT NULL DEFAULT 0`, // old code ignores it; old rows read 0
   `ALTER TABLE queue_entries ADD COLUMN ended_at INTEGER`,
+  `ALTER TABLE queue_entries ADD COLUMN user_sub TEXT`, // Purdue Hackers ID sub when they joined signed in; null for anonymous joins
+  `ALTER TABLE queue_entries ADD COLUMN live_at INTEGER`, // metrics: when the clock started; null on rows from older code
+  `ALTER TABLE sessions ADD COLUMN ended_at INTEGER`, // metrics: when the checkpoint ended; null while open and on old rows
 ]
 export const ready = db.executeMultiple(SCHEMA).then(async () => {
   for (const sql of ADDED) await db.execute(sql).catch((e) => { if (!/duplicate column/i.test(String(e))) throw e })

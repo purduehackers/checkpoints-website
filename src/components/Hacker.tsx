@@ -2,10 +2,11 @@ import { Button } from './ph/button'
 import { DitherButton } from './ph/dither-button'
 import { Input } from './ph/input'
 import { Field } from './ph/field'
+import { Link } from './ph/link'
 import { Badge } from './ph/badge'
 import { Glider } from './ph/glider'
 import { useEffect, useRef, useState } from 'react'
-import { ConnectionBadge, Spinner, aboutMinutes, aheadName, api, fmt, hackerToken, span, useLive, useTick, waitMs } from '../lib/live'
+import { ConnectionBadge, Spinner, aboutMinutes, aheadName, api, fmt, hackerToken, signInUrl, signOutUrl, span, useLive, useTick, useUser, waitMs } from '../lib/live'
 import { ShareBox } from '../lib/vdo'
 import { loadNoShare, saveNoShare, waitingCopy } from './waiting'
 import { StatsButton, useStatsToggle } from '../lib/stats'
@@ -42,7 +43,7 @@ function chime() {
 
 // Browser notification for queue changes. Silent on failure: iOS Safari outside a home-screen app has no Notification,
 // and some Android browsers throw on `new Notification` (they want a service worker).
-const NOTE: Record<number, string> = { 3: "You're 3rd in line", 2: "You're 2nd in line", 1: "You're up next. Get ready!" }
+const NOTE: Record<number, string> = { 3: "You're 3rd in line", 2: "You're 2nd in line", 1: "You're next in line. Get ready!" }
 function notify(body: string) {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return
@@ -52,10 +53,14 @@ function notify(body: string) {
   } catch {}
 }
 
+const DRAFT = 'checkpoints:joinDraft'
+const saveDraft = (f: { name: string; project: string }) => { try { sessionStorage.setItem(DRAFT, JSON.stringify(f)) } catch {} }
+
 export default function Hacker() {
   const { state, online, apply, now, react, notice } = useLive('hacker')
   const [error, setError] = useState('')
-  const [form, setForm] = useState({ name: '', project: '' })
+  // Restored once after the Purdue Hackers sign-in round trip, so the project they typed isn't lost.
+  const [form, setForm] = useState<{ name: string; project: string }>(() => { try { const d = JSON.parse(sessionStorage.getItem(DRAFT) ?? 'null'); sessionStorage.removeItem(DRAFT); if (d) return d } catch {} return { name: '', project: '' } })
   const [shareKey, setShareKey] = useState(0)
   const [shareState, setShareState] = useState<ShareState>('not_shared')
   const reported = useRef<ShareState | null>(null)
@@ -66,6 +71,11 @@ export default function Hacker() {
   const [shareBusy, setShareBusy] = useState(false) // a share() is capturing or connecting
   // Every share goes through here, so Start Presenting can wait on one already in flight instead of opening the picker twice.
   const share = async () => { setShareBusy(true); try { await shareFn.current?.() } finally { setShareBusy(false) } }
+  // Purdue Hackers sign-in is optional for now. Only offered when the server has an ID (authMode 'oidc'), not on previews/localhost.
+  const auth = useUser()
+  const idUser = auth?.user ?? null
+  const mustSignIn = auth?.authMode === 'oidc' && !idUser // this week joining needs a Purdue Hackers sign-in (the server enforces it too)
+  useEffect(() => { if (idUser) setForm((f) => f.name ? f : { ...f, name: idUser.name }) }, [idUser?.sub])
   const stats = useStatsToggle()
   useTick()
 
@@ -92,7 +102,7 @@ export default function Hacker() {
   if (active) presentedHere.current = true
   const [thanked, setThanked] = useState(false)
   // Returning hackers get their name and project back.
-  useEffect(() => { if (me && !form.name && !form.project) setForm({ name: me.name, project: me.project }) }, [me?.entryId])
+  useEffect(() => { if (me && !form.project && (!form.name || form.name === idUser?.name)) setForm({ name: me.name, project: me.project }) }, [me?.entryId])
 
   // Report the share state to the server, only when it changes.
   useEffect(() => {
@@ -147,10 +157,10 @@ export default function Hacker() {
     prevMs.current = live ? { id: me.entryId, ms: msTotal } : null
   }, [msTotal !== null && Math.floor(msTotal / 250), me?.status, me?.entryId, cur?.pausedLeft])
 
-  // US-4.1 / 4.2 alerts: tab title + the "up next" banner (browser notifications are above).
+  // US-4.1 / 4.2 alerts: tab title + the "next in line" banner (browser notifications are above).
   const key = me ? `${me.status}:${me.position}` : ''
   useEffect(() => {
-    document.title = me?.status === 'called' ? "It's your turn! · Checkpoints" : me?.status === 'waiting' && me.position === 1 ? "You're up next! · Checkpoints" : 'Checkpoints'
+    document.title = me?.status === 'called' ? "It's your turn! · Checkpoints" : me?.status === 'waiting' && me.position === 1 ? "You're next in line! · Checkpoints" : 'Checkpoints'
   }, [key])
 
   // Closing the tab takes you out of the line. beforeunload only asks (it also fires on refresh, which is fine);
@@ -172,7 +182,7 @@ export default function Hacker() {
     return next.me.streamId
   }
   const joinWith = async (sharing: boolean) => {
-    if (joining) return
+    if (joining || mustSignIn) return
     if (!formRef.current?.reportValidity()) return
     setJoining(true)
     if (!sharing) setNoShare(true)
@@ -208,15 +218,24 @@ export default function Hacker() {
         joinWith(canShare)
       }}>
         {plain('Join the Checkpoint')}
+        {idUser && <p className="text-sm">Signed in as <b>{idUser.name}</b> · <Link href={signOutUrl('/')}>Sign out</Link></p>}
         <div className="flex flex-col gap-4">
           <Field label="Your Name" htmlFor="hacker-name"><Input id="hacker-name" required maxLength={60} placeholder="Ada Lovelace" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="Project Name" htmlFor="hacker-project"><Input id="hacker-project" required maxLength={80} placeholder="Pixel garden" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} /></Field>
         </div>
+        {mustSignIn ? (
+          <div className="flex flex-col gap-2.5">
+            <p className="text-sm">Sign in with your Purdue Hackers ID to join the queue.</p>
+            <Button variant="solid" size="lg" className="w-full" type="button" onClick={() => { saveDraft(form); location.href = signInUrl('/') }}>Sign in with Purdue Hackers</Button>
+            <p className="text-sm text-muted-foreground">Note: You get {span(state.session!.limitSec)} to present</p>
+          </div>
+        ) : (
         <div className="flex flex-col gap-2.5">
           {canShare && <Button variant="solid" size="lg" className="w-full" type="submit" disabled={joining}>{joining && <Spinner />}{phone ? 'Share my camera' : 'Pick a screen to share'}</Button>}
           <Button variant="outline" size="lg" className="w-full" type={canShare ? 'button' : 'submit'} disabled={joining} onClick={canShare ? () => joinWith(false) : undefined}>{joining && !canShare && <Spinner />}I won’t need to share</Button>
           <p className="text-sm text-muted-foreground">Note: You get {span(state.session!.limitSec)} to present</p>
         </div>
+        )}
       </form>
     )
   } else {

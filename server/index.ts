@@ -181,7 +181,15 @@ export const app = new Elysia({
   .get('/me', ({ headers, set }) => (set.headers['cache-control'] = 'no-store', { user: auth.userOf(headers.cookie), authMode: auth.authMode() }))
 
   // hacker
-  .post('/join', async ({ body }) => (await q.join(body.token, body.name, body.project), reply('hacker', body.token)),
+  // The identity comes only from the signed session cookie, never from the body. With OIDC on, joining (and rejoining
+  // after leaving or presenting, which is this same route) needs a Purdue Hackers session. Previews (password mode) stay anonymous.
+  // This is the only route that creates or revives an entry; /ready, /leave, /end and /share-state only touch an existing one.
+  .post('/join', async ({ body, headers }) => {
+    const user = auth.userOf(headers.cookie)
+    if (auth.authMode() === 'oidc' && !user) throw fail('Sign in with Purdue Hackers to join the queue.', 401)
+    await q.join(body.token, body.name, body.project, user?.sub ?? null)
+    return reply('hacker', body.token)
+  },
     { body: t.Object({ token: tok, name: t.String({ maxLength: 200 }), project: t.String({ maxLength: 200 }) }) })
   // sendBeacon from pagehide; the answer is never read. The 5s grace in expire() does the actual removal.
   .post('/bye', async ({ body }) => (await q.bye(body.token), { ok: true }), { body: hackerBody })
@@ -198,6 +206,8 @@ export const app = new Elysia({
       .onTransform(({ headers }) => {
         if (!auth.userOf(headers.cookie)?.organizer) throw fail('Not authorized', 401)
       })
+      // Polled by the admin page. Not in State: that is broadcast to every socket and keyed on change, and the numbers move every second.
+      .get('/metrics', async ({ set }) => (set.headers['cache-control'] = 'no-store', { metrics: await q.loadMetrics() }))
       .post('/session/start', async () => (await q.startSession(), reply('admin')))
       .post('/session/end', async () => (await q.endSession(), reply('admin')))
       .post('/stop', async ({ body }) => (await q.stop(body.id), reply('admin')), { body: t.Object({ id: t.String() }) })

@@ -48,5 +48,24 @@ export interface State {
     status: EntryStatus
     position: number // 1-based among waiting; 0 if not waiting
     streamId: string
+    signedIn: boolean // joined with a Purdue Hackers ID (the participant's own state only)
   }
+}
+
+// Organizer-only timing for one checkpoint (GET /api/admin/metrics). Durations in ms. Never part of State.
+export interface Metrics {
+  now: number
+  sessionStatus: 'open' | 'closed'
+  startedAt: number
+  endedAt: number | null // null while open
+  totalMs: number // wall clock, start to end (or to now while open)
+  presentingMs: number // sum of every presentation's live time
+  switchingMs: number // sum of the gaps between consecutive presentations
+  otherMs: number // the rest of totalMs: before the first presenter, after the last
+  presentingShare: number | null // presentingMs / (presentingMs + switchingMs), 0..1; null with no presenters
+  presenters: number
+  avgPresentingMs: number | null
+  avgSwitchMs: number | null
+  medianSwitchMs: number | null
+  entries: { id: string; name: string; project: string; liveAt: number; endedAt: number | null; presentingMs: number; switchMs: number | null }[]
 }
