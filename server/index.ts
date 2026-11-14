@@ -223,7 +223,8 @@ export const app = new Elysia({
       .post('/quality', async ({ body }) => (await q.setQuality(body.quality), reply('admin')),
         { body: t.Object({ quality: t.Union(Object.keys(QUALITY).map((k) => t.Literal(k))) }) })
       .post('/audio', async ({ body }) => (await q.setAudio(body.on), reply('admin')), { body: t.Object({ on: t.Boolean() }) })
-      .post('/reactions', async ({ body }) => (await q.setReactions(body.on), reply('admin')), { body: t.Object({ on: t.Boolean() }) }),
+      .post('/reactions', async ({ body }) => (await q.setReactions(body.on), reply('admin')), { body: t.Object({ on: t.Boolean() }) })
+      .post('/title', async ({ body }) => (await q.setTitle(body.title), reply('admin')), { body: t.Object({ title: t.String({ maxLength: 200 }) }) }),
   )
 
   .ws('/ws', {

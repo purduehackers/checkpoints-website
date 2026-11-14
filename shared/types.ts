@@ -37,6 +37,7 @@ export interface Current {
 
 export interface State {
   serverNow: number
+  title?: string // admin only: the night's name shown on /admin
   session: { status: 'open' | 'closed'; limitSec: number; quality: Quality; audio: boolean; reactions: boolean } | null
   current: Current | null
   previous: { entryId: string; name: string; project: string; streamId?: string } | null

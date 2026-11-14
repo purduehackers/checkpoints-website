@@ -436,6 +436,32 @@ test('previous can return to an empty stage but not a closed session', async () 
   expect(await q.snapshot()).toEqual(before)
 })
 
+test('a slot timed out by older code (no ended_at) still shows as previous and can be brought back', async () => {
+  await fresh('A', 'B')
+  await live('aa-A-xxxx')
+  const a = (await cur())!.entryId
+  // What the older production code does on timeout: done, deadline kept, ended_at never set.
+  await db.execute({ sql: `UPDATE queue_entries SET status = 'done', deadline = ? WHERE id = ?`, args: [Date.now() - 1000, a] })
+  await q.expire() // the invariant calls B
+  expect((await host()).current?.name).toBe('B')
+  expect((await host()).previous?.entryId).toBe(a)
+  await q.adjust(a, 15)
+  expect(await cur()).toMatchObject({ entryId: a, status: 'live' })
+})
+
+test('title: admin only, defaults to Hack Night 7.9, global and cleaned', async () => {
+  expect((await q.loadState('admin')).title).toBe('Hack Night 7.9')
+  await q.setTitle('  Hack   Night 8.0  ')
+  expect((await q.loadState('admin')).title).toBe('Hack Night 8.0')
+  expect((await host()).title).toBeUndefined()
+  expect((await q.loadState('hacker', 'aa-A-xxxx')).title).toBeUndefined()
+  await q.setTitle('   ')
+  expect((await q.loadState('admin')).title).toBe('Hack Night 8.0')
+  await q.setTitle('x'.repeat(100))
+  expect((await q.loadState('admin')).title).toHaveLength(60)
+  await db.execute(`DELETE FROM settings`)
+})
+
 test('adjust on an overdue live entry restarts from now before the next tick', async () => {
   await fresh('A', 'B')
   await live('aa-A-xxxx')

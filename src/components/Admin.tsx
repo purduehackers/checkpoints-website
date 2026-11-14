@@ -15,7 +15,7 @@ import { Link } from './ph/link'
 import { SegmentedToggle } from './ph/segmented-toggle'
 import { QUALITY, type Metrics, type Quality } from '../../shared/types'
 
-function Shell({ children, title }: { children: React.ReactNode; title?: string }) {
+function Shell({ children, title }: { children: React.ReactNode; title?: React.ReactNode }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-background font-sans text-foreground">
       <div aria-hidden className="pointer-events-none absolute inset-0">
@@ -27,7 +27,7 @@ function Shell({ children, title }: { children: React.ReactNode; title?: string 
         <a href="/admin" aria-label="Checkpoints Admin" className="block transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none"><Glider className="text-ph-yellow" /></a>
       </header>
       <main className="relative mx-auto flex w-full max-w-[965px] flex-col items-center px-4 pb-16 pt-[142px]">
-        {title && <h1 className="ph-headline mb-[19px] w-full text-[36px] leading-9">{title}</h1>}
+        {title && <div className="mb-[19px] w-full">{title}</div>}
         {children}
       </main>
     </div>
@@ -114,8 +114,12 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
       .finally(() => setBusy(false))
   }
 
-  // US-5.3: preview the next person automatically unless the organizer chose someone else.
-  const first = state?.queue[0]?.streamId ?? null
+  // US-5.3: preview the next person automatically unless the organizer chose someone else. "Next" is whoever is
+  // walking up (called), else the line. Prefer someone actually sharing, so the panel never sits on a blank stream,
+  // and fall back to the person on stage.
+  const cur = state?.current
+  const first = [...(cur?.status === 'called' ? [cur] : []), ...(state?.queue ?? [])].find((e) => e.shareState === 'sharing')?.streamId
+    ?? cur?.streamId ?? state?.queue[0]?.streamId ?? null
   useEffect(() => { if (!pinned) setPreview(first) }, [first, pinned])
   const [cog, setCog] = useState(false)
   const stats = useStatsToggle()
@@ -131,7 +135,7 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
   const preview_ = [state.current, ...state.queue].find((e) => e?.streamId === preview)
 
   return (
-    <Shell title="Hack Night 7.1">
+    <Shell title={<EditableTitle title={state.title ?? 'Hack Night 7.9'} onSave={(t) => act('/title', { title: t })} />}>
       <ConnectionBadge online={online} />
       {stats.on && <StatsOverlay history={history} title={statsStream && statsStream === c?.streamId ? `On stage: ${c.name}` : 'Previewed stream'} onClose={stats.toggle} />}
       <fieldset disabled={busy} className="grid w-full min-w-0 grid-cols-1 gap-6 border-0 p-0 min-[965px]:grid-cols-[403px_506px]">
@@ -254,6 +258,23 @@ function Panel({ name, onDenied }: { name: string; onDenied: () => void }) {
         </div>
       )}
     </Shell>
+  )
+}
+
+// Easter egg: double-click the heading to rename the night for every organizer. Deliberately no hover, cursor or
+// hint; the input looks exactly like the heading.
+function EditableTitle({ title, onSave }: { title: string; onSave: (t: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const cls = 'ph-headline w-full text-[36px] leading-9'
+  if (draft === null) return <h1 className={cls} onDoubleClick={() => setDraft(title)}>{title}</h1>
+  const done = (save: boolean) => { const t = draft.trim(); setDraft(null); if (save && t && t !== title) onSave(t) }
+  return (
+    <h1 className={cls}>
+      <input autoFocus aria-label="Title" value={draft} maxLength={60} onFocus={(e) => e.target.select()}
+        onChange={(e) => setDraft(e.target.value)} onBlur={() => done(true)}
+        onKeyDown={(e) => { if (e.key === 'Enter') done(true); else if (e.key === 'Escape') done(false) }}
+        className="m-0 w-full border-0 bg-transparent p-0 font-[inherit] text-inherit outline-none [font-size:inherit] [letter-spacing:inherit] [line-height:inherit]" />
+    </h1>
   )
 }
 

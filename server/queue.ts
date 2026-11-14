@@ -4,6 +4,11 @@ import { QUALITY, type Current, type Metrics, type QueueItem, type Role, type Sh
 
 const DISCONNECTED_MS = 3 * 60_000 // US-2.4 grace period
 const HANDOFF_MS = 120_000
+export const DEFAULT_TITLE = 'Hack Night 7.9'
+// When a finished slot ended. Older deployments share the db and mark slots done without ended_at, so fall back to
+// the deadline (a timed-out slot ends exactly there; an early stop is capped at now).
+const END_SQL = (now: number) => `COALESCE(ended_at, MIN(deadline, ${now}))`
+const endOf = (r: Row, now: number) => r.ended_at ?? (r.deadline == null ? null : Math.min(Number(r.deadline), now))
 const BYE_GRACE_MS = 5_000 // closed tab -> out of the line; long enough for a refresh to reconnect
 const ADMIN_GONE_MS = 5 * 60_000 // no organizer page open this long: the checkpoint ends
 const DORMANT_MS = 10 * 60_000 // no action and nobody live this long: the checkpoint ends
@@ -172,8 +177,8 @@ export const adjust = async (id: string, deltaSec: number) => {
     paused_left = CASE WHEN paused_left IS NOT NULL THEN paused_left + ? END
     WHERE id = ? AND status = 'live'`, [now, ms, ms, id])
   if (n) return
-  const previous = `id = (SELECT id FROM queue_entries WHERE ${OPEN} AND status = 'done' AND ended_at > ${now - HANDOFF_MS}
-    ORDER BY ended_at DESC, sort_key DESC LIMIT 1)
+  const previous = `id = (SELECT id FROM queue_entries WHERE ${OPEN} AND status = 'done' AND ${END_SQL(now)} > ${now - HANDOFF_MS}
+    ORDER BY ${END_SQL(now)} DESC, sort_key DESC LIMIT 1)
     AND NOT EXISTS (SELECT 1 FROM queue_entries WHERE ${OPEN} AND status = 'live')`
   await ready
   await db.batch([
@@ -262,16 +267,27 @@ export async function expire(now = Date.now()) {
 // doesn't grow with the number of open sockets.
 export async function snapshot() {
   const s = await latestSession()
-  return { s, rows: s ? await all(`SELECT * FROM queue_entries WHERE session_id = ? ORDER BY sort_key`, [s.id]) : [] }
+  const [rows, t] = await Promise.all([
+    s ? all(`SELECT * FROM queue_entries WHERE session_id = ? ORDER BY sort_key`, [s.id]) : [],
+    one(`SELECT value FROM settings WHERE key = 'title'`),
+  ])
+  return { s, rows, title: (t?.value as string | undefined) ?? DEFAULT_TITLE }
+}
+// The admin page heading (an easter egg: organizers double-click it to rename the night). Global, survives sessions.
+export async function setTitle(title: string) {
+  const t = clean(title, 60)
+  if (!t) return
+  await run(`INSERT INTO settings (key, value) VALUES ('title', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [t])
 }
 export type Snapshot = Awaited<ReturnType<typeof snapshot>>
 
 export const loadState = async (role: Role, token?: string) => view(await snapshot(), role, token)
 
-export function view({ s, rows }: Snapshot, role: Role, token?: string): State {
+export function view({ s, rows, title }: Snapshot, role: Role, token?: string): State {
   const serverNow = Date.now()
-  if (!s) return { serverNow, session: null, current: null, previous: null, queue: [] }
   const admin = role === 'admin'
+  const named = admin ? { title: title ?? DEFAULT_TITLE } : {}
+  if (!s) return { serverNow, session: null, current: null, previous: null, queue: [], ...named }
   const cur = rows.find((r) => r.status === 'called' || r.status === 'live')
   const waiting = s.status === 'open' ? rows.filter((r) => r.status === 'waiting') : [] // a closed session has no line
   const current: Current | null = !cur ? null : {
@@ -281,14 +297,15 @@ export function view({ s, rows }: Snapshot, role: Role, token?: string): State {
     ...((admin || (role === 'host' && cur.status === 'live')) && { streamId: cur.stream_id }),
   }
   const prev = s.status === 'open' && cur?.status !== 'live'
-    ? rows.filter((r) => r.status === 'done' && r.ended_at > serverNow - HANDOFF_MS).sort((a, b) => b.ended_at - a.ended_at || b.sort_key - a.sort_key)[0] : undefined
+    ? rows.filter((r) => r.status === 'done' && (endOf(r, serverNow) ?? 0) > serverNow - HANDOFF_MS)
+      .sort((a, b) => endOf(b, serverNow)! - endOf(a, serverNow)! || b.sort_key - a.sort_key)[0] : undefined
   const previous = prev ? { entryId: prev.id, name: prev.name, project: prev.project, ...(admin && { streamId: prev.stream_id }) } : null
   const queue: QueueItem[] = waiting.map((r) => ({
     id: r.id, name: r.name, project: r.project, shareState: r.share_state, shareEpoch: Number(r.share_epoch ?? 0),
     connected: serverNow - r.last_seen_at < DISCONNECTED_MS && r.bye_at == null,
     ...(admin && { streamId: r.stream_id }),
   }))
-  const state: State = { serverNow, session: { status: s.status, limitSec: s.limit_sec, quality: s.quality, audio: !!s.audio, reactions: !!s.reactions }, current, previous, queue }
+  const state: State = { serverNow, ...named, session: { status: s.status, limitSec: s.limit_sec, quality: s.quality, audio: !!s.audio, reactions: !!s.reactions }, current, previous, queue }
   const mine = role === 'hacker' && token ? rows.find((r) => r.client_token === token) : undefined
   if (mine) {
     state.me = { entryId: mine.id, name: mine.name, project: mine.project, status: mine.status, position: waiting.indexOf(mine) + 1, streamId: mine.stream_id, signedIn: mine.user_sub != null }

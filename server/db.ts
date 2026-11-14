@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS queue_entries (
   UNIQUE (session_id, client_token)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_entry ON queue_entries(session_id) WHERE status IN ('called','live');
+
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 `
 
 // Awaited by every query; creates the tables on first use (also fine against an existing Turso db).
