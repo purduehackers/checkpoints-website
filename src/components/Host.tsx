@@ -71,6 +71,14 @@ export default function Host() {
   const live = c?.status === 'live' && c.streamId
   const left = c?.pausedLeft ?? (c?.deadline != null ? c.deadline - now() : null)
   const open = state?.session?.status === 'open'
+  const active = state ? open : null
+  useEffect(() => {
+    if (active === null) return
+    window.parent.postMessage(
+      { type: 'checkpoints:status', active },
+      'https://night.purduehackers.com',
+    )
+  }, [active])
   const audio = state?.session?.audio ?? true
   const stats = useStatsToggle()
   const inPerson = !!live && c!.shareState !== 'sharing' // "Present without sharing": nothing to project
