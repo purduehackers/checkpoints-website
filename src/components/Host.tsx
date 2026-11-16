@@ -40,6 +40,8 @@ export default function Host() {
   const [clicked, setClicked] = useState(false)
   useEffect(() => {
     const on = () => { setClicked(true); unlock() } // the same first click also unlocks the buzzer
+    // In an <iframe>, autoplay is controlled by the embedding site
+    if (window.parent !== window) on()
     addEventListener('pointerdown', on, { once: true }); addEventListener('keydown', on, { once: true })
     return () => { removeEventListener('pointerdown', on); removeEventListener('keydown', on) }
   }, [])
