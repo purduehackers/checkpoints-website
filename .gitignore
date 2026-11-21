@@ -7,3 +7,5 @@ dist
 .env*
 !.env.example
 screenshots/
+e2e-report/
+e2e.db*

@@ -16,6 +16,8 @@ bun dev          # Elysia on :3000 + Astro on :4321 (proxies /api). Open http://
                  # Astro's dev server runs in the background; stop it with `bunx astro dev stop`
 bun test         # queue logic + API, auth and abuse tests (in-memory db, fake ID)
 bun run build    # static site into dist/
+bun run e2e      # whole night in a real browser: pass/fail + a screenshot of every page in e2e-report/index.html
+                 # (needs :3000 free; see .claude/skills/e2e/SKILL.md)
 ```
 
 Browsers only allow screen sharing, camera access and notifications on `localhost` or HTTPS. Testing from a phone on the LAN over plain http won't work; use a tunnel (for example Cloudflare or ngrok) or a deployed preview.

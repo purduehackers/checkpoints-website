@@ -9,7 +9,7 @@
     "build": "astro build",
     "start": "bun api/server.ts",
     "test": "bun test",
-    "screenshots": "bun scripts/screenshots.ts"
+    "e2e": "bun scripts/e2e.ts"
   },
   "dependencies": {
     "@astrojs/react": "^7.0.0",
