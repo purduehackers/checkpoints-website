@@ -108,7 +108,7 @@ test('signing in sets a session; /me reports the ID name and organizer role', as
 })
 
 test('password sign-in is disabled when an OIDC issuer is configured', async () => {
-  const r = await post('/auth/password', { password: '123456' })
+  const r = await post('/auth/password', { password: '123' })
   expect(r.status).toBe(403)
   expect(r.headers.getSetCookie()).toEqual([])
 })
@@ -127,8 +127,8 @@ test('without an issuer, password sign-in grants an organizer session and logout
     const wrong = await post('/auth/password', { password: 'wrong' })
     expect(wrong.status).toBe(401)
     expect(wrong.headers.getSetCookie()).toEqual([])
-    expect((await post('/auth/password', { password: '123456' }, { origin: 'https://evil.example' })).status).toBe(403)
-    const login = await post('/auth/password', { password: '123456' }, { 'x-forwarded-proto': 'https' })
+    expect((await post('/auth/password', { password: '123' }, { origin: 'https://evil.example' })).status).toBe(403)
+    const login = await post('/auth/password', { password: '123' }, { 'x-forwarded-proto': 'https' })
     expect(login.status).toBe(200)
     const cookie = login.headers.getSetCookie()[0]!
     for (const flag of ['HttpOnly', 'SameSite=Lax', 'Secure', 'Max-Age=43200']) expect(cookie).toContain(flag)
@@ -173,6 +173,14 @@ test('admin actions need the organizer role', async () => {
   expect((await post('/admin/stop', { id: 'x' }, { cookie: 'cp_session=forged.sig' })).status).toBe(401)
   expect((await post('/admin/stop', { id: 'x' }, await session(member))).status).toBe(401)
   expect((await post('/admin/stop', { id: 'x' }, await session(organizer))).status).toBe(200)
+})
+
+test('timing metrics are organizer-only', async () => {
+  expect((await get('/admin/metrics')).status).toBe(401)
+  expect((await get('/admin/metrics', await session(member))).status).toBe(401)
+  const ok = await get('/admin/metrics', await session(organizer))
+  expect(ok.status).toBe(200)
+  expect(Object.keys((await ok.json()).metrics ?? { totalMs: 0 })).toContain('totalMs')
 })
 
 test('cross-site requests are refused even with a session', async () => {
@@ -233,7 +241,10 @@ test('one IP cannot hold every socket', async () => {
 const ip = { 'x-real-ip': '10.9.9.9' }
 let admin: Record<string, string> = {}
 const as = (path: string, body: object = {}) => post('/admin' + path, body, admin)
-const hacker = (path: string, token: string, body: object = {}) => post(path, { token, ...body }, ip).then((r) => r.json())
+// Joining needs a sign-in in OIDC mode, so /join goes out with a member's session.
+let memberSession: { cookie: string } | undefined
+const hacker = async (path: string, token: string, body: object = {}) =>
+  (await post(path, { token, ...body }, path === '/join' ? { ...ip, ...(memberSession ??= await session(member)) } : ip)).json()
 // The server runs in this process, so moving the clock moves the server's too. Frozen, so exact times compare.
 async function at<T>(ms: number, fn: () => Promise<T>) {
   setSystemTime(Date.now() + ms)
@@ -256,6 +267,72 @@ test('organizer routes: sign in, a fresh checkpoint, and bad input is refused', 
 test('an admin socket sees stream ids once signed in as an organizer', async () => {
   const { got } = await socket([{ role: 'admin' }], 400, admin)
   expect(got.at(-1).current).toMatchObject({ name: 'Ann', streamId: expect.any(String) })
+})
+
+test('joining stores the sub from the cookie; a body-supplied sub is ignored; only the participant sees signedIn', async () => {
+  const { db } = await import('./db')
+  const from = { 'x-real-ip': '10.9.9.8' }
+  const orgCookie = await session(organizer)
+  await post('/admin/session/end', {}, { ...from, ...orgCookie }); await post('/admin/session/start', {}, { ...from, ...orgCookie })
+  const sub = async (token: string) => (await db.execute({ sql: 'SELECT user_sub FROM queue_entries WHERE client_token = ?', args: [token] })).rows[0].user_sub
+  const join = (token: string, headers: Record<string, string> = {}, extra: object = {}) =>
+    post('/join', { token, name: 'Ann', project: 'P', ...extra }, { ...from, ...headers }).then((r) => r.json())
+
+  const signed = await join('sub-signed-in', await session(member))
+  expect(await sub('sub-signed-in')).toBe('user-ada')
+  expect(signed.me.signedIn).toBe(true)
+
+  // The identity comes from the cookie only: a sub in the body is ignored.
+  await join('sub-forged-signed', await session(member), { sub: 'user-grace', userSub: 'user-grace' })
+  expect(await sub('sub-forged-signed')).toBe('user-ada')
+
+  // Other roles (host, and the admin screen) never get `me`, so nothing about sign-in leaks to them.
+  const host = (await socket([{ role: 'host' }])).got
+  expect(host.length).toBeGreaterThan(0)
+  expect(JSON.stringify(host)).not.toContain('signedIn')
+  expect(JSON.stringify(host)).not.toContain('user-ada')
+  const admin = (await socket([{ role: 'admin' }], 400, { ...orgCookie })).got
+  expect(admin[0].serverNow).toBeNumber()
+  expect(JSON.stringify(admin)).not.toContain('signedIn')
+  expect(JSON.stringify(admin)).not.toContain('user-ada')
+  // A participant's own socket does carry it.
+  const mine = (await socket([{ role: 'hacker', token: 'sub-signed-in' }])).got
+  expect(mine.at(-1).me.signedIn).toBe(true)
+})
+
+test('OIDC: joining needs a sign-in (also when rejoining); password mode still lets anonymous people join', async () => {
+  const { db } = await import('./db')
+  const from = { 'x-real-ip': '10.9.9.7' }
+  const orgCookie = await session(organizer)
+  await post('/admin/session/end', {}, { ...from, ...orgCookie }); await post('/admin/session/start', {}, { ...from, ...orgCookie })
+  const entries = async (token: string) => (await db.execute({ sql: 'SELECT status, user_sub FROM queue_entries WHERE client_token = ?', args: [token] })).rows
+  const body = (token: string) => ({ token, name: 'Ann', project: 'P' })
+
+  const anon = await post('/join', body('req-anon'), from)
+  expect(anon.status).toBe(401)
+  expect(await anon.json()).toEqual({ error: 'Sign in with Purdue Hackers to join the queue.' })
+  expect(await entries('req-anon')).toEqual([])
+
+  const member1 = { ...from, ...(await session(member)) }
+  expect((await post('/join', body('req-member'), member1)).status).toBe(200)
+  expect(await entries('req-member')).toMatchObject([{ user_sub: 'user-ada' }])
+
+  // Leaving and coming back is the same route, so it is gated the same way.
+  await post('/leave', { token: 'req-member' }, from)
+  expect((await post('/join', body('req-member'), from)).status).toBe(401)
+  expect(await entries('req-member')).toMatchObject([{ status: 'left' }])
+  expect((await post('/join', body('req-member'), member1)).status).toBe(200)
+
+  const issuer = process.env.ID_ISSUER, clientId = process.env.ID_CLIENT_ID
+  delete process.env.ID_ISSUER
+  delete process.env.ID_CLIENT_ID
+  try {
+    expect((await post('/join', body('req-password-anon'), from)).status).toBe(200)
+    expect(await entries('req-password-anon')).toMatchObject([{ user_sub: null }])
+  } finally {
+    process.env.ID_ISSUER = issuer
+    process.env.ID_CLIENT_ID = clientId
+  }
 })
 
 test('pause over HTTP: the projector and the presenter both see the same frozen time', async () => {

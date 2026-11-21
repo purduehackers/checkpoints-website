@@ -1,6 +1,13 @@
+import { Button } from './ph/button'
 import { useEffect, useState } from 'react'
-import { Badge, fmt, useLive, useTick } from '../lib/live'
-import { GRACE_MS } from '../../shared/types'
+import { ConnectionBadge, fmt, useLive, useTick } from '../lib/live'
+
+// The whole background does the signalling: solid red from 0:30, flashing red/black (0.7s cycle) from 0:10,
+// steady red at time's up. Black with a hairline frame otherwise, and while paused.
+export const screenColor = (left: number | null, paused: boolean) =>
+  paused || left === null || left > 30_000 ? 'bg-background'
+    : left > 0 && left <= 10_000 ? 'bg-[red] text-white alarm-flash'
+    : 'bg-[red] text-white'
 
 // Speaker-facing countdown for a second screen. Same 'host' feed as the projector (no auth), no reactions callback.
 export default function Timer() {
@@ -20,37 +27,24 @@ export default function Timer() {
   const live = c?.status === 'live'
   const paused = live && c.pausedLeft != null
   const left = live ? c.pausedLeft ?? (c.deadline != null ? c.deadline - now() : null) : null
-  // The whole screen does the shouting, so the speaker sees it from the corner of their eye:
-  // solid red with white text from 0:30, then a red/white flash from 0:10 through TIME'S UP.
-  const screen = !live || paused || left === null ? ''
-    : left <= 10_000 ? 'strobe'
-    : left <= 30_000 ? 'bg-red-600 text-white' : ''
-  const sub = screen ? '' : 'text-neutral-400' // grey captions vanish on a colored screen
-  const color = paused ? 'text-neutral-500' : ''
 
   return (
-    <main className={`relative flex h-screen flex-col items-center justify-center overflow-hidden p-8 text-center ${screen} ${idle ? 'cursor-none' : ''}`}>
-      <Badge online={online} />
+    <main className={`relative h-screen overflow-hidden text-foreground ${live ? screenColor(left, paused) : 'bg-background'} ${idle ? 'cursor-none' : ''}`}>
+      <ConnectionBadge online={online} />
       {live ? (
         <>
-          {/* ⏸ goes on the name line: in front of the time it would push 28vw digits off screen */}
-          <p className={`text-[4vw] ${sub}`}>{paused && '⏸ Paused · '}{c.name}</p>
-          {/* Past the deadline the server keeps them live for GRACE_MS so the organizer can add time. */}
-          {left !== null && left <= 0 && !paused
-            ? <><div className="shake font-bold leading-none text-[16vw]">TIME'S UP</div><p className="text-[3vw]">{fmt(left + GRACE_MS)}</p></>
-            : <div className={`font-bold leading-none tabular-nums text-[28vw] ${color} ${!paused && left !== null && left <= 5_000 ? 'shake' : ''}`}>{left === null ? '--:--' : fmt(left)}</div>}
-        </>
-      ) : c?.status === 'called' ? (
-        <>
-          <p className="text-[8vw] font-bold leading-tight"><b className="text-green-400">{c.name}</b> is up next</p>
-          <p className="text-[3vw] text-neutral-400">Getting ready…</p>
+          {screenColor(left, paused) === 'bg-background' && <div className="absolute inset-x-[1.875vw] inset-y-[3.333vh] box-border border border-solid border-border" />}
+          {paused && <p className="ph-headline absolute inset-x-0 top-[17.59%] text-center text-[10.4167vw] text-ph-yellow">⏸ Paused</p>}
+          <div className={`absolute inset-x-0 top-1/2 -translate-y-1/2 text-center font-bold leading-none tabular-nums text-[26.0417vw] ${paused ? 'text-ph-yellow' : ''}`}>{left === null ? '--:--' : fmt(Math.max(left, 0))}</div>
         </>
       ) : (
-        <p className="text-[6vw] text-neutral-500">{state ? 'No one presenting' : ''}</p>
+        <div className="flex h-full flex-col items-center justify-center gap-[2vw] text-center">
+          {c?.status === 'called'
+            ? <p className="ph-subheadline text-[4vw]">Getting ready…</p>
+            : <p className="ph-subheadline text-[4vw]">{state ? 'No one presenting' : ''}</p>}
+        </div>
       )}
-      <div className="absolute bottom-3 right-3 opacity-60 hover:opacity-100">
-        <button className="rounded bg-neutral-800 px-3 py-1" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>Fullscreen</button>
-      </div>
+      <Button variant="outline" size="sm" className="absolute bottom-3 right-3 z-40" onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>Fullscreen</Button>
     </main>
   )
 }

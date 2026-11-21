@@ -19,7 +19,7 @@ There are three pages:
 | `/host` | The projector |
 | `/timer` | A big countdown for the speaker (optional second screen) |
 
-Preview deployments with `ID_ISSUER` unset show a password form on `/admin`; use **123456**.
+Preview deployments with `ID_ISSUER` unset show a password form on `/admin`; use **123**.
 
 ## Before the night (5 minutes)
 
@@ -46,7 +46,7 @@ For each presenter:
 | **Start timer** | Starts the called person's time for them. Only use it if they can't press Start presenting themselves |
 | **Stop** | Ends the current presenter now and the next person is up. Clicking it twice never ends the next person too |
 | **Pause / Resume** | Freezes the presenter's timer. The projector shows a grey ⏸ timer |
-| **−30s / +30s** | Takes away or adds 30 seconds for the current presenter |
+| **+15s / +30s** | Adds time for the current presenter. After someone's time runs out they show in a **Previous** row with the same buttons, so you can bring them back |
 | **Skip** | In the line: moves someone behind the next person. On the current card (before they start): sends a not-ready person back one place and the next person is up |
 | **▲ / ▼** | Moves someone up or down the line |
 | **Remove** | Takes someone out of the line (if they are on stage, the next person is called) |
@@ -54,6 +54,7 @@ For each presenter:
 | **Quality** | Stream bitrate: 720p, 1080p (default), 1440p or Source. Lower it if the stream is choppy. Changes the live stream without restarting it |
 | **Projector sound** | Turns the presenter's sound on the projector on or off |
 | **End checkpoints** | Closes the line for the night |
+| **Timing** (Show/Hide) | Total time, time spent presenting vs. switching between people (with %), presenter count, averages, and a per-person list. Organizers only |
 
 The row under each name shows whether that person is **sharing**, **not sharing**, **stopped** or **disconnected…**.
 
@@ -61,6 +62,7 @@ The row under each name shows whether that person is **sharing**, **not sharing*
 
 ## What to tell hackers
 
+- **Sign in with Purdue Hackers to join the line** (production). Previews and localhost don't use ID, so joining is open there.
 - **Use Chrome or Edge on a laptop.** Phones and iPads can join the line too, but they share their **camera** instead of a screen (handy for showing off hardware). **Start presenting** opens the back camera, **Flip camera** switches to the front one, and no microphone sound is sent, so a phone near the speakers can't cause feedback. Firefox and Safari can share a screen but not sound. Brave, Opera and Arc work like Chrome. The page needs a recent browser (Chrome/Edge 111+, Firefox 128+, Safari 16.4+).
 - **The share picker starts on Entire screen.** For sound, share a Chrome tab instead and tick "Share audio" (on a Mac, an entire screen can't share sound). Sound only plays on the projector while they're live.
 - **On Linux, if sharing a screen or window fails or goes black, share a browser tab instead.**
@@ -94,4 +96,4 @@ Any site can call it (CORS is open) and the answer is never cached. It is rate-l
 ## Keeping it safe
 
 - **Production uses Purdue Hackers ID organizers to run the queue.** Taking the role away in ID applies at that person's next sign-in. Sessions last 12 hours.
-- **Anyone can join the line from a new browser.** Hackers don't sign in. Use **Remove** for anyone who shouldn't be there.
+- **Joining the line needs a Purdue Hackers ID sign-in in production** (the server refuses anonymous joins; previews and localhost allow them). The entry remembers the person's ID for future checkpoint counts. Use **Remove** for anyone who shouldn't be there.

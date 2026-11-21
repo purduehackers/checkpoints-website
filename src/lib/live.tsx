@@ -1,3 +1,4 @@
+import { Badge } from '../components/ph/badge'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Role, State } from '../../shared/types'
 
@@ -44,7 +45,8 @@ export function useLive(role: Role, onReactions?: (counts: Record<string, number
   const [notice, setNotice] = useState<{ text: string; until: number; slowUntil: number } | null>(null) // from the reaction spam guard
   const onR = useRef(onReactions)
   onR.current = onReactions
-  const apply = useCallback((s: State) => { skew.current = Date.now() - s.serverNow; setState(s) }, [])
+  const latest = useRef(-Infinity)
+  const apply = useCallback((s: State) => { if (s.serverNow < latest.current) return; latest.current = s.serverNow; skew.current = Date.now() - s.serverNow; setState(s) }, [])
   const now = useCallback(() => Date.now() - skew.current, [])
 
   useEffect(() => {
@@ -90,6 +92,9 @@ export function waitMs(s: State, ahead: number, now: number) {
   return cur + ahead * limit
 }
 export const aboutMin = (ms: number) => ms < 60_000 ? 'under a minute' : `about ${Math.ceil(ms / 60_000)} min`
+export const aboutMinutes = (ms: number) => ms < 60_000 ? 'under a minute' : `about ${Math.ceil(ms / 60_000)} minute${ms <= 60_000 ? '' : 's'}`
+// Who is directly ahead of the waiting person at 1-based `position`: the one presenting, or the previous in the queue.
+export const aheadName = (s: State, position: number) => (position > 1 ? s.queue[position - 2]?.name : s.current?.name) ?? ''
 export const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`
 export const span = (sec: number) => sec % 60 ? `${sec} seconds` : `${sec / 60} minute${sec === 60 ? '' : 's'}`
 
@@ -97,6 +102,6 @@ export function Spinner({ className = 'size-4' }: { className?: string }) {
   return <span role="status" aria-label="Loading" className={`inline-block animate-spin rounded-full border-2 border-current border-t-transparent ${className}`} />
 }
 
-export function Badge({ online }: { online: boolean }) {
-  return online ? null : <div className="fixed right-2 top-2 z-50 flex items-center gap-2 rounded bg-amber-500 px-2 py-1 text-xs font-medium text-black"><Spinner className="size-3" />reconnecting…</div>
+export function ConnectionBadge({ online }: { online: boolean }) {
+  return online ? null : <Badge color="orange" className="fixed right-2 top-2 z-50"><Spinner className="size-3" />reconnecting…</Badge>
 }

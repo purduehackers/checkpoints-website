@@ -1,8 +1,16 @@
+import { Button } from './ph/button'
+import { DitherButton } from './ph/dither-button'
+import { Input } from './ph/input'
+import { Field } from './ph/field'
+import { Link } from './ph/link'
+import { Badge } from './ph/badge'
+import { Glider } from './ph/glider'
 import { useEffect, useRef, useState } from 'react'
-import { Badge, Spinner, aboutMin, api, fmt, hackerToken, ordinal, span, useLive, useTick, waitMs } from '../lib/live'
+import { ConnectionBadge, Spinner, aboutMinutes, aheadName, api, fmt, hackerToken, signInUrl, signOutUrl, span, useLive, useTick, useUser, waitMs } from '../lib/live'
 import { ShareBox } from '../lib/vdo'
+import { loadNoShare, saveNoShare, waitingCopy } from './waiting'
 import { StatsButton, useStatsToggle } from '../lib/stats'
-import { ICONS, Tour, seen, type Step } from '../lib/tour'
+import { DitheredSoup } from './DitheredSoup'
 import { ReactionPanel } from '../lib/reactions'
 import type { ShareState } from '../../shared/types'
 
@@ -35,7 +43,7 @@ function chime() {
 
 // Browser notification for queue changes. Silent on failure: iOS Safari outside a home-screen app has no Notification,
 // and some Android browsers throw on `new Notification` (they want a service worker).
-const NOTE: Record<number, string> = { 3: "You're 3rd in line", 2: "You're 2nd in line", 1: "You're up next. Get ready!" }
+const NOTE: Record<number, string> = { 3: "You're 3rd in line", 2: "You're 2nd in line", 1: "You're next in line. Get ready!" }
 function notify(body: string) {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return
@@ -45,29 +53,36 @@ function notify(body: string) {
   } catch {}
 }
 
-// First-time tour, one part per page state (the elements only exist then).
-const SHARE_TEXT = phone ? 'Share your camera early.' : 'Share your screen early.'
-const TOUR: Record<'wait' | 'turn', Step[]> = {
-  wait: [
-    { target: 'status', icon: ICONS.hourglass, text: "Your spot in line." },
-    { target: 'share', icon: ICONS.screen, text: SHARE_TEXT },
-  ],
-  turn: [{ target: 'start', icon: ICONS.play, text: 'Press to go live.' }],
-}
+const DRAFT = 'checkpoints:joinDraft'
+const saveDraft = (f: { name: string; project: string }) => { try { sessionStorage.setItem(DRAFT, JSON.stringify(f)) } catch {} }
 
 export default function Hacker() {
   const { state, online, apply, now, react, notice } = useLive('hacker')
   const [error, setError] = useState('')
-  const [form, setForm] = useState({ name: '', project: '' })
+  // Restored once after the Purdue Hackers sign-in round trip, so the project they typed isn't lost.
+  const [form, setForm] = useState<{ name: string; project: string }>(() => { try { const d = JSON.parse(sessionStorage.getItem(DRAFT) ?? 'null'); sessionStorage.removeItem(DRAFT); if (d) return d } catch {} return { name: '', project: '' } })
+  const [shareKey, setShareKey] = useState(0)
   const [shareState, setShareState] = useState<ShareState>('not_shared')
-  const reported = useRef<ShareState>('not_shared')
-  const shareFn = useRef<(() => void) | null>(null) // ShareBox's share(), so Start presenting can open the picker (or camera)
-  const autoReady = useRef(false) // /ready already sent for this call: a re-render or a share restart must not send it twice
+  const reported = useRef<ShareState | null>(null)
+  const shareFn = useRef<(() => Promise<void>) | null>(null) // ShareBox's share(), so Start presenting can open the picker (or camera)
+  const formRef = useRef<HTMLFormElement>(null)
+  const [joining, setJoining] = useState(false)
+  const [wantReady, setWantReady] = useState(false) // Start Presenting was pressed before the share was up: go live once it connects. Never set by sharing alone.
+  const [shareBusy, setShareBusy] = useState(false) // a share() is capturing or connecting
+  // Every share goes through here, so Start Presenting can wait on one already in flight instead of opening the picker twice.
+  const share = async () => { setShareBusy(true); try { await shareFn.current?.() } finally { setShareBusy(false) } }
+  // Purdue Hackers sign-in is optional for now. Only offered when the server has an ID (authMode 'oidc'), not on previews/localhost.
+  const auth = useUser()
+  const idUser = auth?.user ?? null
+  const mustSignIn = auth?.authMode === 'oidc' && !idUser // this week joining needs a Purdue Hackers sign-in (the server enforces it too)
+  useEffect(() => { if (idUser) setForm((f) => f.name ? f : { ...f, name: idUser.name }) }, [idUser?.sub])
   const stats = useStatsToggle()
-  const [replay, setReplay] = useState(0) // "How it works" remounts the tour
   useTick()
 
   const token = hackerToken()
+  // Chose to join without sharing. Kept per token across refreshes.
+  const [noShare, setNoShareState] = useState(() => loadNoShare(token))
+  const setNoShare = (on: boolean) => { saveNoShare(token, on); setNoShareState(on) }
   // One request at a time, in click order: a late share-state must not land after Ready, nor an old reply overwrite a newer one.
   const chain = useRef(Promise.resolve())
   const [pending, setPending] = useState(0) // requests in flight, for the spinner
@@ -79,35 +94,40 @@ export default function Hacker() {
   const me = state?.me
   const cur = state?.current?.entryId === me?.entryId ? state?.current : null
   const active = me && ['waiting', 'called', 'live'].includes(me.status)
+  const handoff = me?.status === 'done' && state?.previous?.entryId === me?.entryId
+  const inFlow = active || handoff
   const open = state?.session?.status === 'open'
   // "Thanks for presenting" only right after presenting on this page; a refresh (or Join again) goes back to the form.
   const presentedHere = useRef(false)
   if (active) presentedHere.current = true
   const [thanked, setThanked] = useState(false)
   // Returning hackers get their name and project back.
-  useEffect(() => { if (me && !form.name && !form.project) setForm({ name: me.name, project: me.project }) }, [me?.entryId])
+  useEffect(() => { if (me && !form.project && (!form.name || form.name === idUser?.name)) setForm({ name: me.name, project: me.project }) }, [me?.entryId])
 
   // Report the share state to the server, only when it changes.
   useEffect(() => {
     if (active && shareState !== reported.current) { reported.current = shareState; act('/share-state', { state: shareState }) }
   }, [shareState, active])
   // Each publish (incl. Change window / Flip camera, where the state stays 'sharing') bumps the server's share epoch so the
-  // projector remounts its viewer. Marks 'sharing' as reported so the effect above doesn't send it twice; still ahead of auto-Ready in the chain.
+  // projector remounts its viewer. Marks 'sharing' as reported so the effect above doesn't send it twice; still ahead of Ready in the chain.
   const published = () => { reported.current = 'sharing'; act('/share-state', { state: 'sharing' }) }
-  useEffect(() => { if (!active) { reported.current = 'not_shared'; setShareState('not_shared') } }, [active])
-  // Called while sharing (or the moment the share connects after the big button): go live, no extra click.
-  // After the share-state report above (requests run in click order), so the server has seen 'sharing' before Ready.
-  // The ref clears when the share stops or the call ends, so nothing stale is left waiting.
+  useEffect(() => { if (!inFlow) { reported.current = null; setShareState('not_shared'); setShareKey((n) => n + 1) } }, [inFlow])
+  // Cleared once out of the line (leave, end, removed; not before the first state arrives) or once sharing.
+  useEffect(() => { if (!handoff && ((state && !inFlow) || shareState === 'sharing')) setNoShare(false) }, [!!state, inFlow, handoff, shareState])
+  // Being called never starts the clock by itself: walking up takes a while, so the presenter presses Start Presenting.
+  // Only when that press opened the picker do we go live as the share connects, after the share-state report above
+  // (requests run in click order), so the server has seen 'sharing' before Ready. Cleared when the call ends.
   useEffect(() => {
-    if (me?.status !== 'called' || shareState !== 'sharing') autoReady.current = false
-    else if (!autoReady.current) { autoReady.current = true; act('/ready') }
-  }, [shareState, me?.status])
+    if (me?.status !== 'called') setWantReady(false)
+    else if (wantReady && shareState === 'sharing') { setWantReady(false); act('/ready') }
+  }, [shareState, me?.status, wantReady])
   const start = () => {
-    if (shareState === 'sharing') return act('/ready') // retry, if the automatic one failed
-    // Opens the picker (or camera); the effect above goes live once it connects.
+    if (shareState === 'sharing') return act('/ready')
+    // Opens the picker (or camera), unless a share is already on its way; the effect above goes live once it connects.
     // No share possible here (unsupported browser): start without one.
-    if (!canShare) act('/ready', { noShare: true })
-    else shareFn.current?.()
+    if (shareBusy) setWantReady(true)
+    else if (noShare || !canShare) act('/ready', { noShare: true })
+    else { setWantReady(true); share() }
   }
 
   // Chime + notification on transitions only, not on a refresh that lands already in that state (prev is null until the first state).
@@ -137,113 +157,147 @@ export default function Hacker() {
     prevMs.current = live ? { id: me.entryId, ms: msTotal } : null
   }, [msTotal !== null && Math.floor(msTotal / 250), me?.status, me?.entryId, cur?.pausedLeft])
 
-  // US-4.1 / 4.2 alerts: tab title + the "up next" banner (browser notifications are above).
+  // US-4.1 / 4.2 alerts: tab title + the "next in line" banner (browser notifications are above).
   const key = me ? `${me.status}:${me.position}` : ''
   useEffect(() => {
-    document.title = me?.status === 'called' ? "It's your turn! · Checkpoints" : me?.status === 'waiting' && me.position === 1 ? "You're up next! · Checkpoints" : 'Checkpoints'
+    document.title = me?.status === 'called' ? "It's your turn! · Checkpoints" : me?.status === 'waiting' && me.position === 1 ? "You're next in line! · Checkpoints" : 'Checkpoints'
   }, [key])
 
   // Closing the tab takes you out of the line. beforeunload only asks (it also fires on refresh, which is fine);
   // pagehide tells the server, which waits 5s so a refresh (new socket) or a Wi-Fi blip (no pagehide) keeps the spot.
   useEffect(() => {
-    if (!active) return
+    if (!inFlow) return
     const ask = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
     const bye = () => navigator.sendBeacon?.('/api/bye', new Blob([JSON.stringify({ token })], { type: 'application/json' }))
     addEventListener('beforeunload', ask)
     addEventListener('pagehide', bye)
     return () => { removeEventListener('beforeunload', ask); removeEventListener('pagehide', bye) }
-  }, [active, token])
+  }, [inFlow, token])
 
-  if (!state) return <Shell><Badge online={online} /><p className="flex items-center gap-3"><Spinner className="size-5" />Loading…</p></Shell>
+  const join = async () => {
+    setError('')
+    const next = await api('/join', { token, ...form })
+    if (!next.me) throw new Error('Could not join the queue. Please try again.')
+    apply(next)
+    return next.me.streamId
+  }
+  const joinWith = async (sharing: boolean) => {
+    if (joining || mustSignIn) return
+    if (!formRef.current?.reportValidity()) return
+    setJoining(true)
+    if (!sharing) setNoShare(true)
+    try { if (sharing) await share(); else await join() }
+    catch (e) { setError((e as Error).message); setNoShare(false) }
+    finally { setJoining(false) }
+  }
 
-  // The server keeps a presenter live for a save window (GRACE_MS) past the deadline: say so, keep sharing, end nothing here.
-  const timeUp = me?.status === 'live' && cur?.pausedLeft == null && msTotal !== null && msTotal <= 0
+  if (!state) return <Shell><ConnectionBadge online={online} /><p className="flex items-center justify-center gap-3 text-xl"><Spinner className="size-5" />Loading…</p></Shell>
 
-  let body, tour: keyof typeof TOUR | null = null
-  if (!state.session) body = <p className="text-xl">No checkpoint is running.</p>
-  else if (!open) body = <p className="text-xl">This checkpoint has ended.</p>
-  else if (me?.status === 'removed') body = <p className="text-xl">You were removed from the queue.</p>
-  else if (me?.status === 'done' && presentedHere.current && !thanked) {
+  const plain = (text: string) => <h1 className="ph-headline text-center text-[36px] leading-9">{text}</h1>
+  const sharing = shareState === 'sharing'
+  const called = me?.status === 'called', live = me?.status === 'live'
+  const startBusy = pending > 0 || (wantReady && shareBusy)
+  let showShare = false, actions
+  let body, fg = '--border', green = false, top = 'pt-[155px]'
+  if (!state.session) body = plain('No checkpoint is running.')
+  else if (!open) body = plain('This checkpoint has ended.')
+  else if (me?.status === 'removed') body = plain('You were removed from the queue.')
+  else if (me?.status === 'done' && !handoff && presentedHere.current && !thanked) {
     body = (
-      <div className="space-y-4">
-        <h1 className="text-3xl font-semibold">Thanks for presenting!</h1>
-        <button className="rounded bg-amber-500 px-4 py-2 font-semibold text-black" onClick={() => setThanked(true)}>Join again</button>
+      <div className="w-full space-y-6">
+        {plain('Thanks for presenting!')}
+        <Button className="w-full" onClick={() => setThanked(true)}>Join again</Button>
       </div>
     )
   }
-  else if (!active) {
+  else if (!inFlow) {
+    fg = '--ph-purple'; top = 'pt-[210px]'; showShare = true
     body = (
-      <form className="space-y-3" onSubmit={(e) => {
-        e.preventDefault(); setError('')
-        act('/join', form)
+      <form ref={formRef} className="flex flex-col gap-6" onSubmit={(e) => {
+        e.preventDefault()
+        joinWith(canShare)
       }}>
-        <h1 className="text-2xl font-semibold">Join the checkpoint</h1>
-        <p className="text-sm text-neutral-400">You get {span(state.session!.limitSec)}.</p>
-        <input required maxLength={60} placeholder="Your name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full rounded bg-neutral-800 p-3" />
-        <input required maxLength={80} placeholder="Project name" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} className="w-full rounded bg-neutral-800 p-3" />
-        <button disabled={pending > 0} className="flex w-full items-center justify-center gap-2 rounded bg-amber-500 p-3 font-semibold text-black disabled:opacity-70">{pending > 0 && <Spinner />}Join queue</button>
+        {plain('Join the Checkpoint')}
+        {idUser && <p className="text-sm">Signed in as <b>{idUser.name}</b> · <Link href={signOutUrl('/')}>Sign out</Link></p>}
+        <div className="flex flex-col gap-4">
+          <Field label="Your Name" htmlFor="hacker-name"><Input id="hacker-name" required maxLength={60} placeholder="Ada Lovelace" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <Field label="Project Name" htmlFor="hacker-project"><Input id="hacker-project" required maxLength={80} placeholder="Pixel garden" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} /></Field>
+        </div>
+        {mustSignIn ? (
+          <div className="flex flex-col gap-2.5">
+            <p className="text-sm">Sign in with your Purdue Hackers ID to join the queue.</p>
+            <Button variant="solid" size="lg" className="w-full" type="button" onClick={() => { saveDraft(form); location.href = signInUrl('/') }}>Sign in with Purdue Hackers</Button>
+            <p className="text-sm text-muted-foreground">Note: You get {span(state.session!.limitSec)} to present</p>
+          </div>
+        ) : (
+        <div className="flex flex-col gap-2.5">
+          {canShare && <Button variant="solid" size="lg" className="w-full" type="submit" disabled={joining}>{joining && <Spinner />}{phone ? 'Share my camera' : 'Pick a screen to share'}</Button>}
+          <Button variant="outline" size="lg" className="w-full" type={canShare ? 'button' : 'submit'} disabled={joining} onClick={canShare ? () => joinWith(false) : undefined}>{joining && !canShare && <Spinner />}I won’t need to share</Button>
+          <p className="text-sm text-muted-foreground">Note: You get {span(state.session!.limitSec)} to present</p>
+        </div>
+        )}
       </form>
     )
   } else {
-    tour = me.status === 'waiting' ? 'wait' : me.status === 'called' ? 'turn' : null
+    showShare = true
+    if (live) fg = '--ph-purple'
+    if (called) green = true
+    const what = phone ? 'camera' : 'screen'
+    const waiting = me.status === 'waiting'
+      ? waitingCopy({ position: me.position, shareState, noShare, what, wait: aboutMinutes(waitMs(state, me.position - 1, now())), ahead: aheadName(state, me.position) })
+      : null
+    const title = handoff ? 'Thanks for presenting!' : live ? 'You’re live' : called ? 'It’s your turn!' : waiting?.title ?? ''
+    const sub = handoff ? 'Keep this page open for a moment in case the organizer gives you more time.' : live ? (msTotal === null ? '' : `${fmt(msTotal).replace(/^0/, '')} left`) : called ? 'Head up front, then press Start Presenting.' : waiting?.sub ?? ''
+    const size = called || live ? 'lg' : 'md'
     body = (
-      <div className="space-y-4">
-        {me.status === 'waiting' && (
-          <div data-tour="status" className={me.position === 1 ? 'rounded-lg bg-amber-400 p-4 text-black' : ''}>
-            <h1 className="text-3xl font-semibold">{me.position === 1 ? "You're up next!" : `You're ${ordinal(me.position)} in line`}</h1>
-            <p className={me.position === 1 ? '' : 'text-neutral-400'}>{shareState === 'sharing' ? "You're all set." : `Up in ${aboutMin(waitMs(state, me.position - 1, now()))}.`}</p>
-          </div>
-        )}
-        {/* Inline, not a full-page cover: the first in line is called automatically while still at their seat,
-            so Change window and Leave queue must stay reachable. Already sharing: goes live by itself. Otherwise one button shares and goes live. */}
-        {me.status === 'called' && (
-          <div className="space-y-3 rounded-lg bg-green-500 p-4 text-black">
-            <h1 className="text-3xl font-semibold">It's your turn!</h1>
-            <button data-tour="start" disabled={pending > 0} className="flex w-full items-center justify-center gap-3 rounded-lg bg-black px-6 py-4 text-2xl font-bold text-green-400 disabled:opacity-70" onClick={start}>{pending > 0 && <Spinner className="size-5" />}{shareState === 'sharing' || !canShare ? 'Start presenting' : phone ? 'Share camera & start' : 'Share screen & start'}</button>
-          </div>
-        )}
-        {me.status === 'live' && (
-          <div>
-            <h1 className="text-3xl font-semibold">You're live</h1>
-            {msTotal !== null && <p className="text-neutral-400">{timeUp ? "Time's up" : `${fmt(msTotal)} left`}</p>}
-          </div>
-        )}
-        {me.status === 'waiting' && state.session!.reactions && <ReactionPanel react={react} notice={notice} />}
-        {canShare ? (
-          <div data-tour="share"><ShareBox streamId={me.streamId} label={me.name} live={me.status === 'live'} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} onPublished={published} shareRef={shareFn} hideShare={me.status === 'called'} camera={phone} /></div>
-        ) : (
-          <p className="rounded bg-neutral-800 p-3 text-sm">{phone ? 'No camera access in this browser.' : 'Screen sharing needs Chrome or Edge.'}</p>
-        )}
-        {/* Take the stage with no share from this page: talk-only, or a browser that can't share. */}
-        {/* Shown while waiting too, so people find it early; Ready only works once called. */}
-        {me.status !== 'live' && shareState !== 'sharing' && (
-          <button disabled={me.status !== 'called'} className="w-full rounded-lg border border-green-500 px-4 py-3 font-medium text-green-400 disabled:border-neutral-700 disabled:text-neutral-500"
-            onClick={() => confirm('Start your time without sharing here?') && act('/ready', { noShare: true })}>
-            Present without sharing{me.status !== 'called' && ' (when it’s your turn)'}
-          </button>
-        )}
-        {me.status === 'live' && <button className="rounded bg-red-600 px-4 py-2" onClick={() => act('/end')}>End my checkpoint</button>}
-        {me.status !== 'live' && <button className="text-sm text-neutral-400 underline" onClick={() => confirm('Leave the queue?') && act('/leave')}>Leave queue</button>}
+      <div className="flex w-full flex-col items-center gap-2">
+        <h1 className="ph-headline w-full text-center text-[36px] leading-9">{title}</h1>
+        {sub && <p className={live ? 'ph-headline text-center text-[28px] tabular-nums' : 'text-center text-xl leading-normal text-foreground'}>{sub}</p>}
       </div>
+    )
+    actions = !handoff && (
+      <>
+        <div className="flex w-full flex-col items-center gap-3">
+          {called && <DitherButton disabled={startBusy} style={{ width: '100%' }} onClick={start}>{startBusy && <Spinner className="size-5" />}Start Presenting</DitherButton>}
+          {/* Called without having chosen: take the stage with no share from this page. */}
+          {called && !sharing && !noShare && <Button variant="lime-outline" size={size} className="w-full"
+            onClick={() => confirm('Start your time without sharing here?') && act('/ready', { noShare: true })}>Present without sharing</Button>}
+          {!live && sharing && !called && <Button variant="outline" size={size} className="w-full" onClick={share}>Change {phone ? 'Camera' : 'Screen'}</Button>}
+          {canShare && noShare && !sharing && <Button variant="outline" size={size} className="w-full" onClick={share}>Share my {phone ? 'camera' : 'screen'}</Button>}
+          {live && <Button variant="orange" size={size} className="w-full" onClick={() => act('/end')}>I’m done</Button>}
+          {!live && <Button variant="link" className="self-start" onClick={() => confirm('Leave the queue?') && act('/leave')}>Leave queue</Button>}
+        </div>
+        {me.status === 'waiting' && state.session!.reactions && <div className="w-full"><ReactionPanel react={react} notice={notice} /></div>}
+      </>
     )
   }
 
   return (
-    <Shell>
-      <Badge online={online} />
-      {active && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
-      {me?.status === 'live' && msTotal !== null && <div className={`fixed left-3 top-3 z-40 rounded px-3 py-1 text-xl font-bold tabular-nums ${cur?.pausedLeft != null ? 'bg-neutral-800 text-neutral-500' : msTotal <= 30_000 ? 'bg-red-600' : 'bg-neutral-800'}`}>{cur?.pausedLeft != null && '⏸ '}{timeUp ? "Time's up" : fmt(msTotal)}</div>}
-      {me?.status === 'waiting' && me.position === 1 && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-amber-400/25" />}
-      {me?.status === 'called' && <div className="pointer-events-none fixed inset-0 z-20 animate-pulse bg-green-400/25" />}
-      {pending > 0 && <div className="late fixed bottom-3 right-3 z-50 flex items-center gap-2 rounded bg-neutral-800 px-3 py-1 text-sm"><Spinner />Working…</div>}
-      {body}
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
-      {tour && <Tour key={tour + replay} part={tour} steps={TOUR[tour]} />}
-      {tour && <button className="mt-6 text-xs text-neutral-500 underline" onClick={() => { seen.clear(); setReplay((n) => n + 1) }}>How it works</button>}
+    <Shell fg={fg} green={green} top={top}>
+      <ConnectionBadge online={online} />
+      {inFlow && canShare && <StatsButton onClick={stats.toggle} className="fixed bottom-3 left-3" />}
+      {pending > 0 && <Badge color="outline" className="late fixed bottom-3 right-3 z-50 bg-background"><Spinner />Working…</Badge>}
+      <div className="flex flex-col items-center gap-6">
+        {body}
+        {showShare && canShare && <ShareBox key={shareKey} streamId={inFlow ? me!.streamId : join} label={me?.name ?? form.name} live={live} quality={state.session!.quality} stats={stats.on} onCloseStats={stats.toggle} onState={setShareState} onPublished={published} shareRef={shareFn} hideShare={called || handoff} hidden={!inFlow || (noShare && !sharing)} camera={phone} />}
+        {showShare && !handoff && !canShare && <p className="w-full border border-border bg-background p-3 text-center text-xs text-ph-yellow">{phone ? 'No camera access in this browser.' : 'Screen sharing needs Chrome or Edge.'}</p>}
+        {actions}
+      </div>
+      {error && <p className="mt-3 text-center text-sm text-ph-pink">{error}</p>}
     </Shell>
   )
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
-  return <main className="min-h-screen p-6"><div className="mx-auto max-w-2xl">{children}</div></main>
+function Shell({ children, fg = '--border', green = false, top = 'pt-[155px]' }: { children: React.ReactNode; fg?: string; green?: boolean; top?: string }) {
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-background font-sans text-foreground">
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <DitheredSoup fgColor={getComputedStyle(document.documentElement).getPropertyValue(fg).trim()} />
+        <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(0deg, var(--background) 50%, transparent 100%)' }} />
+        {green && <div className="absolute inset-0 bg-ph-lime/50 mix-blend-color-dodge" />}
+      </div>
+      <a href="/" aria-label="Checkpoints home" className="absolute left-6 top-6 z-10 block transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none"><Glider className="text-ph-yellow" /></a>
+      <div className={`relative mx-auto w-full max-w-[538px] px-4 pb-10 ${top}`}>{children}</div>
+    </main>
+  )
 }
